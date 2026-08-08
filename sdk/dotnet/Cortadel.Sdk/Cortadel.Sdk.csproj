@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <PackageId>Cortadel.Sdk</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Cortadel</Authors>
+    <Company>Cortadel</Company>
+    <Description>Official .NET SDK for Cortadel — self-hosted long-term temporal graph memory for AI agents (REST + MCP).</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/cortadel/cortadel</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cortadel/cortadel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>ai;memory;agents;mcp;knowledge-graph;llm;rag;semantic-kernel</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
