@@ -1,0 +1,46 @@
+---
+title: Cortadel Docs
+description: Self-hosted long-term temporal graph memory for AI agents — MCP, REST and a dashboard in one container.
+template: splash
+hero:
+  tagline: Long-term memory for AI agents — a temporal knowledge graph, not a vector blob. MCP, REST and a dashboard in one self-hosted container on .NET 10.
+  actions:
+    - text: Get started
+      link: /getting-started/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/cortadel/cortadel
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Explore the docs
+
+<CardGrid stagger>
+	<Card title="Getting started" icon="open-book">
+		Run the server, install the SDK, and store + recall your first memory. [Start here](/getting-started/).
+	</Card>
+	<Card title="Self-hosting" icon="setting">
+		The full Docker Compose stack with FalkorDB or Memgraph, and every config knob. [Self-host](/self-hosting/).
+	</Card>
+	<Card title="MCP integration" icon="document">
+		Point Claude, Cursor, or any MCP client at the endpoint — no code. [Connect an agent](/mcp/).
+	</Card>
+	<Card title=".NET SDK" icon="add-document">
+		A thin, typed client over the REST API. [SDK reference](/sdk-dotnet/).
+	</Card>
+</CardGrid>
+
+## What is Cortadel?
+
+Cortadel gives an AI agent a durable, queryable memory that survives across sessions — a
+**bi-temporal knowledge graph**, not a vector blob. It extracts facts, links entities, resolves
+contradictions, reconciles duplicate entities, and returns the right context with **no LLM call on
+the read path**.
+
+- **Two ways in** — a typed REST API and a Model Context Protocol (MCP) endpoint.
+- **One container** — API, MCP, and dashboard in a single .NET 10 process over FalkorDB or Memgraph.
+- **Yours to run** — self-hosted; the SDK and these docs are Apache-2.0, the engine is a commercial
+  product. See [cortadel.ai](https://cortadel.ai).
