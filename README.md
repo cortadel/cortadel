@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>Cortadel</h1>
+<h1>Cortadel™</h1>
 
 <h3><em>Long-term memory for AI agents — a temporal knowledge graph, not a vector blob.</em></h3>
 
