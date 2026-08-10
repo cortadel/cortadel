@@ -1,12 +1,17 @@
 # Self-hosting the server
 
 Cortadel runs as **one container, one port**. The ASP.NET Core process serves the REST API, the MCP
-endpoint, Swagger, and the React dashboard on `:3001`. It needs two things reachable from the
+endpoint, Swagger, and the React dashboard on `:3001`. It needs three things reachable from the
 container:
 
-1. a **graph database** — FalkorDB or Memgraph, and
-2. an **embedding provider** — Ollama, LM Studio, or Azure OpenAI (an external endpoint is required;
-   there is no built-in embedding model).
+1. a **graph database** — FalkorDB or Memgraph,
+2. an **embedding provider** — Ollama, LM Studio, or Azure OpenAI (external; there is no built-in
+   embedding model), and
+3. an **LLM provider** — Azure OpenAI or any OpenAI-compatible endpoint (LM Studio, Ollama), used
+   only at **write time** (fact extraction, dedup, entity/community summaries); reads never call it.
+
+The **cross-encoder reranker** (bge-reranker-v2-m3, int8) ships **inside the image** and runs on
+CPU, so it needs no external service.
 
 ## Docker Compose (FalkorDB)
 
@@ -30,19 +35,30 @@ services:
       - "3001:3001"
     environment:
       MEMFORGE_Database__Provider: falkordb
-      MEMFORGE_FalkorDb__Host: falkordb
-      MEMFORGE_FalkorDb__Port: "6379"
+      MEMFORGE_FalkorDb__Host: "falkordb:6379"     # host:port in ONE value (there is no __Port key)
+      MEMFORGE_FalkorDb__GraphName: cortadel
+      # MEMFORGE_FalkorDb__Password: "..."          # only if your FalkorDB requires AUTH
 
-      # Embeddings — point at your provider (example: a local Ollama)
+      # Embeddings — an external provider is required (example: Ollama on the host, OpenAI-compatible /v1).
       MEMFORGE_Embedding__Provider: ollama
-      MEMFORGE_Embedding__Endpoint: http://host.docker.internal:11434
-      MEMFORGE_Embedding__Model: nomic-embed-text
+      MEMFORGE_Embedding__Ollama__Endpoint: "http://host.docker.internal:11434/v1"
+      MEMFORGE_Embedding__Ollama__Model: "snowflake-arctic-embed2"
+      MEMFORGE_Embedding__Dimensions: "1024"        # MUST match your model's output dimension
 
-      # Optional: enable auth (leave empty to run open on a trusted network)
+      # LLM (write-time only). There is no 'ollama' LLM provider — point 'lmstudio' at any
+      # OpenAI-compatible /v1 (LM Studio or Ollama), or use 'azure'.
+      MEMFORGE_Llm__Provider: lmstudio
+      MEMFORGE_Llm__LmStudioEndpoint: "http://host.docker.internal:11434/v1"
+      MEMFORGE_Llm__LmStudioModel: "qwen2.5:7b-instruct"
+
+      # Auth — empty = OPEN (every REST + MCP endpoint is unauthenticated). Set a secret on any shared network.
       MEMFORGE_Auth__Secret: ""
+    volumes:
+      - cortadel-cache:/app/cache                   # persist embedding/LLM disk cache + backups
 
 volumes:
   falkordb-data:
+  cortadel-cache:
 ```
 
 ```bash
@@ -64,27 +80,107 @@ docker compose up
 ```yaml
     environment:
       MEMFORGE_Database__Provider: memgraph
-      MEMFORGE_Memgraph__Host: memgraph
-      MEMFORGE_Memgraph__Port: "7687"
+      MEMFORGE_Memgraph__Url: "bolt://memgraph:7687"   # a full bolt URL — there is no __Host/__Port
+      # MEMFORGE_Memgraph__Username: "..."
+      # MEMFORGE_Memgraph__Password: "..."
 ```
 
 > Memgraph's BM25 full-text search needs `--experimental-enabled=text-search`.
 
-## Configuration
+## Dependencies at a glance
 
-Config binds from environment variables prefixed **`MEMFORGE_`**, using `__` (double underscore) as
-the section separator — so `MEMFORGE_FalkorDb__Host` sets `FalkorDb:Host`.
+| Component | In the image? | You provide |
+|---|---|---|
+| .NET 10 runtime, dashboard SPA | ✅ | — |
+| **Reranker** — bge-reranker-v2-m3 (int8, CPU) | ✅ baked in | *(optional)* a GPU rerank endpoint |
+| **Graph database** | ❌ | FalkorDB **or** Memgraph |
+| **Embedding provider** | ❌ | Ollama, LM Studio, or Azure OpenAI |
+| **LLM provider** (write-time only) | ❌ | Azure OpenAI or any OpenAI-compatible endpoint |
 
-| Variable | Purpose |
-|---|---|
-| `MEMFORGE_Database__Provider` | `falkordb` or `memgraph` |
-| `MEMFORGE_FalkorDb__Host` / `__Port` | FalkorDB connection |
-| `MEMFORGE_Memgraph__Host` / `__Port` | Memgraph connection |
-| `MEMFORGE_Embedding__Provider` | `ollama`, `lmstudio`, or `azure` |
-| `MEMFORGE_Embedding__Endpoint` | Embedding provider base URL |
-| `MEMFORGE_Embedding__Model` | Embedding model name |
-| `MEMFORGE_Llm__Provider` | `azure` or `lmstudio` (LLM for extraction/dedup) |
-| `MEMFORGE_Auth__Secret` | Enable auth; empty = open |
+## Configuration reference
+
+Every setting binds from `appsettings.json`, then from environment variables prefixed **`MEMFORGE_`**
+with `__` (double underscore) as the section separator. Nested keys chain the separator:
+`Embedding:Ollama:Endpoint` → `MEMFORGE_Embedding__Ollama__Endpoint`.
+
+### Database
+
+| Setting → env var | Default | Notes |
+|---|---|---|
+| `Database:Provider` → `MEMFORGE_Database__Provider` | `memgraph` | `falkordb` or `memgraph` |
+
+### FalkorDB — when `Database:Provider=falkordb`
+
+| Setting → env var | Default | Notes |
+|---|---|---|
+| `FalkorDb:Host` → `MEMFORGE_FalkorDb__Host` | `localhost:6379` | **`host:port` in one value** (no separate `Port` key) |
+| `FalkorDb:Password` → `MEMFORGE_FalkorDb__Password` | *(empty)* | only if AUTH is enabled |
+| `FalkorDb:GraphName` → `MEMFORGE_FalkorDb__GraphName` | `memforge` | graph key name |
+
+### Memgraph — when `Database:Provider=memgraph`
+
+| Setting → env var | Default | Notes |
+|---|---|---|
+| `Memgraph:Url` → `MEMFORGE_Memgraph__Url` | `bolt://localhost:7687` | **a full bolt URL** (no separate host/port) |
+| `Memgraph:Username` / `Memgraph:Password` | *(empty)* | Bolt credentials |
+| `Memgraph:MaxPoolSize` | `50` | connection pool size |
+
+> Memgraph needs `--experimental-enabled=text-search` for BM25 full-text search.
+
+### Embeddings — required (no built-in model)
+
+| Setting → env var | Default | Notes |
+|---|---|---|
+| `Embedding:Provider` → `MEMFORGE_Embedding__Provider` | *(unset → errors)* | `ollama`, `lmstudio`, or `azure` |
+| `Embedding:Dimensions` → `MEMFORGE_Embedding__Dimensions` | `1024` | **must match your model and the vector index** |
+
+Then set the block for your chosen provider:
+
+| Provider | Endpoint | Model |
+|---|---|---|
+| `ollama` | `Embedding:Ollama:Endpoint` (e.g. `http://host:11434/v1`) | `Embedding:Ollama:Model` |
+| `lmstudio` | `Embedding:LmStudio:Endpoint` (e.g. `http://host:1234/v1`) | `Embedding:LmStudio:Model` |
+| `azure` | `Embedding:Azure:Endpoint` + `Embedding:Azure:ApiKey` | `Embedding:Azure:Deployment` (+ `Embedding:Azure:ApiVersion`) |
+
+### LLM — write-time only
+
+Used for fact extraction, dedup verdicts, and entity/community summaries. **Reads never call the LLM.**
+
+| Setting → env var | Default | Notes |
+|---|---|---|
+| `Llm:Provider` → `MEMFORGE_Llm__Provider` | *(auto)* | `azure` or `lmstudio` — **no `ollama` provider**; use `lmstudio` against Ollama's `/v1` |
+
+| Provider | Endpoint / credentials | Model |
+|---|---|---|
+| `lmstudio` (LM Studio, Ollama, any OpenAI-compatible) | `Llm:LmStudioEndpoint` (e.g. `http://host:11434/v1`) | `Llm:LmStudioModel` |
+| `azure` | `Llm:AzureEndpoint` + `Llm:AzureApiKey` | `Llm:AzureDeployment` (+ `Llm:AzureApiVersion`) |
+
+### Reranker
+
+Ships **inside the image** (bge-reranker-v2-m3, int8, CPU) — no external service needed.
+
+| Setting → env var | Default | Notes |
+|---|---|---|
+| `Rerank:Provider` → `MEMFORGE_Rerank__Provider` | `onnx` | `onnx` (CPU, baked in) or `http` (GPU) |
+| `Rerank:HttpEndpoint` → `MEMFORGE_Rerank__HttpEndpoint` | *(empty)* | a llama.cpp `/v1/reranking` server; setting it selects `http` |
+
+### Auth
+
+| Setting → env var | Default | Notes |
+|---|---|---|
+| `Auth:Secret` → `MEMFORGE_Auth__Secret` | *(empty = OPEN)* | HMAC key secret; empty leaves every endpoint unauthenticated |
+
+Mint a user's API key:
+
+```bash
+docker run --rm -e MEMFORGE_Auth__Secret="your-secret" ghcr.io/cortadel/cortadel mint-key alice
+```
+
+### Caching & backups (optional)
+
+`Cache:Enabled` toggles the embedding/LLM disk cache (`Cache:EmbeddingPath`, `Cache:LlmPath`).
+`Backup:Enabled` turns on nightly per-user backups (`Backup:Hour`, `Backup:Directory`, `Backup:Keep`).
+Mount a volume at `/app/cache` to persist both across restarts.
 
 ## Health
 
