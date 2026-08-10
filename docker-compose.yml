@@ -1,0 +1,109 @@
+# Cortadel — one-command quickstart. CPU-first, no GPU required (great on a MacBook).
+#
+#   docker compose up
+#   → dashboard  http://localhost:3001
+#
+# Everything runs on CPU by default:
+#   • Memgraph   — the graph database (BM25 text-search enabled)
+#   • Ollama     — auto-pulls a lightweight embedding model + Gemma 4 (on-device LLM)
+#   • Cortadel   — engine + dashboard + MCP; reranker runs on CPU via ONNX (MiniLM, see below)
+#
+# Laptop-friendly defaults:
+#   embedding = intelli-embed-v3 (1024-dim, ~605MB Q8_0 GGUF — an arctic-embed-l-v2.0 fine-tune
+#               purpose-built for memory retrieval; beats azure-large on 5/6 memory metrics)
+#   LLM       = gemma4:e4b (~9.6GB, Gemma 4 edge) · reranker = ms-marco-MiniLM-L-6-v2 (ONNX/CPU)
+# First run downloads a few GB (images + models) — give it a few minutes.
+#
+# Scale up / swap without editing this file — set env or a .env next to it:
+#   LLM_MODEL=gemma4:12b EMBED_MODEL=nomic-embed-text docker compose up
+#   (keep MEMFORGE_Embedding__Dimensions in sync — intelli-embed-v3 = 1024, nomic-embed-text = 768)
+# Even lighter LLM: LLM_MODEL=gemma4:e2b. Higher-quality reranker: drop the OnnxModelDir line below.
+name: cortadel
+
+services:
+  memgraph:
+    image: memgraph/memgraph-mage:latest
+    command: ["--experimental-enabled=text-search"] # required for BM25 full-text search
+    ports:
+      - "7687:7687"
+    volumes:
+      - memgraph-data:/var/lib/memgraph
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    # NVIDIA GPU (optional) — uncomment for much faster generation:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # Pulls the models into Ollama once, then exits. Cortadel waits for this to finish.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: "http://ollama:11434"
+      EMBED_MODEL: "${EMBED_MODEL:-hf.co/serhiiseletskyi/intelli-embed-v3:Q8_0}"
+      LLM_MODEL: "${LLM_MODEL:-gemma4:e4b}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "waiting for ollama to come up..."
+        until ollama list >/dev/null 2>&1; do sleep 2; done
+        echo "pulling embedding model: $$EMBED_MODEL"; ollama pull "$$EMBED_MODEL"
+        echo "pulling LLM: $$LLM_MODEL";               ollama pull "$$LLM_MODEL"
+        echo "models ready."
+    restart: "no"
+
+  cortadel:
+    image: ghcr.io/cortadel/cortadel:latest
+    depends_on:
+      memgraph:
+        condition: service_started
+      ollama-pull:
+        condition: service_completed_successfully
+    ports:
+      - "3001:3001"
+    environment:
+      # ── Graph database ──────────────────────────────────────────────
+      MEMFORGE_Database__Provider: memgraph
+      MEMFORGE_Memgraph__Url: "bolt://memgraph:7687"
+
+      # ── Embeddings (Ollama, OpenAI-compatible /v1) ──────────────────
+      # intelli-embed-v3 is a memory-tuned fine-tune of arctic-embed-l-v2.0. Dimensions MUST
+      # match the model — intelli-embed-v3 outputs 1024 (lighter fallback: nomic-embed-text = 768).
+      MEMFORGE_Embedding__Provider: ollama
+      MEMFORGE_Embedding__Ollama__Endpoint: "http://ollama:11434/v1"
+      MEMFORGE_Embedding__Ollama__Model: "${EMBED_MODEL:-hf.co/serhiiseletskyi/intelli-embed-v3:Q8_0}"
+      MEMFORGE_Embedding__Dimensions: "1024"
+
+      # ── LLM (write-time only: extraction, dedup, summaries) ─────────
+      # There is no 'ollama' LLM provider — 'lmstudio' speaks the same OpenAI /v1 Ollama serves.
+      MEMFORGE_Llm__Provider: lmstudio
+      MEMFORGE_Llm__LmStudioEndpoint: "http://ollama:11434/v1"
+      MEMFORGE_Llm__LmStudioModel: "${LLM_MODEL:-gemma4:e4b}"
+
+      # ── Reranker (ONNX, CPU — no GPU needed) ─────────────────────
+      # Light MiniLM reranker, fast on CPU. Drop this line to use the higher-quality
+      # bge-reranker-v2-m3 (also CPU, heavier). Both models ship inside the image.
+      MEMFORGE_Rerank__OnnxModelDir: "/app/models/ms-marco-MiniLM-L-6-v2"
+
+      # ── Auth ────────────────────────────────────────────────────────
+      # Empty = OPEN (fine for local). Set a secret to require API keys.
+      MEMFORGE_Auth__Secret: ""
+    volumes:
+      - cortadel-cache:/app/cache # embedding/LLM disk cache + backups
+
+volumes:
+  memgraph-data:
+  ollama:
+  cortadel-cache:

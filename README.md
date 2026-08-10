@@ -138,11 +138,17 @@ Your memory, your box. **One container**, a graph DB, and an embedding provider 
 
 ## *Quick start*
 
-**1 · Run the server** (see [Self-hosting](docs/self-hosting.md) for the full compose file with a graph DB):
+**1 · Run the server.** The fastest path is the **batteries-included** compose — graph DB, embeddings, and an LLM all bundled, running on CPU (no GPU needed):
+
+```bash
+curl -O https://raw.githubusercontent.com/cortadel/cortadel/main/docker-compose.yml
+docker compose up   # dashboard http://localhost:3001 · REST /api/v1 · MCP /mcp/{client}/{userId}
+```
+
+Or just the server (bring your own graph DB + providers — see [Self-hosting](docs/self-hosting.md)):
 
 ```bash
 docker run -p 3001:3001 ghcr.io/cortadel/cortadel:latest
-# dashboard http://localhost:3001 · REST /api/v1 · MCP /mcp/{client}/{userId}
 ```
 
 **2 · Connect an agent (no code)** — point any MCP client at:

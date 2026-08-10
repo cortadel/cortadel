@@ -4,22 +4,23 @@ This guide takes you from zero to storing and recalling a memory with the .NET S
 
 ## 1. Run the server
 
-Cortadel ships as a single container that serves the REST API, the MCP endpoint, and the dashboard
-on port `3001`. The quickest way to try it (in-memory-free — bring a graph DB) is Docker Compose;
-see [Self-hosting](self-hosting.md) for the full compose file.
+The fastest way to a **fully working** server — graph DB, embeddings, and an LLM all included — is the
+batteries-included compose. Everything runs on CPU (no GPU needed):
 
 ```bash
-docker run -p 3001:3001 ghcr.io/cortadel/cortadel:latest
+curl -O https://raw.githubusercontent.com/cortadel/cortadel/main/docker-compose.yml
+docker compose up
 ```
 
-Open the dashboard at <http://localhost:3001> and check health:
+**First run pulls a few GB** (images + models); then open the dashboard at <http://localhost:3001>
+and check health:
 
 ```bash
 curl http://localhost:3001/api/health
 ```
 
-> The server needs a graph database (FalkorDB or Memgraph) and an embedding provider reachable from
-> the container. [Self-hosting](self-hosting.md) wires both.
+> Just the server, or your own backends? `docker run -p 3001:3001 ghcr.io/cortadel/cortadel:latest`
+> runs the container alone — see [Self-hosting](self-hosting.md) to wire a graph DB + providers.
 
 ## 2. Install the SDK
 

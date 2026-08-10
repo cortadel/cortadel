@@ -13,6 +13,48 @@ container:
 The **cross-encoder reranker** (bge-reranker-v2-m3, int8) ships **inside the image** and runs on
 CPU, so it needs no external service.
 
+## One-command quickstart (batteries included)
+
+Want the whole stack with **zero external setup**? The repo ships a root
+[`docker-compose.yml`](https://github.com/cortadel/cortadel/blob/main/docker-compose.yml) that
+bundles a graph database, an embedding model, and an LLM — and wires them together for you:
+
+- **Memgraph** — the graph database
+- **Ollama** — auto-pulls a lightweight embedding model
+  ([intelli-embed-v3](https://huggingface.co/serhiiseletskyi/intelli-embed-v3), 1024-dim) and an
+  on-device LLM ([`gemma4:e4b`](https://ollama.com/library/gemma4:e4b))
+- **Cortadel** — API + MCP + dashboard, with the CPU reranker (`ms-marco-MiniLM-L-6-v2`) baked in
+
+Everything runs **on CPU — no GPU required** (it's happy on a laptop):
+
+```bash
+curl -O https://raw.githubusercontent.com/cortadel/cortadel/main/docker-compose.yml
+docker compose up
+```
+
+…or clone the repo and run it in place:
+
+```bash
+git clone https://github.com/cortadel/cortadel.git
+cd cortadel && docker compose up
+```
+
+Then open the dashboard at <http://localhost:3001>. **First run downloads a few GB** (images plus the
+two models), so give it a few minutes; later starts are instant.
+
+Swap models without editing the file — set env vars (or a `.env` beside the compose):
+
+```bash
+LLM_MODEL=gemma4:12b docker compose up            # bigger LLM
+LLM_MODEL=gemma4:e2b docker compose up            # lighter LLM
+EMBED_MODEL=nomic-embed-text docker compose up    # lighter embedding (then set Dimensions=768)
+```
+
+> Keep `MEMFORGE_Embedding__Dimensions` in sync with your embedding model's output dimension
+> (intelli-embed-v3 = 1024, nomic-embed-text = 768) — a mismatch hard-fails startup on the dimension guard.
+
+Prefer to **bring your own** graph DB and providers? Use one of the composes below instead.
+
 ## Docker Compose (FalkorDB)
 
 FalkorDB is the recommended default — it's fast and starts instantly.
