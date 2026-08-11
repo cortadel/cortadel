@@ -9,18 +9,30 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <PackageId>Cortadel.Sdk</PackageId>
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
     <Authors>Cortadel</Authors>
     <Company>Cortadel</Company>
+    <Title>Cortadel .NET SDK</Title>
+    <Copyright>Copyright © Cortadel</Copyright>
     <Description>Official .NET SDK for Cortadel — self-hosted long-term temporal graph memory for AI agents (REST + MCP).</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/cortadel/cortadel</PackageProjectUrl>
     <RepositoryUrl>https://github.com/cortadel/cortadel</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageTags>ai;memory;agents;mcp;knowledge-graph;llm;rag;semantic-kernel</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Unconditional ContinuousIntegrationBuild normalizes source paths embedded in the PDB
+       (deterministic, machine-independent paths), which is what SourceLink needs to resolve
+       sources on nuget.org - but it also breaks "Go to Definition"/breakpoints when debugging
+       locally against the built DLL, since the normalized paths no longer point at this machine's
+       checkout. Scope it to CI only. -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>

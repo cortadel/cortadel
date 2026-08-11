@@ -24,7 +24,15 @@ public sealed class CortadelClientOptions
     /// <summary>App name recorded for access logging on searches. Defaults to <c>cortadel-dotnet</c>.</summary>
     public string AppName { get; init; } = "cortadel-dotnet";
 
-    /// <summary>Request timeout. Defaults to 100 seconds (generous for reranked search).</summary>
+    /// <summary>
+    /// Request timeout. Defaults to 100 seconds (generous for reranked search).
+    /// <b>No-op when you pass your own <see cref="HttpClient"/></b> to the constructor: the facade
+    /// deliberately never mutates a caller-supplied client (its <c>Timeout</c> setter throws once
+    /// that client has sent a request, and touching it would surprise anyone reusing one client for
+    /// other calls too). This value only takes effect on the internal <see cref="HttpClient"/> the
+    /// client creates for you. Set the timeout on your own <see cref="HttpClient"/> instead when
+    /// you supply one.
+    /// </summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(100);
 }
 

@@ -119,7 +119,7 @@ public sealed record SearchResults
     public int Total { get; init; }
 }
 
-/// <summary>A single ranked search hit. Fields the server adds beyond these are available in <see cref="Extra"/>.</summary>
+/// <summary>A single ranked search hit.</summary>
 public sealed record SearchHit
 {
     public string Id { get; init; } = "";
@@ -160,7 +160,12 @@ public sealed record SearchHit
     /// <summary>Freeform attributes attached to this hit (e.g. confidence_band, anchors).</summary>
     public Dictionary<string, JsonElement?>? Attributes { get; init; }
 
-    /// <summary>Any additional fields the server returned.</summary>
+    /// <summary>
+    /// Always <c>null</c>. The generated model backing this hit does not implement
+    /// <c>IAdditionalDataHolder</c>, so nothing ever populates this bag - fields the server adds
+    /// beyond the ones already mapped above are silently dropped before they ever reach this type,
+    /// not captured here. Kept for source compatibility only; do not rely on it.
+    /// </summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; init; }
 }
 
@@ -239,7 +244,12 @@ public sealed record ConversationResult
     /// <summary>True when the conversation yielded no storable facts; absent otherwise.</summary>
     [JsonPropertyName("no_facts_extracted")] public bool? NoFactsExtracted { get; init; }
 
-    /// <summary>Any additional fields the server returned.</summary>
+    /// <summary>
+    /// Always <c>null</c>. The generated model backing this result does not implement
+    /// <c>IAdditionalDataHolder</c>, so nothing ever populates this bag - it cannot recover fields
+    /// the server adds beyond <see cref="Results"/>/<see cref="NoFactsExtracted"/>. Kept for source
+    /// compatibility only; do not rely on it.
+    /// </summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Raw { get; init; }
 }
 
@@ -267,16 +277,23 @@ public sealed record HealthResult
 
     [JsonPropertyName("checked_at")] public string? CheckedAt { get; init; }
 
-    /// <summary>Per-dependency check details (<c>memgraph</c>, <c>embeddings</c>, <c>indexes</c>), keyed by dependency name.</summary>
+    /// <summary>
+    /// Per-dependency check details, keyed by dependency name (<c>memgraph</c>, <c>embeddings</c>,
+    /// <c>indexes</c> today). <b>Not actually open-ended</b>: the contract declares this map (and
+    /// each check's own shape) with <c>additionalProperties: false</c>, so the generated model
+    /// silently drops any key it doesn't already know about before this dictionary is even built -
+    /// a dependency check the contract doesn't declare (e.g. a future <c>falkordb</c> entry) or an
+    /// undeclared field on a known check both vanish with no trace, not just go uncaptured.
+    /// </summary>
     public Dictionary<string, JsonElement>? Checks { get; init; }
 
-    /// <summary>Any additional fields the server returned.</summary>
+    /// <summary>
+    /// Always <c>null</c>. The generated model backing this result does not implement
+    /// <c>IAdditionalDataHolder</c>, so nothing ever populates this bag - fields the server adds
+    /// beyond <see cref="Status"/>/<see cref="CheckedAt"/>/<see cref="Checks"/> are silently
+    /// dropped, not captured here. Kept for source compatibility only; do not rely on it.
+    /// </summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; init; }
-}
-
-internal sealed record MessageResult
-{
-    public string Message { get; init; } = "";
 }
 
 /// <summary>A structured error returned by the server.</summary>
