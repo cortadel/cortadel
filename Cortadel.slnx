@@ -5,6 +5,7 @@
   </Folder>
   <Folder Name="/sdk/" />
   <Folder Name="/sdk/dotnet/">
+    <Project Path="sdk/dotnet/Cortadel.Sdk.Conformance/Cortadel.Sdk.Conformance.csproj" />
     <Project Path="sdk/dotnet/Cortadel.Sdk.Tests/Cortadel.Sdk.Tests.csproj" />
     <Project Path="sdk/dotnet/Cortadel.Sdk/Cortadel.Sdk.csproj" />
   </Folder>
