@@ -3,16 +3,28 @@ name: Docs site
 # Builds the Starlight docs in website/ and deploys them to Cloudflare Pages.
 # The build gates every PR; the deploy runs only on push to main and is skipped
 # (never failed) unless the Cloudflare secrets are present.
+#
+# docs/** and README.md are included below so a change to either triggers *some* workflow —
+# before this, they triggered nothing at all (dotnet.yml's paths cover sdk/spec/examples, not
+# these). Note this is a coverage placeholder, not a real content link: website/src/content/docs/*
+# is a separate, already-diverged copy (verified with `diff` — none of the five files are
+# byte-identical to their root docs/ counterpart), so the build step here does not actually read
+# or validate root docs/**/README.md content; it just re-runs the unrelated website build so the
+# change isn't silently ungated.
 
 on:
   push:
     branches: [main]
     paths:
       - 'website/**'
+      - 'docs/**'
+      - 'README.md'
       - '.github/workflows/docs.yml'
   pull_request:
     paths:
       - 'website/**'
+      - 'docs/**'
+      - 'README.md'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 

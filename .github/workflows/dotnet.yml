@@ -1,0 +1,229 @@
+name: .NET SDK
+
+# Gates the .NET SDK: build + unit tests, a check that the committed Kiota client hasn't drifted
+# from spec/openapi.json, and a conformance suite run against a real server.
+#
+# The conformance gate is split into two tiers because a bare `ghcr.io/cortadel/cortadel:latest`
+# container needs a reachable Memgraph just to answer /api/health, and needs a *working* LLM +
+# embedding provider (Ollama, ~9.6 GB of models) for anything that writes. An earlier draft of this
+# plan specified a bare service container with a `curl -f` wait-loop; that cannot work, because
+# HealthController returns 503 (not 200) whenever the database or embedding check fails, and
+# `curl -f` treats any non-2xx as failure. See conformance-base / conformance-full below and
+# .superpowers/sdd/2026-08-11-dotnet-sdk-leg/task-4-report.md's "Provisioning requirements" section
+# for exactly what each tier needs — the jobs below are written from that section, not a guess.
+#
+# dotnet-version is pinned to 10.0.x, not the SDK's own net8.0 target framework: the .slnx solution
+# format needs a >=9.0.200-class SDK/MSBuild to parse at all (verified locally before writing this
+# file — an isolated .NET 8.0.423 SDK fails `dotnet restore Cortadel.slnx` outright with
+# "MSB4068: The element <Solution> is unrecognized"; 9.0.303 and 10.0.302 both restore cleanly).
+# The projects still target net8.0; only the CLI/MSBuild doing the building needs to be newer.
+# 10.0.x matches the private server-dotnet repo's own CI, which pins the same version for the same
+# .slnx format.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sdk/**'
+      - 'spec/**'
+      - 'examples/**'
+      - 'Cortadel.slnx'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/dotnet.yml'
+  pull_request:
+    paths:
+      - 'sdk/**'
+      - 'spec/**'
+      - 'examples/**'
+      - 'Cortadel.slnx'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/dotnet.yml'
+  workflow_dispatch:
+  # Weekly, so the LLM-dependent tier (conformance-full) still gets exercised even if nobody
+  # remembers to dispatch it manually. build/generation-drift/conformance-base are cheap and gate
+  # every PR; this schedule exists only to drive the expensive ~9.6 GB-model tier in its absence.
+  schedule:
+    - cron: '17 6 * * 1'
+
+concurrency:
+  group: dotnet-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore Cortadel.slnx
+      - run: dotnet build Cortadel.slnx --no-restore -c Release
+      - run: dotnet test sdk/dotnet/Cortadel.Sdk.Tests --no-build -c Release --nologo
+
+  generation-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet tool restore
+      - name: Regenerate from the committed contract
+        run: |
+          dotnet tool run kiota generate -l CSharp -c CortadelApiClient \
+            -n Cortadel.Sdk.Generated -d ./spec/openapi.json \
+            -o ./sdk/dotnet/Cortadel.Sdk/Generated --exclude-backward-compatible
+      # .kiota.log lands inside Generated/ from the command above and is gitignored (confirmed
+      # locally: `git status --ignored=matching` shows it as `!!`), so it cannot make the diff
+      # check below dirty. Regeneration was verified locally to otherwise leave the tree
+      # byte-identical to the committed client.
+      - name: Fail if generated code drifted
+        run: |
+          if ! git diff --exit-code -- sdk/dotnet/Cortadel.Sdk/Generated; then
+            echo "::error::Generated client differs from the committed contract. Regenerate and commit."
+            exit 1
+          fi
+
+  conformance-base:
+    name: conformance (base tier — no LLM, no embeddings)
+    # PR/push/manual; excluded from the weekly schedule, which exists only to drive
+    # conformance-full.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Per task-4-report.md's "Provisioning requirements", the no-LLM tier needs only a
+      # reachable Memgraph (GetAsync/ListAsync/DeleteAsync all issue store queries even for a
+      # lookup that finds nothing) and explicitly *no* LLM or embedding provider.
+      # --experimental-enabled=text-search matches docker-compose.yml's own flag (BM25 full-text
+      # search) — kept for parity even though none of this tier's 4 tests search.
+      - name: Start Memgraph
+        run: |
+          docker network create cortadel-ci
+          docker run -d --name memgraph --network cortadel-ci -p 7687:7687 \
+            memgraph/memgraph-mage:latest --experimental-enabled=text-search
+
+      - name: Wait for Memgraph's bolt port
+        run: |
+          for i in $(seq 1 45); do
+            if (exec 3<>/dev/tcp/127.0.0.1/7687) 2>/dev/null; then
+              exec 3>&- 3<&-
+              echo "memgraph is accepting connections on 7687"
+              exit 0
+            fi
+            echo "waiting for memgraph ($i/45)..."
+            sleep 2
+          done
+          echo "::error::memgraph never opened its bolt port"
+          docker logs memgraph
+          exit 1
+
+      # Deliberately no MEMFORGE_Llm__*/MEMFORGE_Embedding__* — the base tier's provisioning
+      # requirement is "no LLM provider, no embedding provider". MEMFORGE_Auth__Secret is left
+      # unset (empty = open), matching docker-compose.yml's own local-dev default.
+      - name: Start Cortadel
+        run: |
+          docker run -d --name cortadel --network cortadel-ci -p 3001:3001 \
+            -e MEMFORGE_Database__Provider=memgraph \
+            -e MEMFORGE_Memgraph__Url=bolt://memgraph:7687 \
+            ghcr.io/cortadel/cortadel:latest
+
+      # HealthController legitimately returns 503 here — there is no embedding provider — and the
+      # conformance suite's Health_ReportsAStatus test asserts `ok | degraded` for exactly this
+      # reason. A bare `curl -f` wait-loop would treat that 503 as failure and burn its full
+      # timeout without a single test ever running (the bug the earlier draft plan had). This
+      # checks the status code by hand and accepts either 200 or 503.
+      - name: Wait for Cortadel health (tolerates 503/degraded)
+        run: |
+          status="000"
+          for i in $(seq 1 60); do
+            status=$(curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:3001/api/health || echo "000")
+            if [ "$status" = "200" ] || [ "$status" = "503" ]; then
+              echo "cortadel answered /api/health with $status:"
+              cat /tmp/health.json; echo
+              break
+            fi
+            echo "waiting for cortadel ($status) ($i/60)..."
+            sleep 3
+          done
+          if [ "$status" != "200" ] && [ "$status" != "503" ]; then
+            echo "::error::cortadel never answered /api/health with 200 or 503 (last status: $status)"
+            docker logs cortadel
+            exit 1
+          fi
+
+      - name: Run base-tier conformance suite (4 tests)
+        env:
+          CORTADEL_CONFORMANCE_URL: http://localhost:3001
+        run: dotnet test sdk/dotnet/Cortadel.Sdk.Conformance -c Release --nologo
+
+      - name: Container logs
+        if: failure()
+        run: |
+          echo "── memgraph ──"; docker logs memgraph || true
+          echo "── cortadel ──"; docker logs cortadel || true
+
+      - name: Tear down containers
+        if: always()
+        run: |
+          docker rm -f cortadel memgraph 2>/dev/null || true
+          docker network rm cortadel-ci 2>/dev/null || true
+
+  conformance-full:
+    name: conformance (full tier — LLM + embeddings)
+    # Manual or weekly only — never on PR/push. Pulls a ~9.6 GB LLM plus an embedding model via
+    # Ollama; too slow/expensive to gate every PR (the repo owner's ruling to split the gate —
+    # see task-5-brief.md).
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The repo's own documented one-command quickstart (README "Quick start" / self-hosting.md),
+      # unmodified: Memgraph + Ollama (pulls the LLM and embedding model, gated by
+      # `ollama-pull`'s service_completed_successfully condition) + Cortadel. Deliberately not
+      # reinvented for CI so it can't drift from what a real self-hoster actually runs.
+      - name: Start the full stack
+        run: docker compose up -d
+
+      - name: Wait for Cortadel health (expects a genuinely healthy stack)
+        run: |
+          status="000"
+          for i in $(seq 1 180); do
+            status=$(curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:3001/api/health || echo "000")
+            if [ "$status" = "200" ]; then
+              echo "cortadel is healthy:"; cat /tmp/health.json; echo
+              break
+            fi
+            echo "waiting for cortadel to become healthy (last status: $status) ($i/180)..."
+            sleep 10
+          done
+          if [ "$status" != "200" ]; then
+            echo "::error::cortadel never reported a healthy status (last: $status)"
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Run full conformance suite (9 tests — base + LLM tier)
+        env:
+          CORTADEL_CONFORMANCE_URL: http://localhost:3001
+          CORTADEL_CONFORMANCE_LLM: "1"
+        run: dotnet test sdk/dotnet/Cortadel.Sdk.Conformance -c Release --nologo
+
+      - name: Container logs
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down the stack
+        if: always()
+        run: docker compose down -v
