@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cortadel"
+version = "1.0.0"
+description = "Official Python SDK for Cortadel — self-hosted long-term temporal graph memory for AI agents."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "Cortadel" }]
+keywords = ["ai", "memory", "agents", "mcp", "knowledge-graph", "llm", "rag"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+# microsoft-kiota-bundle pulls in exactly the generated transport's runtime needs: abstractions
+# (kiota_abstractions), the httpx-based adapter (kiota_http, which itself declares
+# httpx[http2]>=0.25,<1.0.0), and all four serialization packages (json/text/form/multipart) that
+# cortadel_api_client.py registers unconditionally at construction time — the contract only uses
+# application/json, but the generated client still imports and registers all four at import time.
+# Range (not an exact pin, unlike the TypeScript leg's preview-version pins): every
+# microsoft-kiota-* package here is at "Stable" maturity per `kiota info`, so ordinary semver
+# compatibility applies; 1.11.7 is what `kiota info -d spec/openapi.json -l python` recommended
+# for kiota 1.34.1, and this SDK's own sub-dependency ceiling matches the one kiota's own packages
+# declare on each other (`<2.0.0`).
+dependencies = [
+    "microsoft-kiota-bundle>=1.11.7,<2.0.0",
+]
+
+[project.urls]
+Homepage = "https://cortadel.ai"
+Repository = "https://github.com/cortadel/cortadel"
+Issues = "https://github.com/cortadel/cortadel/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cortadel"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "cortadel/**/*.py",
+    "cortadel/py.typed",
+    "README.md",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+]
