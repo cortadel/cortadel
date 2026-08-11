@@ -2,9 +2,11 @@
 
 `@cortadel/sdk` is a thin, typed client over the Cortadel REST API. ESM-only, targets **Node ≥ 20**.
 
-```bash
-npm install @cortadel/sdk
-```
+> **Not yet published to npm.** The SDK is written and tested in this repo, but the npm publish
+> hasn't gone out yet — `npm install @cortadel/sdk` will not work today. This page documents the
+> API it will expose once it's live. Need TypeScript now? Build from source: clone the repo,
+> `cd sdk/typescript`, `pnpm install && pnpm build`, then import from `./dist`. The [.NET
+> SDK](sdk-dotnet.md) and [Python SDK](sdk-python.md) are both published and installable today.
 
 ## Construct a client
 

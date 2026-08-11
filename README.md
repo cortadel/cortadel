@@ -19,6 +19,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5B5BD6?style=flat-square" alt="License Apache-2.0" /></a>
   <img src="https://img.shields.io/badge/.NET-8%2B-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 8+" />
   <img src="https://img.shields.io/badge/NuGet-Cortadel.Sdk-004880?style=flat-square&logo=nuget&logoColor=white" alt="NuGet Cortadel.Sdk" />
+  <img src="https://img.shields.io/badge/PyPI-cortadel-3775A9?style=flat-square&logo=pypi&logoColor=white" alt="PyPI cortadel" />
   <img src="https://img.shields.io/badge/MCP-ready-000000?style=flat-square" alt="MCP ready" />
   <img src="https://img.shields.io/badge/graph-FalkorDB%20%7C%20Memgraph-FF4438?style=flat-square" alt="FalkorDB or Memgraph" />
 </p>
@@ -28,6 +29,7 @@
   <a href="docs/self-hosting.md"><b>Self-hosting</b></a> &nbsp;·&nbsp;
   <a href="docs/mcp.md"><b>MCP</b></a> &nbsp;·&nbsp;
   <a href="docs/sdk-dotnet.md"><b>.NET SDK</b></a> &nbsp;·&nbsp;
+  <a href="docs/sdk-python.md"><b>Python SDK</b></a> &nbsp;·&nbsp;
   <a href="docs/"><b>Docs</b></a> &nbsp;·&nbsp;
   <a href="https://cortadel.ai"><b>Website</b></a>
 </p>
@@ -44,7 +46,7 @@
 
 Cortadel automatically extracts facts from conversations, links them into a **bi-temporal knowledge graph**, resolves contradictions, merges duplicate entities, forgets what's stale, and hands your agent the right context — in milliseconds, with **no LLM call on the read path**. Memory, graph, and reranked retrieval in one system, on your own infrastructure.
 
-> **Status — early access.** This repository is Cortadel's **open extension surface**: the official **SDK, docs, and examples** (Apache-2.0). The Cortadel **server** (memory engine + dashboard) is the product, shipped as a container image — see [Self-hosting](docs/self-hosting.md). A **TypeScript SDK** is written in this repo (not yet published to npm); a **Python** SDK is on the roadmap.
+> **Status — early access.** This repository is Cortadel's **open extension surface**: the official **SDKs, docs, and examples** (Apache-2.0). The Cortadel **server** (memory engine + dashboard) is the product, shipped as a container image — see [Self-hosting](docs/self-hosting.md). The **.NET SDK** ([NuGet](https://www.nuget.org/packages/Cortadel.Sdk)) and **Python SDK** ([PyPI](https://pypi.org/project/cortadel/)) are published; a **TypeScript SDK** is written in this repo but not yet published to npm.
 
 |  |  |
 |---|---|
@@ -96,7 +98,7 @@ A capability view of the self-hostable OSS memory systems, from a code-grounded 
 | Zero-LLM read path | ✅ | ✅ | ✅ | 🟡 | ✅ |
 | Lossless backup / export / import | ✅ | 🟡 platform | 🟡 | 🟡 | 🟡 |
 | **.NET / C# native** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Published SDKs | ✅ .NET on NuGet · 🟡 TypeScript written, not yet published (Py planned) | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
+| Published SDKs | ✅ .NET (NuGet) + Python (PyPI) · 🟡 TypeScript written, not yet published | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
 | Framework integrations & connectors | 🟡 MCP + Claude Code | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
 | Managed cloud | 🟡 Cloud (coming) | ✅ | ❌ | ✅ | ✅ |
 
@@ -177,6 +179,25 @@ foreach (var h in hits.Results)
     Console.WriteLine($"{h.RrfScore:F2}  {h.Content}");
 ```
 
+**…or the Python SDK:**
+
+```bash
+pip install cortadel
+```
+
+```python
+from cortadel import CortadelClient, SearchOptions
+
+async with CortadelClient("http://localhost:3001", "alice") as cortadel:
+    # Remember
+    await cortadel.add("Alice prefers dark mode and ships on Fridays.")
+
+    # Recall — hybrid search, reranked, zero LLM calls on the read path
+    hits = await cortadel.search("what are alice's working preferences?", SearchOptions(top_k=5))
+    for h in hits.results:
+        print(h.rrf_score, h.content)
+```
+
 **…or hit the REST API directly:**
 
 ```bash
@@ -185,7 +206,7 @@ curl -X POST http://localhost:3001/api/v1/memories \
   -d '{"userId":"alice","text":"Alice prefers dark mode."}'
 ```
 
-Full walkthrough: [Getting started](docs/getting-started.md) · runnable [example](examples/dotnet-quickstart/).
+Full walkthrough: [Getting started](docs/getting-started.md) · [Python SDK reference](docs/sdk-python.md) · runnable [example](examples/dotnet-quickstart/) (.NET).
 
 ## MCP tools
 
@@ -242,12 +263,13 @@ flowchart LR
 
 | Path | What |
 |---|---|
-| [`sdk/dotnet`](sdk/dotnet) | Official **.NET SDK** (`Cortadel.Sdk`) — a thin, typed client over the REST API |
+| [`sdk/dotnet`](sdk/dotnet) | Official **.NET SDK** (`Cortadel.Sdk`) — a thin, typed client over the REST API. [Published on NuGet](https://www.nuget.org/packages/Cortadel.Sdk). |
+| [`sdk/python`](sdk/python) | Official **Python SDK** (`cortadel`) — a thin, typed client over the REST API. [Published on PyPI](https://pypi.org/project/cortadel/). |
 | [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API (written, not yet published to npm) |
 | [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
 | [`examples`](examples) | Runnable samples |
 
-*Coming:* npm publish of the TypeScript SDK, a Python SDK, a connector API, and a community-integrations registry.
+*Coming:* npm publish of the TypeScript SDK, a connector API, and a community-integrations registry.
 
 ## Documentation
 
@@ -256,6 +278,7 @@ flowchart LR
 - [Self-hosting the server](docs/self-hosting.md)
 - [MCP integration](docs/mcp.md)
 - [.NET SDK reference](docs/sdk-dotnet.md)
+- [Python SDK reference](docs/sdk-python.md)
 - [TypeScript SDK reference](docs/sdk-typescript.md)
 
 ## Licensing
