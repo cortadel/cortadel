@@ -13,6 +13,10 @@
   "repository": { "type": "git", "url": "git+https://github.com/cortadel/cortadel.git", "directory": "sdk/typescript" },
   "keywords": ["ai", "memory", "agents", "mcp", "knowledge-graph", "llm", "rag"],
   "publishConfig": { "access": "public", "provenance": true },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
   "dependencies": {
     "@microsoft/kiota-abstractions": "1.0.0-preview.103",
     "@microsoft/kiota-http-fetchlibrary": "1.0.0-preview.103",
@@ -22,6 +26,7 @@
     "@microsoft/kiota-serialization-text": "1.0.0-preview.103"
   },
   "devDependencies": {
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }
