@@ -37,7 +37,9 @@ await cortadel.DeleteAsync(new[] { page.Items[0].Id });
 
 ## Errors
 
-Non-success responses throw `CortadelException` with `.StatusCode` and `.Code`.
+Non-success responses throw `CortadelException` with `.StatusCode` and `.Code` — **except** a
+degraded health check (HTTP 503 with a `{"status":"degraded",...}` body from `HealthAsync`), which
+is returned like any other value (`Status == "degraded"`) instead of throwing.
 
 ```csharp
 try { await cortadel.AddAsync(""); }
@@ -48,6 +50,12 @@ catch (CortadelException ex) { Console.WriteLine($"{ex.StatusCode} {ex.Code}: {e
 
 - Reuse a single `CortadelClient` (it wraps one `HttpClient`). Optionally pass your own `HttpClient`.
 - Every call is scoped to the `userId` you construct the client with.
+- The `Cortadel.Sdk.Generated` namespace is Kiota-generated transport plumbing, not part of this
+  package's supported API. It's generated `internal` (`--type-access-modifier Internal`), so it
+  isn't visible outside this assembly at all — it's unversioned: a future contract regeneration can
+  rename or remove any type in it without that counting as a breaking change to `Cortadel.Sdk`. Only
+  `Cortadel.Sdk.CortadelClient` and the types in `Cortadel.Sdk` (this namespace) are covered by
+  SemVer.
 - Full guide: [.NET SDK reference](https://github.com/cortadel/cortadel/blob/main/docs/sdk-dotnet.md).
 
 Licensed under **Apache-2.0**. The Cortadel server is a separate commercial product — see

@@ -17,7 +17,7 @@
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5B5BD6?style=flat-square" alt="License Apache-2.0" /></a>
-  <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 10" />
+  <img src="https://img.shields.io/badge/.NET-8%2B-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 8+" />
   <img src="https://img.shields.io/badge/NuGet-Cortadel.Sdk-004880?style=flat-square&logo=nuget&logoColor=white" alt="NuGet Cortadel.Sdk" />
   <img src="https://img.shields.io/badge/MCP-ready-000000?style=flat-square" alt="MCP ready" />
   <img src="https://img.shields.io/badge/graph-FalkorDB%20%7C%20Memgraph-FF4438?style=flat-square" alt="FalkorDB or Memgraph" />
@@ -96,7 +96,7 @@ A capability view of the self-hostable OSS memory systems, from a code-grounded 
 | Zero-LLM read path | ✅ | ✅ | ✅ | 🟡 | ✅ |
 | Lossless backup / export / import | ✅ | 🟡 platform | 🟡 | 🟡 | 🟡 |
 | **.NET / C# native** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Published SDKs | 🟡 .NET now (TS/Py soon) | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
+| Published SDKs | 🟡 .NET SDK in this repo, not yet on NuGet (TS/Py planned) | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
 | Framework integrations & connectors | 🟡 MCP + Claude Code | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
 | Managed cloud | 🟡 Cloud (coming) | ✅ | ❌ | ✅ | ✅ |
 

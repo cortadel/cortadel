@@ -1,0 +1,327 @@
+name: .NET SDK
+
+# Gates the .NET SDK: build + unit tests, a check that the committed Kiota client hasn't drifted
+# from spec/openapi.json, and a conformance suite run against a real server.
+#
+# The conformance gate is split into two tiers because a bare `ghcr.io/cortadel/cortadel:latest`
+# container needs a reachable Memgraph just to answer /api/health, and needs a *working* LLM +
+# embedding provider (Ollama, ~9.6 GB of models) for anything that writes. An earlier draft of this
+# plan specified a bare service container with a `curl -f` wait-loop; that cannot work, because
+# HealthController returns 503 (not 200) whenever the database or embedding check fails, and
+# `curl -f` treats any non-2xx as failure. See conformance-base / conformance-full below and
+# .superpowers/sdd/2026-08-11-dotnet-sdk-leg/task-4-report.md's "Provisioning requirements" section
+# for exactly what each tier needs — the jobs below are written from that section, not a guess.
+#
+# dotnet-version is pinned to 10.0.x, not the SDK's own net8.0 target framework: the .slnx solution
+# format needs a >=9.0.200-class SDK/MSBuild to parse at all (verified locally before writing this
+# file — an isolated .NET 8.0.423 SDK fails `dotnet restore Cortadel.slnx` outright with
+# "MSB4068: The element <Solution> is unrecognized"; 9.0.303 and 10.0.302 both restore cleanly).
+# The projects still target net8.0; only the CLI/MSBuild doing the building needs to be newer.
+# 10.0.x matches the private server-dotnet repo's own CI, which pins the same version for the same
+# .slnx format.
+#
+# That pin has a second-order consequence: a runner with only the 10.0.x SDK installed has no
+# net8.0 *shared runtime* either, and `dotnet test` executes the compiled test binary (not just
+# restores/compiles it), so it needs that runtime, not just the reference assemblies restore uses.
+# Reproduced under genuine isolation (a from-scratch .NET 10.0.302 SDK on an isolated PATH/
+# DOTNET_ROOT, no ambient net8): `dotnet test sdk/dotnet/Cortadel.Sdk.Tests` fails there with
+# "You must install or update .NET... Framework: Microsoft.NETCore.App, version 8.0.0. The
+# following frameworks were found: 10.0.10." DOTNET_ROLL_FORWARD=LatestMajor (job-level env below,
+# on every job that runs `dotnet test`) fixes it — verified under the same isolation: 39/39 unit
+# tests pass, and the conformance project builds+skips cleanly. This is the same technique and the
+# same failure mode as memforge's own commit 88f912f (BitMono's net8.0 CLI on a net10-only SDK
+# image); reused here for consistency rather than installing a second SDK side by side.
+# generation-drift does not need it - verified separately that `dotnet tool run kiota` runs fine
+# under the same net10-only isolation with no roll-forward set.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sdk/**'
+      - 'spec/**'
+      - 'examples/**'
+      - 'Cortadel.slnx'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/dotnet.yml'
+  pull_request:
+    paths:
+      - 'sdk/**'
+      - 'spec/**'
+      - 'examples/**'
+      - 'Cortadel.slnx'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/dotnet.yml'
+  workflow_dispatch:
+  # Weekly, so the LLM-dependent tier (conformance-full) still gets exercised even if nobody
+  # remembers to dispatch it manually. build/generation-drift/conformance-base are cheap and gate
+  # every PR; this schedule exists only to drive the expensive ~9.6 GB-model tier in its absence.
+  schedule:
+    - cron: '17 6 * * 1'
+
+# No workflow-level concurrency block: a single group covering the whole file would mean a new
+# push cancels the *entire in-flight run*, including a same-run conformance-full job mid-download
+# of ~9.6 GB of models. Each job below gets its own group instead, keyed by a literal per-job name
+# (dotnet-build-/-drift-/-conformance-base-/-conformance-full-<ref>), so build/generation-drift/
+# conformance-base/conformance-full never contend with each other. Note: the group literal can't be
+# keyed by github.job — that context is only populated within a job's `steps`, and is null anywhere
+# else including a job-level `concurrency:` block, so using it there silently collapses every job to
+# the same empty-suffixed group (verified the hard way: an earlier revision of this file did exactly
+# that). This keeps the original "a newer push on the same ref supersedes a redundant older run of
+# the same job" behavior per-job, without one job's cancellation taking any other job down with it.
+
+jobs:
+  build:
+    concurrency:
+      group: dotnet-build-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    # net8.0 test binary on a runner whose only installed runtime is net10.0 - see the file header
+    # comment for the reproduction/verification of why this is required, not optional.
+    env:
+      DOTNET_ROLL_FORWARD: LatestMajor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore Cortadel.slnx
+      - run: dotnet build Cortadel.slnx --no-restore -c Release
+      - run: dotnet test sdk/dotnet/Cortadel.Sdk.Tests --no-build -c Release --nologo
+
+  generation-drift:
+    concurrency:
+      group: dotnet-drift-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet tool restore
+      - name: Regenerate from the committed contract
+        run: |
+          dotnet tool run kiota generate -l CSharp -c CortadelApiClient \
+            -n Cortadel.Sdk.Generated -d ./spec/openapi.json \
+            -o ./sdk/dotnet/Cortadel.Sdk/Generated --exclude-backward-compatible \
+            --type-access-modifier Internal
+      # .kiota.log lands inside Generated/ from the command above and is gitignored (confirmed
+      # locally: `git status --ignored=matching` shows it as `!!`), so it cannot make the check
+      # below dirty. Regeneration was verified locally to otherwise leave the tree byte-identical
+      # to the committed client.
+      #
+      # `git diff --exit-code` (the brief's original template) is blind to *untracked* files -
+      # git diff never reports them - which is exactly the shape a real contract change usually
+      # takes here: a new operation/schema in spec/openapi.json makes Kiota emit a brand-new file
+      # under Generated/, not a modification to an existing one. Verified this the hard way:
+      # created a throwaway file in a brand-new subdirectory under Generated/, confirmed
+      # `git diff --exit-code` exits 0 (i.e. reports no drift, the bug) with it present, then
+      # confirmed `git status --porcelain` lists it and a non-empty-output check catches it -
+      # either --untracked-files mode does (the default already collapses a new directory to one
+      # still-non-empty "?? path/" line, which still fails a non-empty check). --untracked-files=all
+      # is used anyway, purely so a failed run's log names every new file individually instead of
+      # just the containing directory - a diagnostics improvement, not what makes detection work.
+      - name: Fail if generated code drifted
+        run: |
+          drift="$(git status --porcelain --untracked-files=all -- sdk/dotnet/Cortadel.Sdk/Generated)"
+          if [ -n "$drift" ]; then
+            echo "::error::Generated client differs from the committed contract (new/changed/deleted files). Regenerate and commit."
+            echo "$drift"
+            exit 1
+          fi
+
+  conformance-base:
+    name: conformance (base tier — no LLM, no embeddings)
+    concurrency:
+      group: dotnet-conformance-base-${{ github.ref }}
+      cancel-in-progress: true
+    # PR/push/manual; excluded from the weekly schedule, which exists only to drive
+    # conformance-full.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # net8.0 test binary on a net10.0-only runner - see the file header comment.
+    env:
+      DOTNET_ROLL_FORWARD: LatestMajor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Per task-4-report.md's "Provisioning requirements", the no-LLM tier needs only a
+      # reachable Memgraph (GetAsync/ListAsync/DeleteAsync all issue store queries even for a
+      # lookup that finds nothing) and explicitly *no* LLM or embedding provider.
+      #
+      # No --experimental-enabled=text-search here (docker-compose.yml still carries it, for the
+      # full tier's parity with the documented quickstart). On this job's first real run, the
+      # freshly-pulled `:latest` memgraph-mage image rejected that flag outright:
+      # "ERROR: failed validation of new value 'text-search' for flag 'experimental_enabled'" —
+      # confirmed against Memgraph's own docs: text search graduated OUT of experimental status as
+      # of Memgraph 3.6, so `text-search` is no longer a valid member of the experimental-features
+      # enum and the flag now fails validation instead of being a harmless no-op. That failure is
+      # fatal at startup (gflags-style validators abort the process), and memgraph never got far
+      # enough to bind its Bolt port — `docker logs memgraph` showed only that error plus one
+      # deprecation warning, nothing from actual startup. None of this tier's 4 tests touch text
+      # search, so the flag is dropped rather than chasing the currently-valid enum spelling.
+      - name: Start Memgraph
+        run: |
+          docker network create cortadel-ci
+          docker run -d --name memgraph --network cortadel-ci -p 7687:7687 \
+            memgraph/memgraph-mage:latest
+
+      # A bare TCP connect to 127.0.0.1:7687 (the previous version of this check) is a
+      # false-positive trap: `-p 7687:7687` makes Docker's host-side port-publishing proxy accept
+      # the TCP handshake as soon as the port mapping exists, regardless of whether memgraph
+      # itself ever binds 7687 *inside* the container - that path never touches the actual
+      # process. On this job's first real run, memgraph's process had already died (see the "Start
+      # Memgraph" comment above) yet this check still reported "accepting connections" instantly,
+      # because it was only ever talking to the docker-proxy, not memgraph.
+      #
+      # mgconsole ships inside memgraph-mage for exactly this reason: it speaks real Bolt, and
+      # `docker exec` runs it from inside the container's own namespace, so it only succeeds once
+      # memgraph can actually execute a query - not just once *something* answers a SYN. This is
+      # Memgraph's own documented container health-check idiom (`echo 'RETURN 0;' | mgconsole`).
+      # The loop below is a retry-with-poll-interval, not a blind sleep: no fixed wait is added,
+      # and it exits the moment the query succeeds.
+      - name: Wait for Memgraph to be genuinely ready (Bolt-level, not just TCP)
+        run: |
+          for i in $(seq 1 45); do
+            if docker exec memgraph sh -c "echo 'RETURN 0;' | mgconsole" >/tmp/mg-check.log 2>&1; then
+              echo "memgraph answers Bolt queries"
+              exit 0
+            fi
+            echo "waiting for memgraph to answer a Bolt query ($i/45)..."
+            sleep 2
+          done
+          echo "::error::memgraph never answered a Bolt query — last attempt's output:"
+          cat /tmp/mg-check.log 2>/dev/null || true
+          docker logs memgraph
+          exit 1
+
+      # Deliberately no MEMFORGE_Llm__*/MEMFORGE_Embedding__* — the base tier's provisioning
+      # requirement is "no LLM provider, no embedding provider". MEMFORGE_Auth__Secret is left
+      # unset (empty = open), matching docker-compose.yml's own local-dev default.
+      - name: Start Cortadel
+        run: |
+          docker run -d --name cortadel --network cortadel-ci -p 3001:3001 \
+            -e MEMFORGE_Database__Provider=memgraph \
+            -e MEMFORGE_Memgraph__Url=bolt://memgraph:7687 \
+            ghcr.io/cortadel/cortadel:latest
+
+      # HealthController legitimately returns 503 here — there is no embedding provider — and the
+      # conformance suite's Health_ReportsAStatus test asserts `ok | degraded` for exactly this
+      # reason. A bare `curl -f` wait-loop would treat that 503 as failure and burn its full
+      # timeout without a single test ever running (the bug the earlier draft plan had).
+      #
+      # But status-code-only gating (200 or 503, accept-any-503) is exactly as blind as `curl -f`
+      # in the other direction: 503 is *also* what HealthController returns when the database
+      # check fails, and this job's first real run proved it — the gate accepted a 503 whose body
+      # had checks.memgraph.ok=false from the very first response, Cortadel came up regardless,
+      # and every DB-touching test then failed with the driver-level error already recorded in
+      # checks.memgraph.error. So this parses the response body (field names are spec/openapi.json's
+      # HealthResponse → checks → MemgraphCheck.ok / EmbeddingCheck.ok, not guessed) and requires
+      # checks.memgraph.ok == true specifically, while still tolerating checks.embeddings.ok being
+      # false — this tier deliberately runs with no embedding provider.
+      - name: Wait for Cortadel health (requires the database check; tolerates embeddings being down)
+        run: |
+          db_ok="false"
+          for i in $(seq 1 60); do
+            status=$(curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:3001/api/health || echo "000")
+            db_ok=$(jq -r '.checks.memgraph.ok // false' /tmp/health.json 2>/dev/null || echo false)
+            db_ok="${db_ok:-false}"  # jq exits 0 with empty stdout on a truly empty body
+            if [ "$db_ok" = "true" ]; then
+              echo "cortadel's database check is healthy (http $status); full body:"
+              cat /tmp/health.json; echo
+              break
+            fi
+            echo "waiting for cortadel's database check (http $status, checks.memgraph.ok=$db_ok) ($i/60)..."
+            sleep 3
+          done
+          if [ "$db_ok" != "true" ]; then
+            echo "::error::cortadel's database check never reported ok=true. Last /api/health body:"
+            cat /tmp/health.json 2>/dev/null || echo "(no response ever captured)"
+            echo
+            docker logs cortadel
+            exit 1
+          fi
+
+      - name: Run base-tier conformance suite (4 tests)
+        env:
+          CORTADEL_CONFORMANCE_URL: http://localhost:3001
+        run: dotnet test sdk/dotnet/Cortadel.Sdk.Conformance -c Release --nologo
+
+      - name: Container logs
+        if: failure()
+        run: |
+          echo "── memgraph ──"; docker logs memgraph || true
+          echo "── cortadel ──"; docker logs cortadel || true
+
+      - name: Tear down containers
+        if: always()
+        run: |
+          docker rm -f cortadel memgraph 2>/dev/null || true
+          docker network rm cortadel-ci 2>/dev/null || true
+
+  conformance-full:
+    name: conformance (full tier — LLM + embeddings)
+    concurrency:
+      group: dotnet-conformance-full-${{ github.ref }}
+      cancel-in-progress: true
+    # Manual or weekly only — never on PR/push. Pulls a ~9.6 GB LLM plus an embedding model via
+    # Ollama; too slow/expensive to gate every PR (the repo owner's ruling to split the gate —
+    # see task-5-brief.md). Its own literal concurrency group (dotnet-conformance-full-<ref>, above)
+    # means a push to main that triggers build/generation-drift/conformance-base can never cancel an
+    # in-flight run of this job - only a second conformance-full run on the same ref can
+    # (self-supersession, not cross-job).
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # net8.0 test binary on a net10.0-only runner - see the file header comment.
+    env:
+      DOTNET_ROLL_FORWARD: LatestMajor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The repo's own documented one-command quickstart (README "Quick start" / self-hosting.md),
+      # unmodified: Memgraph + Ollama (pulls the LLM and embedding model, gated by
+      # `ollama-pull`'s service_completed_successfully condition) + Cortadel. Deliberately not
+      # reinvented for CI so it can't drift from what a real self-hoster actually runs.
+      - name: Start the full stack
+        run: docker compose up -d
+
+      - name: Wait for Cortadel health (expects a genuinely healthy stack)
+        run: |
+          status="000"
+          for i in $(seq 1 180); do
+            status=$(curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:3001/api/health || echo "000")
+            if [ "$status" = "200" ]; then
+              echo "cortadel is healthy:"; cat /tmp/health.json; echo
+              break
+            fi
+            echo "waiting for cortadel to become healthy (last status: $status) ($i/180)..."
+            sleep 10
+          done
+          if [ "$status" != "200" ]; then
+            echo "::error::cortadel never reported a healthy status (last: $status)"
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Run full conformance suite (9 tests — base + LLM tier)
+        env:
+          CORTADEL_CONFORMANCE_URL: http://localhost:3001
+          CORTADEL_CONFORMANCE_LLM: "1"
+        run: dotnet test sdk/dotnet/Cortadel.Sdk.Conformance -c Release --nologo
+
+      - name: Container logs
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down the stack
+        if: always()
+        run: docker compose down -v

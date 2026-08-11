@@ -23,7 +23,9 @@ name: cortadel
 services:
   memgraph:
     image: memgraph/memgraph-mage:latest
-    command: ["--experimental-enabled=text-search"] # required for BM25 full-text search
+    # No --experimental-enabled=text-search: text search graduated out of experimental in
+    # Memgraph 3.6, and current memgraph-mage images REJECT the flag at startup — the server
+    # exits on flag validation and never binds Bolt, so `docker compose up` never comes up.
     ports:
       - "7687:7687"
     volumes:

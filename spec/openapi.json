@@ -1,0 +1,1729 @@
+{
+  "components": {
+    "schemas": {
+      "AddConversationRequest": {
+        "additionalProperties": false,
+        "description": "Distill a multi-turn conversation into atomic facts and store each one, applying\nthe same intent classification, deduplication, and background entity extraction\nas bulk/create. On empty extraction, nothing is stored.",
+        "properties": {
+          "is_agent_memory": {
+            "description": "When true, extract facts about the assistant instead of the user. Defaults to false.",
+            "type": "boolean"
+          },
+          "messages": {
+            "description": "Conversation turns, in order (1-500 items).",
+            "items": {
+              "$ref": "#/components/schemas/ConversationMessageItem"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array"
+          },
+          "project": {
+            "description": "Optional project scope (e.g. repo name).",
+            "nullable": true,
+            "type": "string"
+          },
+          "session_id": {
+            "description": "Optional session id to group these facts under (existing :CONTAINS session path).",
+            "nullable": true,
+            "type": "string"
+          },
+          "tags": {
+            "description": "Tags for scoped retrieval, applied to every stored fact.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "transcript_path": {
+            "description": "Optional producer-local transcript file path (pointer anchor, binds from\n\u0022transcript_path\u0022). Stored verbatim as the transcript_path attribute on every\nfact extracted from this conversation.",
+            "nullable": true,
+            "type": "string"
+          },
+          "user_id": {
+            "description": "User identifier who owns the extracted memories.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "messages",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "ApiError": {
+        "additionalProperties": false,
+        "description": "Unified API error response (RFC 7807 inspired).",
+        "properties": {
+          "code": {
+            "description": "Short error code for client-side handling (e.g., \u0022not_found\u0022, \u0022validation_error\u0022, \u0022internal_error\u0022).",
+            "nullable": true,
+            "type": "string"
+          },
+          "detail": {
+            "description": "Optional detailed information (stack trace in development, null in production).",
+            "nullable": true,
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable error message.",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "description": "HTTP status code.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ConversationIngestItem": {
+        "additionalProperties": false,
+        "description": "One fact distilled from a conversation and stored.",
+        "properties": {
+          "error": {
+            "description": "Failure detail when \u0060event\u0060 is \u0060ERROR\u0060 (or another failed branch); absent otherwise.",
+            "nullable": true,
+            "type": "string"
+          },
+          "event": {
+            "description": "What the store pipeline did, e.g. \u0060ADD\u0060, \u0060SKIP_DUPLICATE\u0060, or \u0060ERROR\u0060.",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "description": "Id of the stored memory. Empty when the underlying pipeline event carries no id (e.g. \u0060ERROR\u0060, \u0060INVALIDATE\u0060).",
+            "nullable": true,
+            "type": "string"
+          },
+          "memory": {
+            "description": "The distilled fact text.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ConversationIngestResponse": {
+        "additionalProperties": false,
+        "description": "Result of ingesting a conversation. The two members are mutually exclusive on the\nwire (matches the pre-existing untyped response, which sent one key or the other,\nnever both): omit \u0060no_facts_extracted\u0060 when facts were stored, omit\n\u0060results\u0060 when nothing was extracted. Both are nullable so the server\u0027s\nglobal \u0060DefaultIgnoreCondition = WhenWritingNull\u0060 drops the unset one instead of\nserializing it as \u0060[]\u0060 / \u0060false\u0060 alongside the other.",
+        "properties": {
+          "no_facts_extracted": {
+            "description": "True when the conversation yielded no storable facts; absent otherwise.",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "results": {
+            "description": "One entry per distilled fact. Absent when nothing was extracted.",
+            "items": {
+              "$ref": "#/components/schemas/ConversationIngestItem"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ConversationMessageItem": {
+        "additionalProperties": false,
+        "description": "Single turn in a conversation passed to \u0060AddConversationRequest\u0060.",
+        "properties": {
+          "content": {
+            "description": "Message text.",
+            "maxLength": 50000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "description": "Message role: \u0022user\u0022, \u0022assistant\u0022, or \u0022system\u0022.",
+            "maxLength": 20,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uuid": {
+            "description": "Optional producer-side turn uuid (pointer anchor, binds from \u0022uuid\u0022). When\npresent, facts extracted from this turn carry it in source_turn_uuids.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "role"
+        ],
+        "type": "object"
+      },
+      "CreateMemoryRequest": {
+        "additionalProperties": false,
+        "description": "Create a new memory.",
+        "properties": {
+          "app": {
+            "description": "Optional application name creating the memory.",
+            "nullable": true,
+            "type": "string"
+          },
+          "infer": {
+            "description": "Whether to infer entities and categories automatically. When false,\n            stores the text verbatim and skips background entity/category extraction;\n            dedup still applies.",
+            "type": "boolean"
+          },
+          "memory_type": {
+            "description": "Optional caller-provided cognitive type (episodic|semantic|\n            procedural). Invalid/blank values are ignored and the server falls back to\n            auto-classification.",
+            "nullable": true,
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "nullable": true
+            },
+            "description": "Optional metadata key-value pairs.",
+            "nullable": true,
+            "type": "object"
+          },
+          "text": {
+            "description": "Memory text content to store.",
+            "maxLength": 50000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "user_id": {
+            "description": "User identifier who owns this memory.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "DeleteMemoriesRequest": {
+        "additionalProperties": false,
+        "description": "Delete one or more memories.",
+        "properties": {
+          "memory_ids": {
+            "description": "List of memory IDs to delete.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "user_id": {
+            "description": "User identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_ids",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "DeleteMemoriesResponse": {
+        "additionalProperties": false,
+        "description": "Response after deleting memories.",
+        "properties": {
+          "message": {
+            "description": "Confirmation message with delete count.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EmbeddingCheck": {
+        "additionalProperties": false,
+        "description": "Embedding provider health check result.",
+        "properties": {
+          "dim": {
+            "description": "Embedding vector dimension.",
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "error": {
+            "description": "Error message if the check failed.",
+            "nullable": true,
+            "type": "string"
+          },
+          "latency_ms": {
+            "description": "Round-trip latency in milliseconds.",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "model": {
+            "description": "Embedding model name.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ok": {
+            "description": "Whether the embedding provider is operational.",
+            "type": "boolean"
+          },
+          "provider": {
+            "description": "Embedding provider name (e.g. \u0022openai\u0022, \u0022ollama\u0022).",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "HealthChecks": {
+        "additionalProperties": false,
+        "description": "Container for individual health checks.",
+        "properties": {
+          "embeddings": {
+            "$ref": "#/components/schemas/EmbeddingCheck"
+          },
+          "indexes": {
+            "$ref": "#/components/schemas/IndexesCheck"
+          },
+          "memgraph": {
+            "$ref": "#/components/schemas/MemgraphCheck"
+          }
+        },
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "description": "Health check response.",
+        "properties": {
+          "checked_at": {
+            "description": "ISO 8601 timestamp when the health check was performed.",
+            "nullable": true,
+            "type": "string"
+          },
+          "checks": {
+            "$ref": "#/components/schemas/HealthChecks"
+          },
+          "status": {
+            "description": "Overall status: \u0060ok\u0060 when every check passed, \u0060degraded\u0060 otherwise.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "HybridSearchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "app_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": {
+              "nullable": true
+            },
+            "nullable": true,
+            "type": "object"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "content": {
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "nullable": true,
+            "type": "string"
+          },
+          "gist": {
+            "nullable": true,
+            "type": "string"
+          },
+          "global": {
+            "type": "boolean"
+          },
+          "id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "member_ids": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "memory_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "project_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "rrf_score": {
+            "format": "double",
+            "type": "number"
+          },
+          "similar_ids": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "source": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "text_rank": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "vector_rank": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "IndexesCheck": {
+        "additionalProperties": false,
+        "description": "Vector-index status from the startup embedding-guard report (informational \u2014 never fails health).",
+        "properties": {
+          "error": {
+            "description": "Introspection error captured at startup, if any.",
+            "nullable": true,
+            "type": "string"
+          },
+          "mismatches": {
+            "description": "Dimension mismatches as \u0022Label.property: index N != provider M\u0022 strings.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "model": {
+            "description": "Normalized embedding model id.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ok": {
+            "description": "Whether all vector indexes match the provider dimension and introspection succeeded.",
+            "type": "boolean"
+          },
+          "provider_dim": {
+            "description": "Configured embedding provider dimension.",
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "vector_indexes": {
+            "description": "Indexes as \u0022Label.property@dimension\u0022 strings.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "MemgraphCheck": {
+        "additionalProperties": false,
+        "description": "Memgraph database health check result.",
+        "properties": {
+          "error": {
+            "description": "Error message if the check failed.",
+            "nullable": true,
+            "type": "string"
+          },
+          "latency_ms": {
+            "description": "Round-trip latency in milliseconds.",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "ok": {
+            "description": "Whether the database is reachable and responding.",
+            "type": "boolean"
+          },
+          "url": {
+            "description": "Memgraph connection URL.",
+            "nullable": true,
+            "type": "string"
+          },
+          "user": {
+            "description": "Database user used for the connection.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MemoryCreatedResponse": {
+        "additionalProperties": false,
+        "description": "Response returned after creating a memory.",
+        "properties": {
+          "app_name": {
+            "description": "Application name that created this memory.",
+            "nullable": true,
+            "type": "string"
+          },
+          "content": {
+            "description": "Text content of the created memory.",
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "description": "ISO 8601 creation timestamp.",
+            "nullable": true,
+            "type": "string"
+          },
+          "event": {
+            "description": "Event type indicating what happened (e.g. \u0022SKIP_DUPLICATE\u0022).",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique identifier of the created memory.",
+            "nullable": true,
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Metadata JSON string.",
+            "nullable": true,
+            "type": "string"
+          },
+          "state": {
+            "description": "State of the created memory (e.g. \u0022active\u0022).",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MemoryDetailResponse": {
+        "additionalProperties": false,
+        "description": "Single memory detail response (from GET /memories/:id).",
+        "properties": {
+          "app_id": {
+            "description": "Application identifier (may be null).",
+            "nullable": true,
+            "type": "string"
+          },
+          "app_name": {
+            "description": "Application name.",
+            "nullable": true,
+            "type": "string"
+          },
+          "categories": {
+            "description": "List of category names.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "created_at": {
+            "description": "Creation timestamp (Unix seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Unique memory identifier.",
+            "nullable": true,
+            "type": "string"
+          },
+          "invalid_at": {
+            "description": "ISO 8601 timestamp at which this memory was invalidated/superseded.",
+            "nullable": true,
+            "type": "string"
+          },
+          "is_current": {
+            "description": "Whether this is the current (non-superseded) version of the memory.",
+            "type": "boolean"
+          },
+          "is_global": {
+            "description": "True when this is a globally-shared memory owned by another user\n            (surfaced via global scope). Lets the UI badge it as shared/global.",
+            "type": "boolean"
+          },
+          "metadata_": {
+            "description": "Arbitrary metadata key-value pairs.",
+            "nullable": true
+          },
+          "state": {
+            "description": "Memory state (active, paused, etc.).",
+            "nullable": true,
+            "type": "string"
+          },
+          "superseded_by": {
+            "description": "Identifier of the newer memory that superseded this one.",
+            "nullable": true,
+            "type": "string"
+          },
+          "text": {
+            "description": "Memory text content.",
+            "nullable": true,
+            "type": "string"
+          },
+          "valid_at": {
+            "description": "ISO 8601 timestamp from which this memory version is valid.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MemoryListItemResponse": {
+        "additionalProperties": false,
+        "description": "Memory item in a list/filter/search response.",
+        "properties": {
+          "app_id": {
+            "description": "Application identifier (may be null).",
+            "nullable": true,
+            "type": "string"
+          },
+          "app_name": {
+            "description": "Application name.",
+            "nullable": true,
+            "type": "string"
+          },
+          "categories": {
+            "description": "List of category names.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "content": {
+            "description": "Memory text content.",
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Creation timestamp (Unix seconds).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "extraction_status": {
+            "description": "Extraction pipeline status (done, pending, failed).",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique memory identifier.",
+            "nullable": true,
+            "type": "string"
+          },
+          "invalid_at": {
+            "description": "ISO 8601 timestamp at which this memory was invalidated/superseded.",
+            "nullable": true,
+            "type": "string"
+          },
+          "is_current": {
+            "description": "Whether this is the current (non-superseded) version of the memory.",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "is_global": {
+            "description": "True when this is a globally-shared memory owned by another user\n            (surfaced via global scope). Lets the UI badge it as shared/global.",
+            "type": "boolean"
+          },
+          "memory_type": {
+            "description": "Cognitive type: episodic|semantic|procedural (coalesced to\n            \u0027semantic\u0027 for legacy/untyped rows).",
+            "nullable": true,
+            "type": "string"
+          },
+          "metadata_": {
+            "description": "Arbitrary metadata key-value pairs.",
+            "nullable": true
+          },
+          "state": {
+            "description": "Memory state (active, paused, etc.).",
+            "nullable": true,
+            "type": "string"
+          },
+          "valid_at": {
+            "description": "ISO 8601 timestamp from which this memory version is valid.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MemoryListPagedResponse": {
+        "additionalProperties": false,
+        "description": "Paginated list of memory list items.",
+        "properties": {
+          "items": {
+            "description": "Memory items on the current page.",
+            "items": {
+              "$ref": "#/components/schemas/MemoryListItemResponse"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "page": {
+            "description": "Current page number (1-based).",
+            "format": "int32",
+            "type": "integer"
+          },
+          "pages": {
+            "description": "Total number of pages.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "size": {
+            "description": "Page size (items per page).",
+            "format": "int32",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items across all pages.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "SearchMemoriesRequest": {
+        "additionalProperties": false,
+        "description": "Hybrid search request.",
+        "properties": {
+          "app_name": {
+            "description": "Application name for access logging.",
+            "nullable": true,
+            "type": "string"
+          },
+          "expand_query": {
+            "description": "When true, expands query with LLM-generated synonyms before text search.",
+            "type": "boolean"
+          },
+          "include_faded": {
+            "description": "When true, include faded/stale memories that are normally hidden from search\nresults (bypasses the opt-in hard-fade filter). Default false. Has no effect\nunless the server has fading enabled.",
+            "type": "boolean"
+          },
+          "include_session_arm": {
+            "description": "When true, also vector-searches session summaries and expands top matches\nto their member memories. Useful when memories are fine-grained (per-turn,\nper-dialog) and the right episode is buried in many candidates.",
+            "type": "boolean"
+          },
+          "memory_type": {
+            "description": "Optional filter restricting results to a cognitive type\n            (episodic|semantic|procedural). Invalid/blank values are ignored (no filter).",
+            "nullable": true,
+            "type": "string"
+          },
+          "mode": {
+            "description": "Search mode: hybrid, text, or vector.",
+            "nullable": true,
+            "type": "string"
+          },
+          "query": {
+            "description": "Natural language search query.",
+            "maxLength": 5000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "rerank": {
+            "description": "Rerank strategy: \u0022cross_encoder\u0022 for LLM-based reranking, or null/empty to skip.",
+            "nullable": true,
+            "type": "string"
+          },
+          "session_id": {
+            "description": "Optional session ID to restrict results to a specific session.",
+            "nullable": true,
+            "type": "string"
+          },
+          "token_budget": {
+            "description": "Optional ceiling on the estimated token size of the returned results. 0\n(default) means unbounded, though the server may still apply its own\nconfigured default budget in that case. A positive value trims the ranked\nresult list to fit within N estimated tokens (lowest-ranked results dropped\nfirst; order is never changed), costed against whichever field the response\u0027s\ndetail tier returns.",
+            "format": "int32",
+            "maximum": 200000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "top_k": {
+            "description": "Maximum number of results (1-50).",
+            "format": "int32",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "user_id": {
+            "description": "User identifier.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "SearchResponse": {
+        "additionalProperties": false,
+        "description": "Search results response.",
+        "properties": {
+          "query": {
+            "description": "The original search query string.",
+            "nullable": true,
+            "type": "string"
+          },
+          "results": {
+            "description": "Ranked search result items.",
+            "items": {
+              "$ref": "#/components/schemas/HybridSearchResult"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "total": {
+            "description": "Total number of results returned.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ValidationProblemDetails": {
+        "additionalProperties": {},
+        "properties": {
+          "detail": {
+            "nullable": true,
+            "type": "string"
+          },
+          "errors": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "nullable": true,
+            "type": "object"
+          },
+          "instance": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "title": {
+            "nullable": true,
+            "type": "string"
+          },
+          "type": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "description": "API key sent as the \u0027API_KEY\u0027 header.",
+        "in": "header",
+        "name": "API_KEY",
+        "type": "apiKey"
+      },
+      "bearerAuth": {
+        "description": "API key sent as \u0027Authorization: Bearer \u003Ckey\u003E\u0027.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "The supported third-party surface. Source of the published SDKs.",
+    "title": "Cortadel API (public)",
+    "version": "v1"
+  },
+  "openapi": "3.0.4",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "Health_Check",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Check service health including Memgraph and embedding provider connectivity.",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/v1/memories": {
+      "delete": {
+        "operationId": "Memories_BulkDelete",
+        "requestBody": {
+          "content": {
+            "application/*\u002Bjson": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteMemoriesRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteMemoriesRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteMemoriesRequest"
+              }
+            }
+          },
+          "description": "Delete request containing user_id and memory_ids array."
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteMemoriesResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteMemoriesResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteMemoriesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          }
+        ],
+        "summary": "Delete one or more memories by their identifiers.",
+        "tags": [
+          "Memories"
+        ]
+      },
+      "get": {
+        "operationId": "Memories_List",
+        "parameters": [
+          {
+            "description": "User identifier.",
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional app identifier to filter by.",
+            "in": "query",
+            "name": "app_id",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated category names to filter by.",
+            "in": "query",
+            "name": "categories",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional text query for hybrid search.",
+            "in": "query",
+            "name": "search_query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number (default 1).",
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size (default 10, max 100).",
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "default": 10,
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Set to \u0022true\u0022 to include superseded memories.",
+            "in": "query",
+            "name": "include_superseded",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional temporal filter for valid-at date.",
+            "in": "query",
+            "name": "as_of",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional cognitive-type filter (episodic|semantic|procedural); invalid values are ignored.",
+            "in": "query",
+            "name": "memory_type",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryListPagedResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryListPagedResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryListPagedResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          }
+        ],
+        "summary": "List memories with pagination, filtering, and optional text search.",
+        "tags": [
+          "Memories"
+        ]
+      },
+      "post": {
+        "operationId": "Memories_Create",
+        "requestBody": {
+          "content": {
+            "application/*\u002Bjson": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemoryRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemoryRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemoryRequest"
+              }
+            }
+          },
+          "description": "Create memory request containing user_id, text, and optional app/metadata."
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCreatedResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCreatedResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryCreatedResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          }
+        ],
+        "summary": "Create a new memory for a user, with automatic deduplication.",
+        "tags": [
+          "Memories"
+        ]
+      }
+    },
+    "/api/v1/memories/from-conversation": {
+      "post": {
+        "operationId": "Memories_FromConversation",
+        "requestBody": {
+          "content": {
+            "application/*\u002Bjson": {
+              "schema": {
+                "$ref": "#/components/schemas/AddConversationRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddConversationRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddConversationRequest"
+              }
+            }
+          },
+          "description": "User id, conversation turns, and optional scoping (tags/project/session)."
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationIngestResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationIngestResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationIngestResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          }
+        ],
+        "summary": "Distill a multi-turn conversation into atomic facts and store each one,\napplying the same intent classification, deduplication, and background entity\nextraction as the bulk/create endpoints. On empty extraction, nothing is\nstored \u2014 no raw un-atomized turns are persisted; the caller can retry via\nbulk/create with its own text.",
+        "tags": [
+          "Memories"
+        ]
+      }
+    },
+    "/api/v1/memories/search": {
+      "post": {
+        "operationId": "Memories_Search",
+        "requestBody": {
+          "content": {
+            "application/*\u002Bjson": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchMemoriesRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchMemoriesRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchMemoriesRequest"
+              }
+            }
+          },
+          "description": "Search request containing query, user_id, and optional app_name/top_k/mode."
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          }
+        ],
+        "summary": "Search memories using hybrid vector \u002B keyword search.",
+        "tags": [
+          "Memories"
+        ]
+      }
+    },
+    "/api/v1/memories/{memoryId}": {
+      "get": {
+        "operationId": "Memories_Get",
+        "parameters": [
+          {
+            "description": "Memory identifier.",
+            "in": "path",
+            "name": "memoryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "User identifier (falls back to header).",
+            "in": "query",
+            "name": "user_id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryDetailResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryDetailResponse"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyHeader": []
+          }
+        ],
+        "summary": "Get a single memory by its identifier.",
+        "tags": [
+          "Memories"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health"
+    },
+    {
+      "name": "Memories"
+    }
+  ]
+}
