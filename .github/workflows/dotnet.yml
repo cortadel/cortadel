@@ -37,6 +37,18 @@ name: .NET SDK
 on:
   push:
     branches: [main]
+    # sdk-dotnet-v* namespaces the .NET leg's release tags so sdk-ts-v*/sdk-py-v* (TypeScript/Python
+    # legs, planned) each get their own tag prefix instead of contending over a shared v* pattern
+    # where a bare "v1.0.0" wouldn't say which SDK it releases.
+    #
+    # GitHub does NOT evaluate `paths` for tag pushes (confirmed against GitHub's own docs and
+    # matching community reports: "path filters are not evaluated for pushes of tags" — paths only
+    # gates branch pushes). So this tag pattern is the *only* gate on this trigger; a push of a tag
+    # matching sdk-dotnet-v* always runs this workflow (including publish-nuget's own `if:`, below),
+    # regardless of which paths the tagged commit touched. That's intentional here: a release tag is
+    # inherently an intentional act (nobody accidentally creates and pushes a tag), unlike an
+    # ordinary commit to main.
+    tags: ['sdk-dotnet-v*']
     paths:
       - 'sdk/**'
       - 'spec/**'
@@ -100,12 +112,22 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet tool restore
+      # --clean-output: without it, kiota only adds/overwrites files - it never deletes ones that a
+      # schema removal makes obsolete. That leaves an orphaned generated file (e.g. a stale
+      # ApiError.cs surviving the ApiError -> ErrorResponse rename) that regeneration itself can't
+      # detect, since kiota simply doesn't touch it and there's nothing to diff. --clean-output wipes
+      # the output directory before generating, so a removed schema/operation now shows up as a
+      # deletion in the git-status check below, not silence. Verified locally: regenerating the real
+      # committed client with --clean-output added reproduces it byte-for-byte (zero drift - the flag
+      # doesn't change output, only whether stale files get purged first), and a throwaway orphan
+      # file injected into a scratch copy of Generated/ survives a regen without --clean-output but
+      # is removed by one with it.
       - name: Regenerate from the committed contract
         run: |
           dotnet tool run kiota generate -l CSharp -c CortadelApiClient \
             -n Cortadel.Sdk.Generated -d ./spec/openapi.json \
             -o ./sdk/dotnet/Cortadel.Sdk/Generated --exclude-backward-compatible \
-            --type-access-modifier Internal
+            --type-access-modifier Internal --clean-output
       # .kiota.log lands inside Generated/ from the command above and is gitignored (confirmed
       # locally: `git status --ignored=matching` shows it as `!!`), so it cannot make the check
       # below dirty. Regeneration was verified locally to otherwise leave the tree byte-identical
@@ -325,3 +347,55 @@ jobs:
       - name: Tear down the stack
         if: always()
         run: docker compose down -v
+
+  publish-nuget:
+    name: publish Cortadel.Sdk to NuGet (trusted publishing)
+    needs: [build, generation-drift, conformance-base]
+    # Ref-prefix check, not event-name: `github.ref` is `refs/tags/<name>` only when the ref actually
+    # being built is that tag - true whether this run was started by the tag `push` itself, or by a
+    # `workflow_dispatch` where the operator explicitly picked that tag from the branch/tag selector
+    # (the dispatch's default target is the default branch, refs/heads/main, which never matches this
+    # prefix). Either way requires a deliberate act naming the release tag; an ordinary push to main
+    # (refs/heads/main) or a pull_request ref (refs/pull/<n>/merge) never matches, so this cannot fire
+    # from routine CI traffic.
+    if: startsWith(github.ref, 'refs/tags/sdk-dotnet-v')
+    concurrency:
+      # Literal per-job name, same convention as every other job in this file - github.job is null
+      # outside `steps` (see the file header comment), so it can't be used here. cancel-in-progress
+      # is deliberately false: a duplicate/retried run should queue behind an in-flight publish, not
+      # cancel it mid-push - nuget.org is append-only and a cancelled-but-partially-applied push is
+      # exactly the kind of ambiguity this job must avoid.
+      group: dotnet-publish-nuget-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write   # required for the NuGet/login OIDC exchange
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: dotnet pack sdk/dotnet/Cortadel.Sdk/Cortadel.Sdk.csproj -c Release -o ./nupkg
+
+      # The minted key lives 1 hour and each OIDC token is single-use (one login, one push), so this
+      # step sits immediately before the push it feeds, not at the top of the job. `user:` is the
+      # nuget.org profile name (cortadel-admin), not a secret or an email - it belongs in the workflow
+      # file, not in a repo secret.
+      - name: NuGet login (OIDC -> short-lived API key)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: cortadel-admin
+
+      # Pushing the .nupkg pushes its co-located .snupkg automatically - no separate symbol-package
+      # step. --skip-duplicate makes a re-run of this job (e.g. a retried run after an infra flake)
+      # idempotent against a version nuget.org already has, instead of failing the whole job.
+      - name: Push to nuget.org
+        run: |
+          dotnet nuget push "./nupkg/*.nupkg" \
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
