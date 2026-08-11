@@ -269,6 +269,9 @@ public sealed record HealthResult
 
     /// <summary>Per-dependency check details (<c>memgraph</c>, <c>embeddings</c>, <c>indexes</c>), keyed by dependency name.</summary>
     public Dictionary<string, JsonElement>? Checks { get; init; }
+
+    /// <summary>Any additional fields the server returned.</summary>
+    [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; init; }
 }
 
 internal sealed record MessageResult
