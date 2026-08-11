@@ -119,7 +119,6 @@ public sealed class CortadelClient : IDisposable
             sessionId = options?.SessionId,
             rerank = options?.Rerank,
             memoryType = options?.MemoryType,
-            detail = options?.Detail ?? "full",
         };
         return SendAsync<SearchResults>(HttpMethod.Post, "api/v1/memories/search", body, cancellationToken);
     }

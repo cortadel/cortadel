@@ -63,9 +63,6 @@ public sealed class SearchOptions
 
     /// <summary>Filter by cognitive type: <c>episodic</c> | <c>semantic</c> | <c>procedural</c>.</summary>
     public string? MemoryType { get; init; }
-
-    /// <summary>Response density tier: <c>full</c> (default), <c>summary</c>, or <c>headline</c>.</summary>
-    public string Detail { get; init; } = "full";
 }
 
 /// <summary>Options for <see cref="CortadelClient.ListAsync"/>.</summary>
@@ -101,11 +98,17 @@ public sealed record MemoryCreated
     public string Id { get; init; } = "";
     public string? Content { get; init; }
     public string? State { get; init; }
-    public string? CreatedAt { get; init; }
+
+    /// <summary>ISO 8601 creation timestamp (this endpoint returns a string; list/detail return Unix seconds).</summary>
+    [JsonPropertyName("created_at")] public string? CreatedAt { get; init; }
 
     /// <summary>What happened, e.g. <c>ADD</c> or <c>SKIP_DUPLICATE</c>.</summary>
     public string? Event { get; init; }
-    public string? AppName { get; init; }
+
+    [JsonPropertyName("app_name")] public string? AppName { get; init; }
+
+    /// <summary>Metadata as a JSON string (not a nested object, unlike <see cref="MemoryDetail.Metadata"/>).</summary>
+    public string? Metadata { get; init; }
 }
 
 /// <summary>A page of search hits.</summary>
@@ -123,17 +126,41 @@ public sealed record SearchHit
     public string Content { get; init; } = "";
 
     /// <summary>Fused relevance score (RRF, sqrt-normalized).</summary>
-    [JsonPropertyName("rrfScore")] public double? RrfScore { get; init; }
-    public string? CreatedAt { get; init; }
-    public string? AppName { get; init; }
+    [JsonPropertyName("rrf_score")] public double? RrfScore { get; init; }
+
+    [JsonPropertyName("created_at")] public string? CreatedAt { get; init; }
+    [JsonPropertyName("app_name")] public string? AppName { get; init; }
     public List<string>? Categories { get; init; }
-    public string? MemoryType { get; init; }
+    [JsonPropertyName("memory_type")] public string? MemoryType { get; init; }
     public List<string>? Tags { get; init; }
 
     /// <summary><c>personal</c> or <c>global</c> — where the hit came from.</summary>
     public string? Source { get; init; }
 
-    /// <summary>Any additional fields the server returned (e.g. confidence_band, anchors).</summary>
+    /// <summary><c>true</c> when this hit is a globally-shared memory owned by another user.</summary>
+    [JsonPropertyName("global")] public bool IsGlobal { get; init; }
+
+    /// <summary>One-line distilled gist of the memory, when the server computed one.</summary>
+    public string? Gist { get; init; }
+
+    [JsonPropertyName("project_id")] public string? ProjectId { get; init; }
+
+    /// <summary>Member memory ids folded into this hit (session-arm rollups).</summary>
+    [JsonPropertyName("member_ids")] public List<string>? MemberIds { get; init; }
+
+    /// <summary>Ids of similar/duplicate memories, when computed.</summary>
+    [JsonPropertyName("similar_ids")] public List<string>? SimilarIds { get; init; }
+
+    /// <summary>Rank within the text (BM25) arm before fusion, if this hit matched it.</summary>
+    [JsonPropertyName("text_rank")] public int? TextRank { get; init; }
+
+    /// <summary>Rank within the vector arm before fusion, if this hit matched it.</summary>
+    [JsonPropertyName("vector_rank")] public int? VectorRank { get; init; }
+
+    /// <summary>Freeform attributes attached to this hit (e.g. confidence_band, anchors).</summary>
+    public Dictionary<string, JsonElement?>? Attributes { get; init; }
+
+    /// <summary>Any additional fields the server returned.</summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; init; }
 }
 
@@ -154,15 +181,27 @@ public sealed record MemoryListItem
     public string Content { get; init; } = "";
 
     /// <summary>Creation time as Unix seconds.</summary>
-    public long CreatedAt { get; init; }
+    [JsonPropertyName("created_at")] public long CreatedAt { get; init; }
     public string State { get; init; } = "active";
-    public string? AppId { get; init; }
-    public string? AppName { get; init; }
+    [JsonPropertyName("app_id")] public string? AppId { get; init; }
+    [JsonPropertyName("app_name")] public string? AppName { get; init; }
     public List<string> Categories { get; init; } = new();
-    public string? MemoryType { get; init; }
+    [JsonPropertyName("memory_type")] public string? MemoryType { get; init; }
+
+    /// <summary>Extraction pipeline status: <c>done</c>, <c>pending</c>, or <c>failed</c>.</summary>
+    [JsonPropertyName("extraction_status")] public string? ExtractionStatus { get; init; }
+
+    /// <summary>ISO 8601 timestamp from which this memory version is valid.</summary>
+    [JsonPropertyName("valid_at")] public string? ValidAt { get; init; }
+
+    /// <summary>ISO 8601 timestamp at which this memory was invalidated/superseded.</summary>
+    [JsonPropertyName("invalid_at")] public string? InvalidAt { get; init; }
+
+    /// <summary>Whether this is the current (non-superseded) version of the memory.</summary>
+    [JsonPropertyName("is_current")] public bool? IsCurrent { get; init; }
 
     /// <summary><c>true</c> when this is a globally-shared memory owned by another user.</summary>
-    public bool IsGlobal { get; init; }
+    [JsonPropertyName("is_global")] public bool IsGlobal { get; init; }
 
     [JsonPropertyName("metadata_")] public JsonElement? Metadata { get; init; }
 }
@@ -174,39 +213,62 @@ public sealed record MemoryDetail
     public string Text { get; init; } = "";
 
     /// <summary>Creation time as Unix seconds.</summary>
-    public long CreatedAt { get; init; }
+    [JsonPropertyName("created_at")] public long CreatedAt { get; init; }
     public string State { get; init; } = "active";
-    public string? AppId { get; init; }
-    public string? AppName { get; init; }
+    [JsonPropertyName("app_id")] public string? AppId { get; init; }
+    [JsonPropertyName("app_name")] public string? AppName { get; init; }
     public List<string> Categories { get; init; } = new();
     [JsonPropertyName("metadata_")] public JsonElement? Metadata { get; init; }
-    public string? ValidAt { get; init; }
-    public string? InvalidAt { get; init; }
-    public bool? IsCurrent { get; init; }
-    public string? SupersededBy { get; init; }
-    public bool IsGlobal { get; init; }
+    [JsonPropertyName("valid_at")] public string? ValidAt { get; init; }
+    [JsonPropertyName("invalid_at")] public string? InvalidAt { get; init; }
+    [JsonPropertyName("is_current")] public bool? IsCurrent { get; init; }
+    [JsonPropertyName("superseded_by")] public string? SupersededBy { get; init; }
+    [JsonPropertyName("is_global")] public bool IsGlobal { get; init; }
 }
 
-/// <summary>Result of ingesting a conversation. Uncommon fields land in <see cref="Raw"/>.</summary>
+/// <summary>
+/// Result of ingesting a conversation. The two members are mutually exclusive on the wire: the
+/// server sends <see cref="Results"/> when it distilled facts, or <see cref="NoFactsExtracted"/>
+/// when it didn't — never both. Uncommon/future fields land in <see cref="Raw"/>.
+/// </summary>
 public sealed record ConversationResult
 {
-    public int? Stored { get; init; }
-    public int? Skipped { get; init; }
-    public List<string>? Ids { get; init; }
+    /// <summary>One entry per distilled fact. Absent when nothing was extracted.</summary>
+    public List<ConversationIngestItem>? Results { get; init; }
+
+    /// <summary>True when the conversation yielded no storable facts; absent otherwise.</summary>
+    [JsonPropertyName("no_facts_extracted")] public bool? NoFactsExtracted { get; init; }
 
     /// <summary>Any additional fields the server returned.</summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Raw { get; init; }
 }
 
+/// <summary>One fact distilled from a conversation and stored.</summary>
+public sealed record ConversationIngestItem
+{
+    /// <summary>Id of the stored memory. Empty when the underlying pipeline event carries no id (e.g. <c>ERROR</c>, <c>INVALIDATE</c>).</summary>
+    public string? Id { get; init; }
+
+    /// <summary>The distilled fact text.</summary>
+    public string? Memory { get; init; }
+
+    /// <summary>What the store pipeline did, e.g. <c>ADD</c>, <c>SKIP_DUPLICATE</c>, or <c>ERROR</c>.</summary>
+    public string? Event { get; init; }
+
+    /// <summary>Failure detail when <see cref="Event"/> is <c>ERROR</c> (or another failed branch); absent otherwise.</summary>
+    public string? Error { get; init; }
+}
+
 /// <summary>Server health snapshot.</summary>
 public sealed record HealthResult
 {
-    /// <summary>Overall status, e.g. <c>healthy</c> or <c>degraded</c>.</summary>
+    /// <summary>Overall status: <c>ok</c> when every check passed, <c>degraded</c> otherwise.</summary>
     public string Status { get; init; } = "";
-    public string? CheckedAt { get; init; }
 
-    /// <summary>Per-dependency check details (database, embeddings, indexes).</summary>
-    [JsonExtensionData] public Dictionary<string, JsonElement>? Checks { get; init; }
+    [JsonPropertyName("checked_at")] public string? CheckedAt { get; init; }
+
+    /// <summary>Per-dependency check details (<c>memgraph</c>, <c>embeddings</c>, <c>indexes</c>), keyed by dependency name.</summary>
+    public Dictionary<string, JsonElement>? Checks { get; init; }
 }
 
 internal sealed record MessageResult
