@@ -1,0 +1,466 @@
+name: Python SDK
+
+# Gates the Python SDK: install + unit tests (across the full requires-python matrix) + package
+# build, a check that the committed Kiota client hasn't drifted from spec/openapi.json, and a
+# conformance suite run against a real server. Mirrors .github/workflows/typescript.yml job-for-job
+# (which itself mirrors .github/workflows/dotnet.yml), reusing the hard-won provisioning verbatim
+# rather than re-deriving it — see .superpowers/sdd/2026-08-11-typescript-sdk-leg's dotnet-sdk-leg
+# and typescript-sdk-leg task reports, and this leg's own python-task-1-report.md /
+# python-task-2-report.md for what's specific to Python.
+#
+# The conformance gate is split into two tiers because a bare `ghcr.io/cortadel/cortadel:latest`
+# container needs a reachable Memgraph just to answer /api/health, and needs a *working* LLM +
+# embedding provider (Ollama, ~9.6 GB of models) for anything that writes. HealthController returns
+# 503 (not 200) whenever the database or embedding check fails, so a bare `curl -f` wait-loop cannot
+# work — see conformance-base's health-gate step below.
+#
+# Package/dependency management uses uv (sdk/python/uv.lock is committed) via astral-sh/setup-uv,
+# not a bare actions/setup-python + pip — matches the tool this SDK's own dev workflow already
+# uses (see python-task-1-report.md's "Test evidence": `.venv/Scripts/python.exe -m pytest`, a
+# uv-managed venv). `uv sync` alone does not touch dependencies outside what pyproject.toml/uv.lock
+# declare, so the one-off `build` package needed only for packaging is injected ad hoc via
+# `uv run --with build python -m build` rather than added as a real project dependency — this
+# keeps `python -m build` (the literal tool the task specifies) as the invocation, without
+# permanently widening the SDK's own dependency surface for something only CI needs.
+#
+# astral-sh/setup-uv is pinned to the exact tag v9.0.0, not a floating `@v9` — checked against the
+# action's own tag list: setup-uv stopped publishing floating major-version tags as of its v8.0.0
+# release (only `v7`/`v7.6` still exist as floating tags from before that cutover; v8.0.0 through
+# the current v9.0.0 are each only reachable by their exact tag). A `@v9` reference would not
+# resolve to anything and would fail every job in this file at its first step.
+#
+# `requires-python = ">=3.10"` (sdk/python/pyproject.toml) declares support for 3.10 through 3.13
+# (see its `classifiers`) — the build job's matrix runs the unit suite (and the packaging step) on
+# all four so a 3.12-only construct slipping into the facade or its tests fails here instead of at
+# an older-interpreter consumer's install. No lint tool is configured for this package (no
+# ruff/flake8/mypy config anywhere under sdk/python — checked, not assumed) — nothing to run here
+# until one is added.
+
+on:
+  push:
+    branches: [main]
+    # sdk-py-v* namespaces this leg's release tags the same way dotnet.yml's sdk-dotnet-v* and
+    # typescript.yml's sdk-ts-v* do, so each SDK's releases get their own tag prefix instead of
+    # contending over a shared v* pattern where a bare "v1.0.0" wouldn't say which SDK it releases.
+    #
+    # GitHub does NOT evaluate `paths` for tag pushes (confirmed against GitHub's own docs, and
+    # matching typescript.yml/dotnet.yml's own header comments): path filters only gate branch
+    # pushes. So this tag pattern is the *only* gate on this trigger; a push of a tag matching
+    # sdk-py-v* always runs this workflow (including publish-pypi's own `if:`, below), regardless
+    # of which paths the tagged commit touched. That's intentional here: a release tag is
+    # inherently a deliberate act (nobody accidentally creates and pushes a tag), unlike an
+    # ordinary commit to main.
+    tags: ['sdk-py-v*']
+    paths:
+      - 'sdk/python/**'
+      - 'spec/**'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/python.yml'
+  pull_request:
+    paths:
+      - 'sdk/python/**'
+      - 'spec/**'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/python.yml'
+  workflow_dispatch:
+  # Weekly, so the LLM-dependent tier (conformance-full) still gets exercised even if nobody
+  # remembers to dispatch it manually. Offset by six minutes from typescript.yml's own '23 6 * * 1'
+  # (itself six minutes from dotnet.yml's '17 6 * * 1') so the three workflows' scheduled runs don't
+  # queue GitHub-hosted runners at the exact same instant — not load-bearing, just tidy.
+  # build/generation-drift/conformance-base are cheap and gate every PR; this schedule exists only
+  # to drive the expensive ~9.6 GB-model tier in its absence.
+  schedule:
+    - cron: '29 6 * * 1'
+
+# No workflow-level concurrency block: a single group covering the whole file would mean a new push
+# cancels the *entire in-flight run*, including a same-run conformance-full job mid-download of
+# ~9.6 GB of models. Each job below gets its own group instead, keyed by a literal per-job name
+# (python-build-/-drift-/-conformance-base-/-conformance-full-/-publish-pypi-<ref>, the build job's
+# also keyed by its matrix leg — see that job's own comment), so no two distinct jobs/legs ever
+# contend with each other. Note: the group literal can't be keyed by github.job — that context is
+# only populated within a job's `steps`, and is null anywhere else including a job-level
+# `concurrency:` block (dotnet.yml's own header comment documents hitting this the hard way: an
+# earlier revision of that file collapsed every job to the same empty-suffixed group). This keeps
+# the original "a newer push on the same ref supersedes a redundant older run of the same job"
+# behavior per-job, without one job's cancellation taking any other job down with it.
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # requires-python floor (pyproject.toml) through the newest version its classifiers claim
+        # — proves the >=3.10 claim rather than asserting it.
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    # Matrix-leg-scoped group: without matrix.python-version in the literal, all four legs of this
+    # job would share one group and cancel each other out instead of running in parallel (the same
+    # trap the "own literal concurrency group" convention exists to avoid at the job level — see the
+    # file header comment — extended here for a matrixed job specifically).
+    concurrency:
+      group: python-build-${{ matrix.python-version }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: sdk/python/uv.lock
+      - run: uv sync --extra test
+      # tests/ only — conformance/ needs a live server and is gated for real by
+      # conformance-base/conformance-full below. This is already true of a bare `uv run pytest`
+      # (pyproject.toml's `testpaths = ["tests"]`), but the path is passed explicitly anyway so
+      # this step documents its own scope rather than relying on config a reader of this file
+      # might not have open.
+      - run: uv run pytest tests -q
+      # python -m build (not `uv build`): the task specifies this literal tool. `build` itself is
+      # not a project dependency (see file header comment) — `uv run --with build` injects it into
+      # an ephemeral overlay for just this invocation.
+      - name: Build sdist and wheel
+        run: uv run --with build python -m build --sdist --wheel .
+      # py.typed (PEP 561) is what makes type checkers treat an installed `cortadel` as typed
+      # rather than falling back to Any everywhere. Checked directly inside the built archives —
+      # not assumed from the sdist/wheel include lists in pyproject.toml — because a hatchling
+      # target misconfiguration would silently drop it while everything else still builds cleanly.
+      # A heredoc, not `python -c "..."`: a multi-line -c string that's indented for the YAML
+      # file's own readability (as an earlier draft of this step had it) hands Python a script
+      # whose first statement is indented with no preceding block — `IndentationError: unexpected
+      # indent` on line 1, confirmed by reproducing the exact earlier form locally before writing
+      # this comment. `python - <<'PY' ... PY` avoids that: YAML's `|` block scalar strips exactly
+      # the block's own common leading indentation, so every heredoc line lands flush at column 0
+      # for Python regardless of how deeply this step is nested in the workflow file.
+      - name: Confirm py.typed ships in both the sdist and the wheel
+        run: |
+          uv run python - <<'PY'
+          import glob
+          import sys
+          import tarfile
+          import zipfile
+
+          wheel = glob.glob("dist/*.whl")[0]
+          sdist = glob.glob("dist/*.tar.gz")[0]
+
+          with zipfile.ZipFile(wheel) as z:
+              wheel_names = z.namelist()
+          if "cortadel/py.typed" not in wheel_names:
+              sys.exit(f"py.typed missing from wheel {wheel}: {wheel_names}")
+
+          with tarfile.open(sdist) as t:
+              sdist_names = t.getnames()
+          if not any(n.endswith("/cortadel/py.typed") for n in sdist_names):
+              sys.exit(f"py.typed missing from sdist {sdist}: {sdist_names}")
+
+          print(f"py.typed present in {wheel} and {sdist}")
+          PY
+
+  generation-drift:
+    concurrency:
+      group: python-drift-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet tool restore
+      # Exact Task-1 flags (sdk/python's own generation, per python-task-1-report.md's "Exact
+      # generate command"), which already included --clean-output for the same reason
+      # dotnet.yml/typescript.yml's own generation-drift jobs carry it: without it, kiota only
+      # adds/overwrites files — it never deletes ones a schema removal makes obsolete, which would
+      # leave an orphaned generated file that regeneration itself can't detect (nothing to diff
+      # against). --clean-output wipes the output directory before generating, so a removed
+      # schema/operation now shows up as a deletion in the git-status check below, not silence.
+      #
+      # Verified locally before writing this step: regenerating in place reproduces the committed
+      # sdk/python/cortadel/_generated tree byte-for-byte (`git status --porcelain
+      # --untracked-files=all` on it is empty afterward) — the only stray file this command leaves
+      # behind is `.kiota.log`, gitignored by the repo root .gitignore's existing `.kiota.log`
+      # pattern (confirmed: it does not appear in the git-status output either).
+      - name: Regenerate from the committed contract
+        run: |
+          dotnet tool run kiota generate -l python -c CortadelApiClient -n cortadel._generated \
+            -d ./spec/openapi.json -o ./sdk/python/cortadel/_generated \
+            --exclude-backward-compatible -m application/json --clean-output
+      # `git diff --exit-code` is blind to *untracked* files — a new operation/schema in
+      # spec/openapi.json makes Kiota emit a brand-new file under cortadel/_generated/, not a
+      # modification to an existing one, and `git diff` never reports those. `git status
+      # --porcelain --untracked-files=all` catches both modifications and additions — the same
+      # choice dotnet.yml/typescript.yml make for their own generated trees, for the same reason.
+      - name: Fail if generated code drifted
+        run: |
+          drift="$(git status --porcelain --untracked-files=all -- sdk/python/cortadel/_generated)"
+          if [ -n "$drift" ]; then
+            echo "::error::Generated client differs from the committed contract (new/changed/deleted files). Regenerate and commit."
+            echo "$drift"
+            exit 1
+          fi
+
+  conformance-base:
+    name: conformance (base tier — no LLM, no embeddings)
+    concurrency:
+      group: python-conformance-base-${{ github.ref }}
+      cancel-in-progress: true
+    # PR/push/manual; excluded from the weekly schedule, which exists only to drive
+    # conformance-full.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: sdk/python/uv.lock
+      - run: uv sync --extra test
+
+      # The no-LLM tier needs only a reachable Memgraph (get()/list()/delete() all issue store
+      # queries even for a lookup that finds nothing) and explicitly *no* LLM or embedding provider.
+      #
+      # No --experimental-enabled=text-search here (docker-compose.yml still carries it, for the
+      # full tier's parity with the documented quickstart). Per dotnet.yml's/typescript.yml's own
+      # conformance-base jobs: the freshly-pulled `:latest` memgraph-mage image rejects that flag
+      # outright ("ERROR: failed validation of new value 'text-search' for flag
+      # 'experimental_enabled'") — text search graduated OUT of experimental status as of Memgraph
+      # 3.6, so `text-search` is no longer a valid member of the experimental-features enum and the
+      # flag now fails validation instead of being a harmless no-op. That failure is fatal at
+      # startup, and memgraph never binds its Bolt port. None of this tier's 4 tests touch text
+      # search, so the flag is dropped rather than chasing the currently-valid enum spelling.
+      - name: Start Memgraph
+        run: |
+          docker network create cortadel-ci
+          docker run -d --name memgraph --network cortadel-ci -p 7687:7687 \
+            memgraph/memgraph-mage:latest
+
+      # A bare TCP connect to 127.0.0.1:7687 is a false-positive trap: `-p 7687:7687` makes Docker's
+      # host-side port-publishing proxy accept the TCP handshake as soon as the port mapping exists,
+      # regardless of whether memgraph itself ever binds 7687 *inside* the container — that path
+      # never touches the actual process. dotnet.yml's/typescript.yml's own conformance-base jobs
+      # hit this for real: memgraph's process had already died, yet a TCP check still reported
+      # "accepting connections" instantly, because it was only ever talking to the docker-proxy, not
+      # memgraph.
+      #
+      # mgconsole ships inside memgraph-mage for exactly this reason: it speaks real Bolt, and
+      # `docker exec` runs it from inside the container's own namespace, so it only succeeds once
+      # memgraph can actually execute a query — not just once *something* answers a SYN. This is
+      # Memgraph's own documented container health-check idiom (`echo 'RETURN 0;' | mgconsole`). The
+      # loop below is a retry-with-poll-interval, not a blind sleep: no fixed wait is added, and it
+      # exits the moment the query succeeds.
+      - name: Wait for Memgraph to be genuinely ready (Bolt-level, not just TCP)
+        run: |
+          for i in $(seq 1 45); do
+            if docker exec memgraph sh -c "echo 'RETURN 0;' | mgconsole" >/tmp/mg-check.log 2>&1; then
+              echo "memgraph answers Bolt queries"
+              exit 0
+            fi
+            echo "waiting for memgraph to answer a Bolt query ($i/45)..."
+            sleep 2
+          done
+          echo "::error::memgraph never answered a Bolt query — last attempt's output:"
+          cat /tmp/mg-check.log 2>/dev/null || true
+          docker logs memgraph
+          exit 1
+
+      # Deliberately no MEMFORGE_Llm__*/MEMFORGE_Embedding__* — the base tier's provisioning
+      # requirement is "no LLM provider, no embedding provider". MEMFORGE_Auth__Secret is left
+      # unset (empty = open), matching docker-compose.yml's own local-dev default.
+      - name: Start Cortadel
+        run: |
+          docker run -d --name cortadel --network cortadel-ci -p 3001:3001 \
+            -e MEMFORGE_Database__Provider=memgraph \
+            -e MEMFORGE_Memgraph__Url=bolt://memgraph:7687 \
+            ghcr.io/cortadel/cortadel:latest
+
+      # HealthController legitimately returns 503 here — there is no embedding provider — and the
+      # conformance suite's test_health_reports_a_status test asserts `ok | degraded` for exactly
+      # this reason. A bare `curl -f` wait-loop would treat that 503 as failure and burn its full
+      # timeout without a single test ever running.
+      #
+      # But status-code-only gating (200 or 503, accept-any-503) is exactly as blind as `curl -f` in
+      # the other direction: 503 is *also* what HealthController returns when the database check
+      # fails. dotnet.yml's/typescript.yml's own conformance-base jobs proved this the hard way on
+      # their first real run: the gate accepted a 503 whose body had checks.memgraph.ok=false from
+      # the very first response, Cortadel came up regardless, and every DB-touching test then failed
+      # with the driver-level error already recorded in checks.memgraph.error. So this parses the
+      # response body (field names are spec/openapi.json's HealthResponse → checks →
+      # MemgraphCheck.ok / EmbeddingCheck.ok, not guessed) and requires checks.memgraph.ok == true
+      # specifically, while still tolerating checks.embeddings.ok being false — this tier
+      # deliberately runs with no embedding provider.
+      - name: Wait for Cortadel health (requires the database check; tolerates embeddings being down)
+        run: |
+          db_ok="false"
+          for i in $(seq 1 60); do
+            status=$(curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:3001/api/health || echo "000")
+            db_ok=$(jq -r '.checks.memgraph.ok // false' /tmp/health.json 2>/dev/null || echo false)
+            db_ok="${db_ok:-false}"  # jq exits 0 with empty stdout on a truly empty body
+            if [ "$db_ok" = "true" ]; then
+              echo "cortadel's database check is healthy (http $status); full body:"
+              cat /tmp/health.json; echo
+              break
+            fi
+            echo "waiting for cortadel's database check (http $status, checks.memgraph.ok=$db_ok) ($i/60)..."
+            sleep 3
+          done
+          if [ "$db_ok" != "true" ]; then
+            echo "::error::cortadel's database check never reported ok=true. Last /api/health body:"
+            cat /tmp/health.json 2>/dev/null || echo "(no response ever captured)"
+            echo
+            docker logs cortadel
+            exit 1
+          fi
+
+      - name: Run base-tier conformance suite (4 tests x 2 facades = 8)
+        env:
+          CORTADEL_CONFORMANCE_URL: http://localhost:3001
+        run: uv run pytest conformance -q
+
+      - name: Container logs
+        if: failure()
+        run: |
+          echo "── memgraph ──"; docker logs memgraph || true
+          echo "── cortadel ──"; docker logs cortadel || true
+
+      - name: Tear down containers
+        if: always()
+        run: |
+          docker rm -f cortadel memgraph 2>/dev/null || true
+          docker network rm cortadel-ci 2>/dev/null || true
+
+  conformance-full:
+    name: conformance (full tier — LLM + embeddings)
+    concurrency:
+      group: python-conformance-full-${{ github.ref }}
+      cancel-in-progress: true
+    # Manual or weekly only — never on PR/push. Pulls a ~9.6 GB LLM plus an embedding model via
+    # Ollama; too slow/expensive to gate every PR (same ruling dotnet.yml's/typescript.yml's own
+    # conformance-full document). Its own literal concurrency group
+    # (python-conformance-full-<ref>, above) means a push to main that triggers
+    # build/generation-drift/conformance-base can never cancel an in-flight run of this job — only
+    # a second conformance-full run on the same ref can (self-supersession, not cross-job).
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: sdk/python/uv.lock
+      - run: uv sync --extra test
+
+      # The repo's own documented one-command quickstart (README "Quick start" / self-hosting.md),
+      # unmodified: Memgraph + Ollama (pulls the LLM and embedding model, gated by `ollama-pull`'s
+      # service_completed_successfully condition) + Cortadel. Deliberately not reinvented for CI so
+      # it can't drift from what a real self-hoster actually runs — same reasoning as
+      # dotnet.yml's/typescript.yml's own conformance-full jobs, which start the identical stack
+      # from the repo root.
+      - name: Start the full stack
+        working-directory: .
+        run: docker compose up -d
+
+      - name: Wait for Cortadel health (expects a genuinely healthy stack)
+        working-directory: .
+        run: |
+          status="000"
+          for i in $(seq 1 180); do
+            status=$(curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:3001/api/health || echo "000")
+            if [ "$status" = "200" ]; then
+              echo "cortadel is healthy:"; cat /tmp/health.json; echo
+              break
+            fi
+            echo "waiting for cortadel to become healthy (last status: $status) ($i/180)..."
+            sleep 10
+          done
+          if [ "$status" != "200" ]; then
+            echo "::error::cortadel never reported a healthy status (last: $status)"
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Run full conformance suite (10 tests x 2 facades = 20 — base + LLM tier)
+        env:
+          CORTADEL_CONFORMANCE_URL: http://localhost:3001
+          CORTADEL_CONFORMANCE_LLM: "1"
+        run: uv run pytest conformance -q
+
+      - name: Container logs
+        if: failure()
+        working-directory: .
+        run: docker compose logs
+
+      - name: Tear down the stack
+        if: always()
+        working-directory: .
+        run: docker compose down -v
+
+  publish-pypi:
+    name: publish cortadel to PyPI
+    needs: [build, generation-drift, conformance-base]
+    # Ref-prefix check, not event-name: `github.ref` is `refs/tags/<name>` only when the ref
+    # actually being built is that tag — true whether this run was started by the tag `push` itself,
+    # or by a `workflow_dispatch` where the operator explicitly picked that tag from the
+    # branch/tag selector (the dispatch's default target is the default branch, refs/heads/main,
+    # which never matches this prefix). A pull_request ref (refs/pull/<n>/merge) never matches
+    # either, so this cannot fire from routine PR/push CI traffic — only a deliberate tag push (or a
+    # dispatch explicitly targeting that tag) satisfies it. Same convention as
+    # dotnet.yml's publish-nuget / typescript.yml's publish-npm.
+    if: startsWith(github.ref, 'refs/tags/sdk-py-v')
+    concurrency:
+      # Literal per-job name, same convention as every other job in this file — github.job is null
+      # outside `steps` (see the file header comment), so it can't be used here. cancel-in-progress
+      # is deliberately false: a duplicate/retried run should queue behind an in-flight publish, not
+      # cancel it mid-push — PyPI is append-only (a given version can never be re-uploaded) and a
+      # cancelled-but-partially-applied push is exactly the kind of ambiguity this job must avoid.
+      # Matches dotnet.yml's publish-nuget's / typescript.yml's publish-npm's own reasoning.
+      group: python-publish-pypi-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # No `environment:` block. GitHub Environments are how you'd normally gate a PyPI Trusted
+    # Publisher (OIDC, no stored secret) — the .NET leg uses the OIDC equivalent for NuGet
+    # (dotnet.yml's publish-nuget, `NuGet/login@v1`) and that pattern was deliberately not
+    # reproduced here: this job authenticates with a repo secret (PYPI_TOKEN below), and there is
+    # no evidence any GitHub Environment has been configured for this repository for PyPI trusted
+    # publishing. Requiring one that doesn't exist would block this job forever (a protection rule
+    # with no environment to satisfy it never resolves) — see the task's own warning about this
+    # exact trap.
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: '3.12'
+
+      # Same packaging invocation as the build job (see that job's own comment on why `build` is
+      # injected via `uv run --with build` rather than a real project dependency) — this job does
+      # its own fresh build from the tag ref rather than reusing an artifact from `build`'s matrix,
+      # the same way dotnet.yml's publish-nuget re-runs `dotnet pack` and typescript.yml's
+      # publish-npm re-runs `pnpm run build` instead of downloading either job's output.
+      - name: Build sdist and wheel
+        run: uv run --with build python -m build --sdist --wheel .
+
+      # pypa/gh-action-pypi-publish's own documented non-Trusted-Publishing mode: __token__ as the
+      # username, an API token (scoped to this project or account-wide) as the password. A repo
+      # secret named PYPI_TOKEN is expected to already exist — this job does not create it (out of
+      # scope; the repo owner provisions and rotates it).
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
+          packages-dir: sdk/python/dist
+          skip-existing: true
