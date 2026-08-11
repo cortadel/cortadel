@@ -28,6 +28,7 @@ export default defineConfig({
           items: [
             { label: 'MCP integration', slug: 'mcp' },
             { label: '.NET SDK reference', slug: 'sdk-dotnet' },
+            { label: 'Python SDK reference', slug: 'sdk-python' },
             { label: 'TypeScript SDK reference', slug: 'sdk-typescript' },
           ],
         },
