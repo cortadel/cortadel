@@ -44,7 +44,7 @@
 
 Cortadel automatically extracts facts from conversations, links them into a **bi-temporal knowledge graph**, resolves contradictions, merges duplicate entities, forgets what's stale, and hands your agent the right context — in milliseconds, with **no LLM call on the read path**. Memory, graph, and reranked retrieval in one system, on your own infrastructure.
 
-> **Status — early access.** This repository is Cortadel's **open extension surface**: the official **SDK, docs, and examples** (Apache-2.0). The Cortadel **server** (memory engine + dashboard) is the product, shipped as a container image — see [Self-hosting](docs/self-hosting.md). SDKs for **TypeScript** and **Python** are on the roadmap.
+> **Status — early access.** This repository is Cortadel's **open extension surface**: the official **SDK, docs, and examples** (Apache-2.0). The Cortadel **server** (memory engine + dashboard) is the product, shipped as a container image — see [Self-hosting](docs/self-hosting.md). A **TypeScript SDK** is written in this repo (not yet published to npm); a **Python** SDK is on the roadmap.
 
 |  |  |
 |---|---|
@@ -96,7 +96,7 @@ A capability view of the self-hostable OSS memory systems, from a code-grounded 
 | Zero-LLM read path | ✅ | ✅ | ✅ | 🟡 | ✅ |
 | Lossless backup / export / import | ✅ | 🟡 platform | 🟡 | 🟡 | 🟡 |
 | **.NET / C# native** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Published SDKs | 🟡 .NET SDK in this repo, not yet on NuGet (TS/Py planned) | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
+| Published SDKs | ✅ .NET on NuGet · 🟡 TypeScript written, not yet published (Py planned) | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
 | Framework integrations & connectors | 🟡 MCP + Claude Code | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
 | Managed cloud | 🟡 Cloud (coming) | ✅ | ❌ | ✅ | ✅ |
 
@@ -243,10 +243,11 @@ flowchart LR
 | Path | What |
 |---|---|
 | [`sdk/dotnet`](sdk/dotnet) | Official **.NET SDK** (`Cortadel.Sdk`) — a thin, typed client over the REST API |
+| [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API (written, not yet published to npm) |
 | [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
 | [`examples`](examples) | Runnable samples |
 
-*Coming:* TypeScript + Python SDKs, a connector API, and a community-integrations registry.
+*Coming:* npm publish of the TypeScript SDK, a Python SDK, a connector API, and a community-integrations registry.
 
 ## Documentation
 
@@ -255,6 +256,7 @@ flowchart LR
 - [Self-hosting the server](docs/self-hosting.md)
 - [MCP integration](docs/mcp.md)
 - [.NET SDK reference](docs/sdk-dotnet.md)
+- [TypeScript SDK reference](docs/sdk-typescript.md)
 
 ## Licensing
 
