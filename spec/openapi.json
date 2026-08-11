@@ -3,7 +3,7 @@
     "schemas": {
       "AddConversationRequest": {
         "additionalProperties": false,
-        "description": "Distill a multi-turn conversation into atomic facts (mem0/Claimify-style extraction)\nand store each fact through the same STORE pipeline as bulk/create: intent\nclassification -\u003E DedupService -\u003E MemoryWriteService.AddMemoriesBulkAsync -\u003E\nExtractionQueue. On empty extraction, nothing is stored.",
+        "description": "Distill a multi-turn conversation into atomic facts and store each one, applying\nthe same intent classification, deduplication, and background entity extraction\nas bulk/create. On empty extraction, nothing is stored.",
         "properties": {
           "is_agent_memory": {
             "description": "When true, extract facts about the assistant instead of the user. Defaults to false.",
@@ -85,7 +85,7 @@
         "description": "One fact distilled from a conversation and stored.",
         "properties": {
           "error": {
-            "description": "Failure detail when Cortadel.Api.Models.ConversationIngestItem.Event is \u0060ERROR\u0060 (or another failed branch); absent otherwise.",
+            "description": "Failure detail when \u0060event\u0060 is \u0060ERROR\u0060 (or another failed branch); absent otherwise.",
             "nullable": true,
             "type": "string"
           },
@@ -109,7 +109,7 @@
       },
       "ConversationIngestResponse": {
         "additionalProperties": false,
-        "description": "Result of ingesting a conversation. The two members are mutually exclusive on the\nwire (matches the pre-existing untyped response, which sent one key or the other,\nnever both): omit Cortadel.Api.Models.ConversationIngestResponse.NoFactsExtracted when facts were stored, omit\nCortadel.Api.Models.ConversationIngestResponse.Results when nothing was extracted. Both are nullable so the server\u0027s\nglobal \u0060DefaultIgnoreCondition = WhenWritingNull\u0060 drops the unset one instead of\nserializing it as \u0060[]\u0060 / \u0060false\u0060 alongside the other.",
+        "description": "Result of ingesting a conversation. The two members are mutually exclusive on the\nwire (matches the pre-existing untyped response, which sent one key or the other,\nnever both): omit \u0060no_facts_extracted\u0060 when facts were stored, omit\n\u0060results\u0060 when nothing was extracted. Both are nullable so the server\u0027s\nglobal \u0060DefaultIgnoreCondition = WhenWritingNull\u0060 drops the unset one instead of\nserializing it as \u0060[]\u0060 / \u0060false\u0060 alongside the other.",
         "properties": {
           "no_facts_extracted": {
             "description": "True when the conversation yielded no storable facts; absent otherwise.",
@@ -129,7 +129,7 @@
       },
       "ConversationMessageItem": {
         "additionalProperties": false,
-        "description": "Single turn in a conversation passed to Cortadel.Api.Models.AddConversationRequest.",
+        "description": "Single turn in a conversation passed to \u0060AddConversationRequest\u0060.",
         "properties": {
           "content": {
             "description": "Message text.",
@@ -169,7 +169,7 @@
             "type": "boolean"
           },
           "memory_type": {
-            "description": "P3 optional caller pin for cognitive type (episodic|semantic|\n            procedural). Invalid/blank values are ignored (auto-classification).",
+            "description": "Optional caller-provided cognitive type (episodic|semantic|\n            procedural). Invalid/blank values are ignored and the server falls back to\n            auto-classification.",
             "nullable": true,
             "type": "string"
           },
@@ -645,7 +645,7 @@
             "type": "boolean"
           },
           "memory_type": {
-            "description": "P3 cognitive type: episodic|semantic|procedural (coalesced to\n            \u0027semantic\u0027 for legacy/untyped rows). Kubb regenerates the TS client field.",
+            "description": "Cognitive type: episodic|semantic|procedural (coalesced to\n            \u0027semantic\u0027 for legacy/untyped rows).",
             "nullable": true,
             "type": "string"
           },
@@ -715,7 +715,7 @@
             "type": "boolean"
           },
           "include_faded": {
-            "description": "Phase 4: when true, include faded/stale memories (bypass the opt-in hard-fade\nfilter). Default false. No effect unless MEMFORGE_FADE_AFTER_DAYS \u003E 0.",
+            "description": "When true, include faded/stale memories that are normally hidden from search\nresults (bypasses the opt-in hard-fade filter). Default false. Has no effect\nunless the server has fading enabled.",
             "type": "boolean"
           },
           "include_session_arm": {
@@ -723,7 +723,7 @@
             "type": "boolean"
           },
           "memory_type": {
-            "description": "P3 optional cognitive-type filter (episodic|semantic|procedural).\n            Invalid/blank values are ignored (no filter).",
+            "description": "Optional filter restricting results to a cognitive type\n            (episodic|semantic|procedural). Invalid/blank values are ignored (no filter).",
             "nullable": true,
             "type": "string"
           },
@@ -749,7 +749,7 @@
             "type": "string"
           },
           "token_budget": {
-            "description": "P9 Lever A: greedy token-budget packer ceiling. 0 (default) = unbounded,\nbyte-identical to today; a positive value overrides the MEMFORGE_TOKEN_BUDGET\nenv default and trims the reranked list to \u003C= N estimated tokens (tail dropped,\nnever reordered). Costed against the field the Detail tier emits.",
+            "description": "Optional ceiling on the estimated token size of the returned results. 0\n(default) means unbounded, though the server may still apply its own\nconfigured default budget in that case. A positive value trims the ranked\nresult list to fit within N estimated tokens (lowest-ranked results dropped\nfirst; order is never changed), costed against whichever field the response\u0027s\ndetail tier returns.",
             "format": "int32",
             "maximum": 200000,
             "minimum": 0,
@@ -1034,6 +1034,7 @@
             "description": "User identifier.",
             "in": "query",
             "name": "user_id",
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -1453,7 +1454,7 @@
             "apiKeyHeader": []
           }
         ],
-        "summary": "Distill a multi-turn conversation into atomic facts (mem0/Claimify extraction)\nand store each fact through the identical STORE pipeline the bulk/create\nendpoints use (intent classification, DedupService, atomic bulk insert,\nExtractionQueue). On empty extraction, nothing is stored \u2014 no raw un-atomized\nturns are persisted; the caller can retry via bulk/create with its own text.",
+        "summary": "Distill a multi-turn conversation into atomic facts and store each one,\napplying the same intent classification, deduplication, and background entity\nextraction as the bulk/create endpoints. On empty extraction, nothing is\nstored \u2014 no raw un-atomized turns are persisted; the caller can retry via\nbulk/create with its own text.",
         "tags": [
           "Memories"
         ]
