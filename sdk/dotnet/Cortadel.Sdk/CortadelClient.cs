@@ -186,17 +186,17 @@ public sealed class CortadelClient : IDisposable
                 .GetAsync(config => config.QueryParameters.UserId = _opts.UserId, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
         }
-        // Trap: the wire-body ApiError.Status is nullable and not guaranteed present; the
+        // Trap: the wire-body ErrorResponse.Status is nullable and not guaranteed present; the
         // transport-level ResponseStatusCode (inherited from ApiException) is always populated.
-        // This must filter on the ApiException base, not the generated ApiError subtype: when
-        // the 404 body can't be deserialized into ApiError at all (e.g. an empty body with no
+        // This must filter on the ApiException base, not the generated ErrorResponse subtype: when
+        // the 404 body can't be deserialized into ErrorResponse at all (e.g. an empty body with no
         // Content-Type - exactly what ASP.NET Core returns for an unmatched route), Kiota still
-        // throws an ApiException with the real ResponseStatusCode, just not the ApiError subtype.
+        // throws an ApiException with the real ResponseStatusCode, just not the ErrorResponse subtype.
         catch (ApiException e) when (e.ResponseStatusCode == 404)
         {
             return null;
         }
-        catch (GM.ApiError e)
+        catch (GM.ErrorResponse e)
         {
             throw ToCortadelException(e);
         }
@@ -285,7 +285,7 @@ public sealed class CortadelClient : IDisposable
         {
             throw ToCortadelException(e);
         }
-        catch (GM.ApiError e)
+        catch (GM.ErrorResponse e)
         {
             throw ToCortadelException(e);
         }
@@ -312,7 +312,7 @@ public sealed class CortadelClient : IDisposable
         return result ?? throw new CortadelException(502, "empty_response", "The server returned an empty response.");
     }
 
-    private static CortadelException ToCortadelException(GM.ApiError e) =>
+    private static CortadelException ToCortadelException(GM.ErrorResponse e) =>
         new(e.ResponseStatusCode, e.Code ?? "http_error", string.IsNullOrEmpty(e.Message) ? "The request failed." : e.Message);
 
     private static CortadelException ToCortadelException(GM.ValidationProblemDetails e) =>

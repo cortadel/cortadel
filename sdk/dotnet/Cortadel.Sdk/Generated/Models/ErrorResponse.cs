@@ -12,7 +12,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Unified API error response (RFC 7807 inspired).
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    internal partial class ApiError : ApiException, IParsable
+    internal partial class ErrorResponse : ApiException, IParsable
     {
         /// <summary>Short error code for client-side handling (e.g., &quot;not_found&quot;, &quot;validation_error&quot;, &quot;internal_error&quot;).</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
@@ -45,12 +45,12 @@ namespace Cortadel.Sdk.Generated.Models
         /// <summary>
         /// Creates a new instance of the appropriate class based on discriminator value
         /// </summary>
-        /// <returns>A <see cref="global::Cortadel.Sdk.Generated.Models.ApiError"/></returns>
+        /// <returns>A <see cref="global::Cortadel.Sdk.Generated.Models.ErrorResponse"/></returns>
         /// <param name="parseNode">The parse node to use to read the discriminator value and create the object</param>
-        public static global::Cortadel.Sdk.Generated.Models.ApiError CreateFromDiscriminatorValue(IParseNode parseNode)
+        public static global::Cortadel.Sdk.Generated.Models.ErrorResponse CreateFromDiscriminatorValue(IParseNode parseNode)
         {
             if(ReferenceEquals(parseNode, null)) throw new ArgumentNullException(nameof(parseNode));
-            return new global::Cortadel.Sdk.Generated.Models.ApiError();
+            return new global::Cortadel.Sdk.Generated.Models.ErrorResponse();
         }
         /// <summary>
         /// The deserialization information for the current model
