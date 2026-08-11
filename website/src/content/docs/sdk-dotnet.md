@@ -42,7 +42,12 @@ var withHttp = new CortadelClient(options, httpClient);
 | `UserId` *(required)* | — | memory namespace / access scope |
 | `ApiKey` | `null` | bearer token; omit when auth is off |
 | `AppName` | `cortadel-dotnet` | app label on searches |
-| `Timeout` | 100 s | generous for reranked search |
+| `Timeout` | 100 s | generous for reranked search. **No-op if you pass your own `HttpClient`** (see below) — the facade never mutates a caller-supplied client, so set the timeout on that `HttpClient` yourself instead. |
+
+`Timeout` only applies to the `HttpClient` the constructor creates for you. When you bring your own
+(`new CortadelClient(options, httpClient)`, e.g. from `IHttpClientFactory`), `Timeout` is silently
+ignored — the facade never touches `BaseAddress`, `Timeout`, or `DefaultRequestHeaders` on a client
+it doesn't own.
 
 ## Methods
 
@@ -77,7 +82,9 @@ var result = await cortadel.AddConversationAsync(
     },
     new ConversationOptions { SessionId = "sess-42", Tags = new[] { "onboarding" } });
 
-Console.WriteLine($"stored {result.Stored}");
+Console.WriteLine(result.NoFactsExtracted == true
+    ? "no facts extracted"
+    : $"stored {result.Results?.Count ?? 0} fact(s)");
 ```
 
 ### `SearchAsync(query, SearchOptions?)` → `SearchResults`
@@ -92,7 +99,6 @@ var hits = await cortadel.SearchAsync(
         TopK       = 10,
         Mode       = "hybrid",         // hybrid | text | vector
         Rerank     = "cross_encoder",  // omit to skip reranking
-        Detail     = "full",           // full | summary | headline
         SessionId  = null,
         MemoryType = null,
     });
@@ -134,12 +140,19 @@ var message = await cortadel.DeleteAsync(new[] { id1, id2 });
 
 ```csharp
 var health = await cortadel.HealthAsync();
-Console.WriteLine(health.Status);   // healthy | degraded
+Console.WriteLine(health.Status);   // ok | degraded
 ```
+
+`HealthAsync` does **not** throw when the server reports itself degraded (HTTP 503 with an
+`{"status":"degraded",...}` body) — it catches that response and returns it like any other, so a
+degraded server is a normal return value, not an exception. `CortadelException` is still thrown for
+every other non-success response (a transport failure, an unmapped status code, or a body the
+generated client can't parse).
 
 ## Error handling
 
-Any non-success response throws `CortadelException`:
+Any non-success response — **other than a degraded (503) health check, which `HealthAsync` returns
+instead of throwing (see above)** — throws `CortadelException`:
 
 ```csharp
 try
@@ -162,18 +175,43 @@ catch (CortadelException ex)
 
 - `MemoryCreated` — `Id`, `Content`, `State`, `CreatedAt`, `Event`, `AppName`.
 - `SearchResults` — `Query`, `Results: List<SearchHit>`, `Total`.
-- `SearchHit` — `Id`, `Content`, `RrfScore`, `Categories`, `MemoryType`, `Tags`, `Source`, plus
-  `Extra` for any extra server fields.
+- `SearchHit` — `Id`, `Content`, `RrfScore`, `Categories`, `MemoryType`, `Tags`, `Source`, plus an
+  `Extra` member (see caveat below).
 - `MemoryList` / `MemoryListItem` — paginated list (`CreatedAt` is Unix seconds).
 - `MemoryDetail` — single memory; note the content field is `Text`, and `Metadata` maps `metadata_`.
-- `ConversationResult` — `Stored`, `Skipped`, `Ids`, plus `Raw`.
-- `HealthResult` — `Status`, `CheckedAt`, plus `Checks`.
+- `ConversationResult` — `Results: List<ConversationIngestItem>?`, `NoFactsExtracted`, plus a `Raw`
+  member (see caveat below). The two are mutually exclusive on the wire: the server sends `Results`
+  when it distilled facts, `NoFactsExtracted = true` when it didn't, never both.
+- `HealthResult` — `Status` (`ok` | `degraded`), `CheckedAt`, plus `Checks` (see caveat below).
 
-Forward-compatible: responses expose a `[JsonExtensionData]` bag (`Extra` / `Raw` / `Checks`) so new
-server fields are never lost.
+**Not actually forward-compatible today, from `CortadelClient`.** `SearchHit.Extra`,
+`ConversationResult.Raw`, and `HealthResult.Extra` are `[JsonExtensionData]` bags that work as
+documented only if you deserialize these DTOs directly with `System.Text.Json`, bypassing
+`CortadelClient` entirely. Every value `CortadelClient` itself returns took a different path: its
+pipeline deserializes the response via a Kiota-generated type first (`HybridSearchResult`,
+`ConversationIngestResponse`, `HealthResponse`), none of which implement Kiota's
+`IAdditionalDataHolder`, and only then maps that into the DTO — so from `CortadelClient`, all three
+read as `null`, always. `HealthResult.Checks` is the same story, one level deeper: the contract
+marks the checks map (and each individual check) `additionalProperties: false`, so the
+Kiota-generated types `CortadelClient`'s pipeline deserializes through drop an undeclared dependency
+check or an undeclared field on a known check *before* that data ever reaches `Checks` — again, only
+true for a value that came from `CortadelClient`. `Checks` itself is a plain
+`Dictionary<string, JsonElement>` with no such restriction, so deserializing `HealthResult` directly
+with `System.Text.Json` does preserve arbitrary keys there. None of the four members were removed
+(the public surface is frozen), but don't rely on any of them to carry a field this SDK doesn't
+already know about when the value came from `CortadelClient`.
 
 ## Thread-safety & lifetime
 
 `CortadelClient` is safe to share across threads. Create one per base URL + user and keep it for the
 app's lifetime. Call `Dispose()` only if the client created its own `HttpClient` (i.e. you didn't
 pass one in).
+
+## Supported surface
+
+Only `CortadelClient` and the types declared directly in the `Cortadel.Sdk` namespace (this
+reference) are covered by SemVer. The `Cortadel.Sdk.Generated` namespace is Kiota-generated
+transport code; it's `public` in the assembly today by deliberate, revisitable choice — Kiota can
+generate it `internal` (`--type-access-modifier Internal`), that's just not been done yet — and it
+is unversioned regardless: don't reference it directly, and expect it to change shape (including
+type removals/renames) across any release, including patch releases.

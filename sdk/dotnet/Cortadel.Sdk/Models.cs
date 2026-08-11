@@ -161,10 +161,14 @@ public sealed record SearchHit
     public Dictionary<string, JsonElement?>? Attributes { get; init; }
 
     /// <summary>
-    /// Always <c>null</c>. The generated model backing this hit does not implement
-    /// <c>IAdditionalDataHolder</c>, so nothing ever populates this bag - fields the server adds
-    /// beyond the ones already mapped above are silently dropped before they ever reach this type,
-    /// not captured here. Kept for source compatibility only; do not rely on it.
+    /// Always <c>null</c> on a <see cref="SearchHit"/> returned by <see cref="CortadelClient"/>:
+    /// its pipeline deserializes via the generated <c>HybridSearchResult</c>, which does not
+    /// implement <c>IAdditionalDataHolder</c>, before mapping to this type, so fields the server
+    /// adds beyond the ones already mapped above never reach this bag. (The
+    /// <c>[JsonExtensionData]</c> attribute itself still works as documented if you deserialize
+    /// this DTO directly with <c>System.Text.Json</c>, bypassing <see cref="CortadelClient"/> -
+    /// that path just isn't how any value from this client reaches you.) Kept for source
+    /// compatibility only; do not rely on it for values from <see cref="CortadelClient"/>.
     /// </summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; init; }
 }
@@ -245,10 +249,15 @@ public sealed record ConversationResult
     [JsonPropertyName("no_facts_extracted")] public bool? NoFactsExtracted { get; init; }
 
     /// <summary>
-    /// Always <c>null</c>. The generated model backing this result does not implement
-    /// <c>IAdditionalDataHolder</c>, so nothing ever populates this bag - it cannot recover fields
-    /// the server adds beyond <see cref="Results"/>/<see cref="NoFactsExtracted"/>. Kept for source
-    /// compatibility only; do not rely on it.
+    /// Always <c>null</c> on a <see cref="ConversationResult"/> returned by
+    /// <see cref="CortadelClient"/>: its pipeline deserializes via the generated
+    /// <c>ConversationIngestResponse</c>, which does not implement <c>IAdditionalDataHolder</c>,
+    /// before mapping to this type, so it cannot recover fields the server adds beyond
+    /// <see cref="Results"/>/<see cref="NoFactsExtracted"/>. (The <c>[JsonExtensionData]</c>
+    /// attribute itself still works as documented if you deserialize this DTO directly with
+    /// <c>System.Text.Json</c>, bypassing <see cref="CortadelClient"/> - that path just isn't how
+    /// any value from this client reaches you.) Kept for source compatibility only; do not rely on
+    /// it for values from <see cref="CortadelClient"/>.
     /// </summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Raw { get; init; }
 }
@@ -279,19 +288,28 @@ public sealed record HealthResult
 
     /// <summary>
     /// Per-dependency check details, keyed by dependency name (<c>memgraph</c>, <c>embeddings</c>,
-    /// <c>indexes</c> today). <b>Not actually open-ended</b>: the contract declares this map (and
-    /// each check's own shape) with <c>additionalProperties: false</c>, so the generated model
-    /// silently drops any key it doesn't already know about before this dictionary is even built -
-    /// a dependency check the contract doesn't declare (e.g. a future <c>falkordb</c> entry) or an
-    /// undeclared field on a known check both vanish with no trace, not just go uncaptured.
+    /// <c>indexes</c> today). <b>Not actually open-ended when populated by
+    /// <see cref="CortadelClient"/></b>: its pipeline deserializes the response through the
+    /// generated <c>HealthChecks</c>/<c>MemgraphCheck</c>/<c>EmbeddingCheck</c>/<c>IndexesCheck</c>
+    /// types before mapping into this dictionary, and the contract declares all four with
+    /// <c>additionalProperties: false</c>, so those generated types silently drop any key they
+    /// don't already know about - a dependency check the contract doesn't declare (e.g. a future
+    /// <c>falkordb</c> entry) or an undeclared field on a known check never reaches this dictionary
+    /// at all when the value came from <see cref="CortadelClient"/>. This property itself has no
+    /// such restriction - deserializing this DTO directly with <c>System.Text.Json</c>, bypassing
+    /// <see cref="CortadelClient"/>, preserves arbitrary keys here.
     /// </summary>
     public Dictionary<string, JsonElement>? Checks { get; init; }
 
     /// <summary>
-    /// Always <c>null</c>. The generated model backing this result does not implement
-    /// <c>IAdditionalDataHolder</c>, so nothing ever populates this bag - fields the server adds
-    /// beyond <see cref="Status"/>/<see cref="CheckedAt"/>/<see cref="Checks"/> are silently
-    /// dropped, not captured here. Kept for source compatibility only; do not rely on it.
+    /// Always <c>null</c> on a <see cref="HealthResult"/> returned by <see cref="CortadelClient"/>:
+    /// its pipeline deserializes via the generated <c>HealthResponse</c>, which does not implement
+    /// <c>IAdditionalDataHolder</c>, before mapping to this type, so fields the server adds beyond
+    /// <see cref="Status"/>/<see cref="CheckedAt"/>/<see cref="Checks"/> never reach this bag. (The
+    /// <c>[JsonExtensionData]</c> attribute itself still works as documented if you deserialize
+    /// this DTO directly with <c>System.Text.Json</c>, bypassing <see cref="CortadelClient"/> -
+    /// that path just isn't how any value from this client reaches you.) Kept for source
+    /// compatibility only; do not rely on it for values from <see cref="CortadelClient"/>.
     /// </summary>
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; init; }
 }

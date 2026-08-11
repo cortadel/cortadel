@@ -181,15 +181,22 @@ catch (CortadelException ex)
   when it distilled facts, `NoFactsExtracted = true` when it didn't, never both.
 - `HealthResult` — `Status` (`ok` | `degraded`), `CheckedAt`, plus `Checks` (see caveat below).
 
-**Not actually forward-compatible today.** `SearchHit.Extra`, `ConversationResult.Raw`, and
-`HealthResult.Extra` are `[JsonExtensionData]` bags in name only: the generated types backing those
-three responses don't implement Kiota's `IAdditionalDataHolder`, so nothing ever populates them —
-they read as `null`, always. `HealthResult.Checks` is worse than merely inert: the contract marks the
-checks map (and each individual check) `additionalProperties: false`, so an undeclared dependency
-check or an undeclared field on a known check is dropped by the generated model *before*
-deserialization ever reaches `Checks` — that data doesn't arrive empty, it's actively discarded.
-None of the four members were removed (the public surface is frozen), but don't rely on any of them
-to carry a field this SDK doesn't already know about.
+**Not actually forward-compatible today, from `CortadelClient`.** `SearchHit.Extra`,
+`ConversationResult.Raw`, and `HealthResult.Extra` are `[JsonExtensionData]` bags that work as
+documented only if you deserialize these DTOs directly with `System.Text.Json`, bypassing
+`CortadelClient` entirely. Every value `CortadelClient` itself returns took a different path: its
+pipeline deserializes the response via a Kiota-generated type first (`HybridSearchResult`,
+`ConversationIngestResponse`, `HealthResponse`), none of which implement Kiota's
+`IAdditionalDataHolder`, and only then maps that into the DTO — so from `CortadelClient`, all three
+read as `null`, always. `HealthResult.Checks` is the same story, one level deeper: the contract
+marks the checks map (and each individual check) `additionalProperties: false`, so the
+Kiota-generated types `CortadelClient`'s pipeline deserializes through drop an undeclared dependency
+check or an undeclared field on a known check *before* that data ever reaches `Checks` — again, only
+true for a value that came from `CortadelClient`. `Checks` itself is a plain
+`Dictionary<string, JsonElement>` with no such restriction, so deserializing `HealthResult` directly
+with `System.Text.Json` does preserve arbitrary keys there. None of the four members were removed
+(the public surface is frozen), but don't rely on any of them to carry a field this SDK doesn't
+already know about when the value came from `CortadelClient`.
 
 ## Thread-safety & lifetime
 
@@ -201,6 +208,7 @@ pass one in).
 
 Only `CortadelClient` and the types declared directly in the `Cortadel.Sdk` namespace (this
 reference) are covered by SemVer. The `Cortadel.Sdk.Generated` namespace is Kiota-generated
-transport code; it's `public` in the assembly today, but that's incidental to how it's generated,
-not a supported contract — don't reference it directly, and expect it to change shape (including
+transport code; it's `public` in the assembly today by deliberate, revisitable choice — Kiota can
+generate it `internal` (`--type-access-modifier Internal`), that's just not been done yet — and it
+is unversioned regardless: don't reference it directly, and expect it to change shape (including
 type removals/renames) across any release, including patch releases.

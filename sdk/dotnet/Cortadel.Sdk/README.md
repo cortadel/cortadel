@@ -49,8 +49,9 @@ catch (CortadelException ex) { Console.WriteLine($"{ex.StatusCode} {ex.Code}: {e
 - Reuse a single `CortadelClient` (it wraps one `HttpClient`). Optionally pass your own `HttpClient`.
 - Every call is scoped to the `userId` you construct the client with.
 - The `Cortadel.Sdk.Generated` namespace is Kiota-generated transport plumbing, not part of this
-  package's supported API. It's `public` today (a limitation of how it's generated, not a design
-  choice) but unversioned: a future contract regeneration can rename or remove any type in it
+  package's supported API. It's `public` today by deliberate, revisitable choice — Kiota supports
+  generating it `internal` (`--type-access-modifier Internal`), that's just not been done yet — and
+  it's unversioned regardless: a future contract regeneration can rename or remove any type in it
   without that counting as a breaking change to `Cortadel.Sdk`. Only `Cortadel.Sdk.CortadelClient`
   and the types in `Cortadel.Sdk` (this namespace) are covered by SemVer.
 - Full guide: [.NET SDK reference](https://github.com/cortadel/cortadel/blob/main/docs/sdk-dotnet.md).
