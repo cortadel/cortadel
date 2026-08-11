@@ -153,26 +153,50 @@ jobs:
       # Per task-4-report.md's "Provisioning requirements", the no-LLM tier needs only a
       # reachable Memgraph (GetAsync/ListAsync/DeleteAsync all issue store queries even for a
       # lookup that finds nothing) and explicitly *no* LLM or embedding provider.
-      # --experimental-enabled=text-search matches docker-compose.yml's own flag (BM25 full-text
-      # search) — kept for parity even though none of this tier's 4 tests search.
+      #
+      # No --experimental-enabled=text-search here (docker-compose.yml still carries it, for the
+      # full tier's parity with the documented quickstart). On this job's first real run, the
+      # freshly-pulled `:latest` memgraph-mage image rejected that flag outright:
+      # "ERROR: failed validation of new value 'text-search' for flag 'experimental_enabled'" —
+      # confirmed against Memgraph's own docs: text search graduated OUT of experimental status as
+      # of Memgraph 3.6, so `text-search` is no longer a valid member of the experimental-features
+      # enum and the flag now fails validation instead of being a harmless no-op. That failure is
+      # fatal at startup (gflags-style validators abort the process), and memgraph never got far
+      # enough to bind its Bolt port — `docker logs memgraph` showed only that error plus one
+      # deprecation warning, nothing from actual startup. None of this tier's 4 tests touch text
+      # search, so the flag is dropped rather than chasing the currently-valid enum spelling.
       - name: Start Memgraph
         run: |
           docker network create cortadel-ci
           docker run -d --name memgraph --network cortadel-ci -p 7687:7687 \
-            memgraph/memgraph-mage:latest --experimental-enabled=text-search
+            memgraph/memgraph-mage:latest
 
-      - name: Wait for Memgraph's bolt port
+      # A bare TCP connect to 127.0.0.1:7687 (the previous version of this check) is a
+      # false-positive trap: `-p 7687:7687` makes Docker's host-side port-publishing proxy accept
+      # the TCP handshake as soon as the port mapping exists, regardless of whether memgraph
+      # itself ever binds 7687 *inside* the container - that path never touches the actual
+      # process. On this job's first real run, memgraph's process had already died (see the "Start
+      # Memgraph" comment above) yet this check still reported "accepting connections" instantly,
+      # because it was only ever talking to the docker-proxy, not memgraph.
+      #
+      # mgconsole ships inside memgraph-mage for exactly this reason: it speaks real Bolt, and
+      # `docker exec` runs it from inside the container's own namespace, so it only succeeds once
+      # memgraph can actually execute a query - not just once *something* answers a SYN. This is
+      # Memgraph's own documented container health-check idiom (`echo 'RETURN 0;' | mgconsole`).
+      # The loop below is a retry-with-poll-interval, not a blind sleep: no fixed wait is added,
+      # and it exits the moment the query succeeds.
+      - name: Wait for Memgraph to be genuinely ready (Bolt-level, not just TCP)
         run: |
           for i in $(seq 1 45); do
-            if (exec 3<>/dev/tcp/127.0.0.1/7687) 2>/dev/null; then
-              exec 3>&- 3<&-
-              echo "memgraph is accepting connections on 7687"
+            if docker exec memgraph sh -c "echo 'RETURN 0;' | mgconsole" >/tmp/mg-check.log 2>&1; then
+              echo "memgraph answers Bolt queries"
               exit 0
             fi
-            echo "waiting for memgraph ($i/45)..."
+            echo "waiting for memgraph to answer a Bolt query ($i/45)..."
             sleep 2
           done
-          echo "::error::memgraph never opened its bolt port"
+          echo "::error::memgraph never answered a Bolt query — last attempt's output:"
+          cat /tmp/mg-check.log 2>/dev/null || true
           docker logs memgraph
           exit 1
 
@@ -189,23 +213,36 @@ jobs:
       # HealthController legitimately returns 503 here — there is no embedding provider — and the
       # conformance suite's Health_ReportsAStatus test asserts `ok | degraded` for exactly this
       # reason. A bare `curl -f` wait-loop would treat that 503 as failure and burn its full
-      # timeout without a single test ever running (the bug the earlier draft plan had). This
-      # checks the status code by hand and accepts either 200 or 503.
-      - name: Wait for Cortadel health (tolerates 503/degraded)
+      # timeout without a single test ever running (the bug the earlier draft plan had).
+      #
+      # But status-code-only gating (200 or 503, accept-any-503) is exactly as blind as `curl -f`
+      # in the other direction: 503 is *also* what HealthController returns when the database
+      # check fails, and this job's first real run proved it — the gate accepted a 503 whose body
+      # had checks.memgraph.ok=false from the very first response, Cortadel came up regardless,
+      # and every DB-touching test then failed with the driver-level error already recorded in
+      # checks.memgraph.error. So this parses the response body (field names are spec/openapi.json's
+      # HealthResponse → checks → MemgraphCheck.ok / EmbeddingCheck.ok, not guessed) and requires
+      # checks.memgraph.ok == true specifically, while still tolerating checks.embeddings.ok being
+      # false — this tier deliberately runs with no embedding provider.
+      - name: Wait for Cortadel health (requires the database check; tolerates embeddings being down)
         run: |
-          status="000"
+          db_ok="false"
           for i in $(seq 1 60); do
             status=$(curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:3001/api/health || echo "000")
-            if [ "$status" = "200" ] || [ "$status" = "503" ]; then
-              echo "cortadel answered /api/health with $status:"
+            db_ok=$(jq -r '.checks.memgraph.ok // false' /tmp/health.json 2>/dev/null || echo false)
+            db_ok="${db_ok:-false}"  # jq exits 0 with empty stdout on a truly empty body
+            if [ "$db_ok" = "true" ]; then
+              echo "cortadel's database check is healthy (http $status); full body:"
               cat /tmp/health.json; echo
               break
             fi
-            echo "waiting for cortadel ($status) ($i/60)..."
+            echo "waiting for cortadel's database check (http $status, checks.memgraph.ok=$db_ok) ($i/60)..."
             sleep 3
           done
-          if [ "$status" != "200" ] && [ "$status" != "503" ]; then
-            echo "::error::cortadel never answered /api/health with 200 or 503 (last status: $status)"
+          if [ "$db_ok" != "true" ]; then
+            echo "::error::cortadel's database check never reported ok=true. Last /api/health body:"
+            cat /tmp/health.json 2>/dev/null || echo "(no response ever captured)"
+            echo
             docker logs cortadel
             exit 1
           fi
