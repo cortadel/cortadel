@@ -180,7 +180,11 @@ public sealed class CortadelClient : IDisposable
         }
         // Trap: the wire-body ApiError.Status is nullable and not guaranteed present; the
         // transport-level ResponseStatusCode (inherited from ApiException) is always populated.
-        catch (GM.ApiError e) when (e.ResponseStatusCode == 404)
+        // This must filter on the ApiException base, not the generated ApiError subtype: when
+        // the 404 body can't be deserialized into ApiError at all (e.g. an empty body with no
+        // Content-Type - exactly what ASP.NET Core returns for an unmatched route), Kiota still
+        // throws an ApiException with the real ResponseStatusCode, just not the ApiError subtype.
+        catch (ApiException e) when (e.ResponseStatusCode == 404)
         {
             return null;
         }
@@ -188,7 +192,22 @@ public sealed class CortadelClient : IDisposable
         {
             throw ToCortadelException(e);
         }
+        catch (GM.ValidationProblemDetails e)
+        {
+            throw ToCortadelException(e);
+        }
         catch (ApiException e)
+        {
+            throw ToCortadelException(e);
+        }
+        // Fallback: a non-JSON/unparseable error body (e.g. a proxy's text/html error page)
+        // makes Kiota throw a bare InvalidOperationException before it ever constructs an
+        // ApiException, so no status code survives to be checked above. We cannot safely infer
+        // "this was a 404" from a wholly opaque failure - silently returning null could just as
+        // easily hide a real 500 - so this still throws (as a CortadelException, not a leaking
+        // framework exception) rather than returning null. See the task report's known
+        // limitations for this residual gap.
+        catch (Exception e) when (e is not CortadelException)
         {
             throw ToCortadelException(e);
         }
@@ -223,6 +242,12 @@ public sealed class CortadelClient : IDisposable
         {
             throw ToCortadelException(e);
         }
+        // Same non-JSON-body fallback as ExecuteAsync/GetAsync - a proxy/gateway fronting the
+        // health endpoint can return an unparseable error body too.
+        catch (Exception e) when (e is not CortadelException)
+        {
+            throw ToCortadelException(e);
+        }
     }
 
     /// <inheritdoc/>
@@ -253,6 +278,18 @@ public sealed class CortadelClient : IDisposable
         {
             throw ToCortadelException(e);
         }
+        // Fallback: for statuses in the operation's errorMapping, Kiota parses the body before
+        // throwing - and for a content type with no registered parser (e.g. "text/html" from a
+        // reverse proxy or WAF error page, or "text/json" - anything that isn't exactly what
+        // this operation's declared error schemas expect), ParseNodeFactoryRegistry throws a
+        // bare InvalidOperationException instead of an ApiException. That must not escape this
+        // library as an unrelated framework exception - translate it into a CortadelException
+        // too, without a resolvable status code (see the task report's known limitations: the
+        // real HTTP status is not recoverable from this exception).
+        catch (Exception e) when (e is not CortadelException)
+        {
+            throw ToCortadelException(e);
+        }
     }
 
     private static CortadelException ToCortadelException(GM.ApiError e) =>
@@ -263,6 +300,14 @@ public sealed class CortadelClient : IDisposable
 
     private static CortadelException ToCortadelException(ApiException e) =>
         new(e.ResponseStatusCode, "http_error", string.IsNullOrEmpty(e.Message) ? "The request failed." : e.Message);
+
+    /// <summary>
+    /// Last-resort translation for a failure that never became an <see cref="ApiException"/> at
+    /// all (see the fallback catch clauses above) - there is no transport status code to recover
+    /// here, so 0 is used as an explicit "unknown" sentinel rather than guessing one.
+    /// </summary>
+    private static CortadelException ToCortadelException(Exception e) =>
+        new(0, "transport_error", string.IsNullOrEmpty(e.Message) ? "The request failed." : e.Message);
 
     /// <summary>
     /// A model-state 400 carries field-level errors in <see cref="GM.ValidationProblemDetails.Errors"/>

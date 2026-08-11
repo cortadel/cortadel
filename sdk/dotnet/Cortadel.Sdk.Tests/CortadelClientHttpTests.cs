@@ -31,6 +31,14 @@ public class CortadelClientHttpTests
         Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
     };
 
+    private static HttpResponseMessage Html(HttpStatusCode status, string body) => new(status)
+    {
+        Content = new StringContent(body, System.Text.Encoding.UTF8, "text/html"),
+    };
+
+    /// <summary>Empty body, no Content-Type - exactly what ASP.NET Core returns for an unmatched route.</summary>
+    private static HttpResponseMessage EmptyNoContentType(HttpStatusCode status) => new(status);
+
     [Fact]
     public async Task Auth_AttachesBearerHeaderPerRequest_WithoutMutatingCallerHttpClient()
     {
@@ -57,16 +65,21 @@ public class CortadelClientHttpTests
     {
         // BaseAddress and Timeout setters both throw InvalidOperationException once an HttpClient
         // has sent a request. The old client set both unconditionally - reproduce that state and
-        // confirm construction (which must not touch them) succeeds anyway.
+        // confirm construction (which must not touch them) succeeds AND leaves them exactly as
+        // the caller set them, not merely "didn't throw".
         var handler = new FakeHandler(_ => Task.FromResult(Json(HttpStatusCode.OK, "{}")));
-        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://prior.example/") };
+        var priorBaseAddress = new Uri("http://prior.example/");
+        var priorTimeout = TimeSpan.FromSeconds(7);
+        using var httpClient = new HttpClient(handler) { BaseAddress = priorBaseAddress, Timeout = priorTimeout };
         await httpClient.GetAsync("probe");
 
         var ex = Record.Exception(() => new CortadelClient(
-            new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" },
+            new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice", Timeout = TimeSpan.FromSeconds(99) },
             httpClient));
 
         Assert.Null(ex);
+        Assert.Equal(priorBaseAddress, httpClient.BaseAddress);
+        Assert.Equal(priorTimeout, httpClient.Timeout);
     }
 
     [Fact]
@@ -241,10 +254,119 @@ public class CortadelClientHttpTests
     }
 
     [Fact]
-    public void Constructor_WithoutAnApiKey_SendsNoAuthorizationHeader()
+    public async Task Constructor_WithoutAnApiKey_SendsNoAuthorizationHeader()
     {
         // Anonymous access must remain possible - the server allows it when auth is disabled.
-        using var cortadel = new CortadelClient("http://localhost:3001", "alice");
-        Assert.NotNull(cortadel); // construction alone must not require/attach credentials
+        // This is a credential test: it must actually issue a request and inspect the header,
+        // not just assert construction succeeded (which would pass even with a bearer header
+        // attached on every call).
+        var handler = new FakeHandler(_ => Task.FromResult(Json(HttpStatusCode.OK,
+            """{"status":"ok"}""")));
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(
+            new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" },
+            httpClient);
+
+        await cortadel.HealthAsync();
+
+        Assert.Null(handler.LastRequest!.Headers.Authorization);
+    }
+
+    // ── Non-success responses that never become a structured ApiError body ─────────────────
+
+    [Fact]
+    public async Task GetAsync_Returns404AsNull_WhenTheBodyIsEmptyWithNoContentType()
+    {
+        // This is what ASP.NET Core actually returns for an unmatched route: Kiota cannot
+        // deserialize an ApiError from it, so it falls back to throwing the plain ApiException
+        // base type - which still carries the real ResponseStatusCode, unlike the ApiError
+        // subtype the original filter checked.
+        var handler = new FakeHandler(_ => Task.FromResult(EmptyNoContentType(HttpStatusCode.NotFound)));
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        var result = await cortadel.GetAsync("missing-id");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task GetAsync_Surfaces404WithAnUnparseableBodyAsCortadelException_NotAFrameworkException()
+    {
+        // A reverse proxy / WAF error page (text/html) has no registered Kiota parser, so the
+        // transport throws a bare InvalidOperationException before it can construct any
+        // ApiException - the real status code is destroyed at that point, so this cannot be
+        // told apart from a 400/500 with the same html body and must not be assumed to be a 404.
+        // The contract this test pins down is narrower than "returns null": it must not leak an
+        // InvalidOperationException (or any non-CortadelException) out of the public API.
+        var handler = new FakeHandler(_ => Task.FromResult(Html(HttpStatusCode.NotFound, "<html>Not Found</html>")));
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        var ex = await Assert.ThrowsAsync<CortadelException>(() => cortadel.GetAsync("m1"));
+
+        Assert.Equal("transport_error", ex.Code);
+    }
+
+    [Fact]
+    public async Task AddAsync_Surfaces400WithAnUnparseableHtmlBodyAsCortadelException_NotAFrameworkException()
+    {
+        // Same defect class as GetAsync above, exercised through the shared ExecuteAsync path
+        // used by AddAsync/AddConversationAsync/SearchAsync/ListAsync/DeleteAsync.
+        var handler = new FakeHandler(_ => Task.FromResult(Html(HttpStatusCode.BadRequest, "<html>Bad Request</html>")));
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        var ex = await Assert.ThrowsAsync<CortadelException>(() => cortadel.AddAsync("hello"));
+
+        Assert.Equal("transport_error", ex.Code);
+    }
+
+    [Fact]
+    public async Task HealthAsync_Surfaces503WithAnUnparseableHtmlBodyAsCortadelException_NotAFrameworkException()
+    {
+        // 503 is the one status Health_Check's errorMapping declares (-> HealthResponse), so
+        // Kiota attempts to parse this html body and fails before constructing an ApiException -
+        // same defect class as the GetAsync/AddAsync cases above, reached through HealthAsync's
+        // bespoke catch block instead of the shared ExecuteAsync helper.
+        var handler = new FakeHandler(_ => Task.FromResult(Html(HttpStatusCode.ServiceUnavailable, "<html>Gateway error</html>")));
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        var ex = await Assert.ThrowsAsync<CortadelException>(() => cortadel.HealthAsync());
+
+        Assert.Equal("transport_error", ex.Code);
+    }
+
+    [Fact]
+    public async Task HealthAsync_Surfaces500FromAnUnmappedStatusAsCortadelException()
+    {
+        // 500 is not declared in Health_Check's errorMapping at all (only 503 is) - Kiota
+        // short-circuits before attempting to parse the body, so the real status survives even
+        // with an html body. Contrast with the 503 case above.
+        var handler = new FakeHandler(_ => Task.FromResult(Html(HttpStatusCode.InternalServerError, "<html>Gateway error</html>")));
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        var ex = await Assert.ThrowsAsync<CortadelException>(() => cortadel.HealthAsync());
+
+        Assert.Equal(500, ex.StatusCode);
+        Assert.Equal("http_error", ex.Code);
+    }
+
+    [Fact]
+    public async Task ListAsync_Surfaces502FromAnUnmappedGatewayStatusAsCortadelException()
+    {
+        // Unmapped statuses (not declared for this operation's errorMapping) already work today -
+        // Kiota short-circuits before attempting to parse the body, so the real status survives.
+        // Pinned here as a contrast to the unparseable-body cases above.
+        var handler = new FakeHandler(_ => Task.FromResult(Html(HttpStatusCode.BadGateway, "<html>Bad Gateway</html>")));
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        var ex = await Assert.ThrowsAsync<CortadelException>(() => cortadel.ListAsync());
+
+        Assert.Equal(502, ex.StatusCode);
+        Assert.Equal("http_error", ex.Code);
     }
 }
