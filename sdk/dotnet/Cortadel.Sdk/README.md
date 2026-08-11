@@ -37,7 +37,9 @@ await cortadel.DeleteAsync(new[] { page.Items[0].Id });
 
 ## Errors
 
-Non-success responses throw `CortadelException` with `.StatusCode` and `.Code`.
+Non-success responses throw `CortadelException` with `.StatusCode` and `.Code` — **except** a
+degraded health check (HTTP 503 with a `{"status":"degraded",...}` body from `HealthAsync`), which
+is returned like any other value (`Status == "degraded"`) instead of throwing.
 
 ```csharp
 try { await cortadel.AddAsync(""); }

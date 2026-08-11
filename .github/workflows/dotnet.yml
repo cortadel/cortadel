@@ -61,15 +61,19 @@ on:
 
 # No workflow-level concurrency block: a single group covering the whole file would mean a new
 # push cancels the *entire in-flight run*, including a same-run conformance-full job mid-download
-# of ~9.6 GB of models. Each job below gets its own group instead (keyed by github.job, so build/
-# generation-drift/conformance-base/conformance-full never contend with each other), which keeps
-# the original "a newer push on the same ref supersedes a redundant older run of the same job"
-# behavior per-job, without one job's cancellation taking any other job down with it.
+# of ~9.6 GB of models. Each job below gets its own group instead, keyed by a literal per-job name
+# (dotnet-build-/-drift-/-conformance-base-/-conformance-full-<ref>), so build/generation-drift/
+# conformance-base/conformance-full never contend with each other. Note: the group literal can't be
+# keyed by github.job — that context is only populated within a job's `steps`, and is null anywhere
+# else including a job-level `concurrency:` block, so using it there silently collapses every job to
+# the same empty-suffixed group (verified the hard way: an earlier revision of this file did exactly
+# that). This keeps the original "a newer push on the same ref supersedes a redundant older run of
+# the same job" behavior per-job, without one job's cancellation taking any other job down with it.
 
 jobs:
   build:
     concurrency:
-      group: dotnet-${{ github.job }}-${{ github.ref }}
+      group: dotnet-build-${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     # net8.0 test binary on a runner whose only installed runtime is net10.0 - see the file header
@@ -87,7 +91,7 @@ jobs:
 
   generation-drift:
     concurrency:
-      group: dotnet-${{ github.job }}-${{ github.ref }}
+      group: dotnet-drift-${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -129,7 +133,7 @@ jobs:
   conformance-base:
     name: conformance (base tier — no LLM, no embeddings)
     concurrency:
-      group: dotnet-${{ github.job }}-${{ github.ref }}
+      group: dotnet-conformance-base-${{ github.ref }}
       cancel-in-progress: true
     # PR/push/manual; excluded from the weekly schedule, which exists only to drive
     # conformance-full.
@@ -225,13 +229,14 @@ jobs:
   conformance-full:
     name: conformance (full tier — LLM + embeddings)
     concurrency:
-      group: dotnet-${{ github.job }}-${{ github.ref }}
+      group: dotnet-conformance-full-${{ github.ref }}
       cancel-in-progress: true
     # Manual or weekly only — never on PR/push. Pulls a ~9.6 GB LLM plus an embedding model via
     # Ollama; too slow/expensive to gate every PR (the repo owner's ruling to split the gate —
-    # see task-5-brief.md). Its own concurrency group (above) means a push to main that triggers
-    # build/generation-drift/conformance-base can never cancel an in-flight run of this job - only
-    # a second conformance-full run on the same ref can (self-supersession, not cross-job).
+    # see task-5-brief.md). Its own literal concurrency group (dotnet-conformance-full-<ref>, above)
+    # means a push to main that triggers build/generation-drift/conformance-base can never cancel an
+    # in-flight run of this job - only a second conformance-full run on the same ref can
+    # (self-supersession, not cross-job).
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 90
