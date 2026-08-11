@@ -369,4 +369,64 @@ public class CortadelClientHttpTests
         Assert.Equal(502, ex.StatusCode);
         Assert.Equal("http_error", ex.Code);
     }
+
+    // ── Cancellation must not be reclassified as a server error ─────────────────────────────
+
+    [Fact]
+    public async Task SearchAsync_PropagatesCancellationInsteadOfWrappingItAsCortadelException()
+    {
+        // HttpClient.SendAsync throws TaskCanceledException (an OperationCanceledException) when
+        // a caller's CancellationToken fires - and surfaces a request timeout the same way. The
+        // fallback that turns an unparseable-body InvalidOperationException into a
+        // CortadelException must not also catch this: every method on this client takes a
+        // CancellationToken and callers rely on the standard .NET idiom of catching (or letting
+        // propagate) OperationCanceledException, not a library-specific exception type.
+        var handler = new FakeHandler(_ => throw new TaskCanceledException());
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cortadel.SearchAsync("pets"));
+    }
+
+    [Fact]
+    public async Task GetAsync_PropagatesCancellationInsteadOfWrappingItAsCortadelException()
+    {
+        // Same guarantee on GetAsync's bespoke try/catch (distinct from the shared ExecuteAsync
+        // path exercised above), which also has a 404-vs-everything-else filter to get wrong.
+        var handler = new FakeHandler(_ => throw new TaskCanceledException());
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cortadel.GetAsync("m1"));
+    }
+
+    [Fact]
+    public async Task HealthAsync_PropagatesCancellationInsteadOfWrappingItAsCortadelException()
+    {
+        // Same guarantee on HealthAsync's bespoke try/catch (distinct from both paths above).
+        var handler = new FakeHandler(_ => throw new TaskCanceledException());
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cortadel.HealthAsync());
+    }
+
+    [Fact]
+    public async Task SearchAsync_PropagatesCancellationRequestedThroughTheCallersToken()
+    {
+        // End-to-end version of the above: actually cancel the token the caller passed in,
+        // rather than a handler that unconditionally throws, to prove the token genuinely
+        // threads through the generated transport down to the point that observes it.
+        using var cts = new CancellationTokenSource();
+        var handler = new FakeHandler(_ =>
+        {
+            cts.Cancel();
+            throw new TaskCanceledException();
+        });
+        using var httpClient = new HttpClient(handler);
+        using var cortadel = new CortadelClient(new CortadelClientOptions { BaseUrl = "http://localhost:3001", UserId = "alice" }, httpClient);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cortadel.SearchAsync("pets", cancellationToken: cts.Token));
+        Assert.True(cts.IsCancellationRequested);
+    }
 }

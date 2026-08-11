@@ -171,12 +171,12 @@ public sealed class CortadelClient : IDisposable
     /// <summary>Fetch a single memory by id. Returns <c>null</c> if it does not exist.</summary>
     public async Task<MemoryDetail?> GetAsync(string memoryId, CancellationToken cancellationToken = default)
     {
+        GM.MemoryDetailResponse? res;
         try
         {
-            var res = await _generated.Api.V1.Memories[memoryId]
+            res = await _generated.Api.V1.Memories[memoryId]
                 .GetAsync(config => config.QueryParameters.UserId = _opts.UserId, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            return res is null ? null : MapDetail(res);
         }
         // Trap: the wire-body ApiError.Status is nullable and not guaranteed present; the
         // transport-level ResponseStatusCode (inherited from ApiException) is always populated.
@@ -201,16 +201,21 @@ public sealed class CortadelClient : IDisposable
             throw ToCortadelException(e);
         }
         // Fallback: a non-JSON/unparseable error body (e.g. a proxy's text/html error page)
-        // makes Kiota throw a bare InvalidOperationException before it ever constructs an
-        // ApiException, so no status code survives to be checked above. We cannot safely infer
-        // "this was a 404" from a wholly opaque failure - silently returning null could just as
-        // easily hide a real 500 - so this still throws (as a CortadelException, not a leaking
-        // framework exception) rather than returning null. See the task report's known
-        // limitations for this residual gap.
-        catch (Exception e) when (e is not CortadelException)
+        // makes Kiota's ParseNodeFactoryRegistry throw a bare InvalidOperationException before
+        // it ever constructs an ApiException, so no status code survives to be checked above. We
+        // cannot safely infer "this was a 404" from a wholly opaque failure - silently returning
+        // null could just as easily hide a real 500 - so this still throws (as a
+        // CortadelException, not a leaking framework exception) rather than returning null. See
+        // the task report's known limitations for this residual gap.
+        // Deliberately narrow (not a bare `catch (Exception)`): OperationCanceledException /
+        // TaskCanceledException from a caller's CancellationToken firing (or an HttpClient
+        // timeout, which surfaces the same way) must propagate untouched, matching the standard
+        // .NET cancellation idiom every caller of an `Async` method with a token relies on.
+        catch (InvalidOperationException e)
         {
             throw ToCortadelException(e);
         }
+        return res is null ? null : MapDetail(res);
     }
 
     /// <summary>Delete one or more memories. Returns the server's confirmation message.</summary>
@@ -224,11 +229,10 @@ public sealed class CortadelClient : IDisposable
     /// <summary>Server health (database + embedding provider reachability).</summary>
     public async Task<HealthResult> HealthAsync(CancellationToken cancellationToken = default)
     {
+        GM.HealthResponse? res;
         try
         {
-            var res = await _generated.Api.Health.GetAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (res is null) throw new CortadelException(502, "empty_response", "The server returned an empty response.");
-            return MapHealth(res);
+            res = await _generated.Api.Health.GetAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         // Trap: the contract $refs HealthResponse for both the 200 and the 503 body, so Kiota
         // error-maps the 503 and a degraded server throws its own success-shaped type rather
@@ -243,11 +247,14 @@ public sealed class CortadelClient : IDisposable
             throw ToCortadelException(e);
         }
         // Same non-JSON-body fallback as ExecuteAsync/GetAsync - a proxy/gateway fronting the
-        // health endpoint can return an unparseable error body too.
-        catch (Exception e) when (e is not CortadelException)
+        // health endpoint can return an unparseable error body too. Deliberately narrow: see the
+        // comment on the equivalent catch in GetAsync for why this must not be `catch (Exception)`.
+        catch (InvalidOperationException e)
         {
             throw ToCortadelException(e);
         }
+        if (res is null) throw new CortadelException(502, "empty_response", "The server returned an empty response.");
+        return MapHealth(res);
     }
 
     /// <inheritdoc/>
@@ -261,10 +268,10 @@ public sealed class CortadelClient : IDisposable
 
     private static async Task<T> ExecuteAsync<T>(Func<Task<T?>> call) where T : class
     {
+        T? result;
         try
         {
-            var result = await call().ConfigureAwait(false);
-            return result ?? throw new CortadelException(502, "empty_response", "The server returned an empty response.");
+            result = await call().ConfigureAwait(false);
         }
         catch (GM.ValidationProblemDetails e)
         {
@@ -286,10 +293,15 @@ public sealed class CortadelClient : IDisposable
         // library as an unrelated framework exception - translate it into a CortadelException
         // too, without a resolvable status code (see the task report's known limitations: the
         // real HTTP status is not recoverable from this exception).
-        catch (Exception e) when (e is not CortadelException)
+        // Deliberately narrow (not a bare `catch (Exception)`): OperationCanceledException /
+        // TaskCanceledException from a caller's CancellationToken firing (or an HttpClient
+        // timeout, which surfaces the same way) must propagate untouched, matching the standard
+        // .NET cancellation idiom every caller of an `Async` method with a token relies on.
+        catch (InvalidOperationException e)
         {
             throw ToCortadelException(e);
         }
+        return result ?? throw new CortadelException(502, "empty_response", "The server returned an empty response.");
     }
 
     private static CortadelException ToCortadelException(GM.ApiError e) =>
@@ -302,11 +314,16 @@ public sealed class CortadelClient : IDisposable
         new(e.ResponseStatusCode, "http_error", string.IsNullOrEmpty(e.Message) ? "The request failed." : e.Message);
 
     /// <summary>
-    /// Last-resort translation for a failure that never became an <see cref="ApiException"/> at
-    /// all (see the fallback catch clauses above) - there is no transport status code to recover
-    /// here, so 0 is used as an explicit "unknown" sentinel rather than guessing one.
+    /// Last-resort translation for the one failure mode that never becomes an
+    /// <see cref="ApiException"/>: <c>ParseNodeFactoryRegistry</c> throwing
+    /// <see cref="InvalidOperationException"/> for a response content type it has no parser for
+    /// (see the fallback catch clauses above). There is no transport status code to recover here,
+    /// so 0 is used as an explicit "unknown" sentinel rather than guessing one. The parameter type
+    /// is deliberately this narrow, not <see cref="Exception"/>: it exists specifically so the
+    /// fallback catch clauses can stay narrow too (never a bare `catch (Exception)`, which would
+    /// also swallow <see cref="OperationCanceledException"/> from a caller's cancellation token).
     /// </summary>
-    private static CortadelException ToCortadelException(Exception e) =>
+    private static CortadelException ToCortadelException(InvalidOperationException e) =>
         new(0, "transport_error", string.IsNullOrEmpty(e.Message) ? "The request failed." : e.Message);
 
     /// <summary>
