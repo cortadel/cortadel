@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Memgraph database health check result.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class MemgraphCheck : IParsable
+    internal partial class MemgraphCheck : IParsable
     {
         /// <summary>Error message if the check failed.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

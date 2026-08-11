@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Hybrid search request.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class SearchMemoriesRequest : IParsable
+    internal partial class SearchMemoriesRequest : IParsable
     {
         /// <summary>Application name for access logging.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

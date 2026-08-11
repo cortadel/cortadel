@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Embedding provider health check result.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class EmbeddingCheck : IParsable
+    internal partial class EmbeddingCheck : IParsable
     {
         /// <summary>Embedding vector dimension.</summary>
         public int? Dim { get; set; }

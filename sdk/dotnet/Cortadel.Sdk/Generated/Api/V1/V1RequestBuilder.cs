@@ -13,7 +13,7 @@ namespace Cortadel.Sdk.Generated.Api.V1
     /// Builds and executes requests for operations under \api\v1
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class V1RequestBuilder : BaseRequestBuilder
+    internal partial class V1RequestBuilder : BaseRequestBuilder
     {
         /// <summary>The memories property</summary>
         public global::Cortadel.Sdk.Generated.Api.V1.Memories.MemoriesRequestBuilder Memories

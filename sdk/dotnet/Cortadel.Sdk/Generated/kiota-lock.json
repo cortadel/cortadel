@@ -4,7 +4,7 @@
   "lockFileVersion": "1.0.0",
   "kiotaVersion": "1.34.1",
   "clientClassName": "CortadelApiClient",
-  "typeAccessModifier": "Public",
+  "typeAccessModifier": "Internal",
   "clientNamespaceName": "Cortadel.Sdk.Generated",
   "language": "CSharp",
   "usesBackingStore": false,

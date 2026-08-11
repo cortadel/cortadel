@@ -15,7 +15,7 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories.Item
     /// Builds and executes requests for operations under \api\v1\memories\{memoryId}
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class WithMemoryItemRequestBuilder : BaseRequestBuilder
+    internal partial class WithMemoryItemRequestBuilder : BaseRequestBuilder
     {
         /// <summary>
         /// Instantiates a new <see cref="global::Cortadel.Sdk.Generated.Api.V1.Memories.Item.WithMemoryItemRequestBuilder"/> and sets the default values.
@@ -94,7 +94,7 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories.Item
         /// Get a single memory by its identifier.
         /// </summary>
         [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-        public partial class WithMemoryItemRequestBuilderGetQueryParameters 
+        internal partial class WithMemoryItemRequestBuilderGetQueryParameters 
         {
             /// <summary>User identifier (falls back to header).</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

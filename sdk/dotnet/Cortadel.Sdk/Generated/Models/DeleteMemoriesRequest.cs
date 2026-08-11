@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Delete one or more memories.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class DeleteMemoriesRequest : IParsable
+    internal partial class DeleteMemoriesRequest : IParsable
     {
         /// <summary>List of memory IDs to delete.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

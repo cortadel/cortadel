@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Search results response.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class SearchResponse : IParsable
+    internal partial class SearchResponse : IParsable
     {
         /// <summary>The original search query string.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

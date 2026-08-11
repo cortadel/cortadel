@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Vector-index status from the startup embedding-guard report (informational — never fails health).
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class IndexesCheck : IParsable
+    internal partial class IndexesCheck : IParsable
     {
         /// <summary>Introspection error captured at startup, if any.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

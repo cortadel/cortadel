@@ -15,7 +15,7 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories.FromConversation
     /// Builds and executes requests for operations under \api\v1\memories\from-conversation
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class FromConversationRequestBuilder : BaseRequestBuilder
+    internal partial class FromConversationRequestBuilder : BaseRequestBuilder
     {
         /// <summary>
         /// Instantiates a new <see cref="global::Cortadel.Sdk.Generated.Api.V1.Memories.FromConversation.FromConversationRequestBuilder"/> and sets the default values.

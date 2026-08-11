@@ -18,7 +18,7 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories
     /// Builds and executes requests for operations under \api\v1\memories
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class MemoriesRequestBuilder : BaseRequestBuilder
+    internal partial class MemoriesRequestBuilder : BaseRequestBuilder
     {
         /// <summary>The fromConversation property</summary>
         public global::Cortadel.Sdk.Generated.Api.V1.Memories.FromConversation.FromConversationRequestBuilder FromConversation
@@ -221,7 +221,7 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories
         /// List memories with pagination, filtering, and optional text search.
         /// </summary>
         [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-        public partial class MemoriesRequestBuilderGetQueryParameters 
+        internal partial class MemoriesRequestBuilderGetQueryParameters 
         {
             /// <summary>Optional app identifier to filter by.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

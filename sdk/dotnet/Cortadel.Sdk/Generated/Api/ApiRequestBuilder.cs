@@ -14,7 +14,7 @@ namespace Cortadel.Sdk.Generated.Api
     /// Builds and executes requests for operations under \api
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class ApiRequestBuilder : BaseRequestBuilder
+    internal partial class ApiRequestBuilder : BaseRequestBuilder
     {
         /// <summary>The health property</summary>
         public global::Cortadel.Sdk.Generated.Api.Health.HealthRequestBuilder Health

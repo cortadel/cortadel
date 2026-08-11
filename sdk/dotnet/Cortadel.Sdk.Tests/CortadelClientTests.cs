@@ -56,9 +56,11 @@ public class CortadelClientTests
         var leaks = new List<string>();
 
         // The generated transport is excluded as a *root* to scan from (its own internals are
-        // allowed to reference Kiota/itself freely - see README's "public today by deliberate,
-        // revisitable choice"), but it is still a valid *destination*: any leak into it from a
-        // facade-side type below is exactly what this test exists to catch.
+        // allowed to reference Kiota/itself freely). Since the generated types are now emitted
+        // `internal` (--type-access-modifier Internal), GetExportedTypes() already omits them, so
+        // this filter is now a no-op for that reason - kept defensively in case a future
+        // regeneration flips the modifier back. It is still a valid *destination*: any leak into it
+        // from a facade-side type below is exactly what this test exists to catch.
         var publicApiRoots = assembly.GetExportedTypes().Where(t => !IsGeneratedOrKiota(t));
 
         foreach (var root in publicApiRoots)

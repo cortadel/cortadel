@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Distill a multi-turn conversation into atomic facts and store each one, applyingthe same intent classification, deduplication, and background entity extractionas bulk/create. On empty extraction, nothing is stored.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class AddConversationRequest : IParsable
+    internal partial class AddConversationRequest : IParsable
     {
         /// <summary>When true, extract facts about the assistant instead of the user. Defaults to false.</summary>
         public bool? IsAgentMemory { get; set; }

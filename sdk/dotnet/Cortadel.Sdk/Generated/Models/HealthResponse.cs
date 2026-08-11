@@ -12,7 +12,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Health check response.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class HealthResponse : ApiException, IParsable
+    internal partial class HealthResponse : ApiException, IParsable
     {
         /// <summary>ISO 8601 timestamp when the health check was performed.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

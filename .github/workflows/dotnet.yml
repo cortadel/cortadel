@@ -104,7 +104,8 @@ jobs:
         run: |
           dotnet tool run kiota generate -l CSharp -c CortadelApiClient \
             -n Cortadel.Sdk.Generated -d ./spec/openapi.json \
-            -o ./sdk/dotnet/Cortadel.Sdk/Generated --exclude-backward-compatible
+            -o ./sdk/dotnet/Cortadel.Sdk/Generated --exclude-backward-compatible \
+            --type-access-modifier Internal
       # .kiota.log lands inside Generated/ from the command above and is gitignored (confirmed
       # locally: `git status --ignored=matching` shows it as `!!`), so it cannot make the check
       # below dirty. Regeneration was verified locally to otherwise leave the tree byte-identical

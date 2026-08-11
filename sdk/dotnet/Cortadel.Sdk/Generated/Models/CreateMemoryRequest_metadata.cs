@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Optional metadata key-value pairs.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class CreateMemoryRequest_metadata : IAdditionalDataHolder, IParsable
+    internal partial class CreateMemoryRequest_metadata : IAdditionalDataHolder, IParsable
     {
         /// <summary>Stores additional data not described in the OpenAPI description found when deserializing. Can be used for serialization as well.</summary>
         public IDictionary<string, object> AdditionalData { get; set; }

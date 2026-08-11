@@ -208,7 +208,7 @@ pass one in).
 
 Only `CortadelClient` and the types declared directly in the `Cortadel.Sdk` namespace (this
 reference) are covered by SemVer. The `Cortadel.Sdk.Generated` namespace is Kiota-generated
-transport code; it's `public` in the assembly today by deliberate, revisitable choice — Kiota can
-generate it `internal` (`--type-access-modifier Internal`), that's just not been done yet — and it
-is unversioned regardless: don't reference it directly, and expect it to change shape (including
-type removals/renames) across any release, including patch releases.
+transport code, generated `internal` (`--type-access-modifier Internal`) — it isn't visible outside
+the `Cortadel.Sdk` assembly, so you cannot reference it even if you wanted to. It's unversioned
+regardless: expect it to change shape (including type removals/renames) across any release,
+including patch releases.

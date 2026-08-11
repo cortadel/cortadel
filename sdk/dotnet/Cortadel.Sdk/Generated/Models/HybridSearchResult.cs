@@ -9,7 +9,7 @@ namespace Cortadel.Sdk.Generated.Models
 {
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
     #pragma warning disable CS1591
-    public partial class HybridSearchResult : IParsable
+    internal partial class HybridSearchResult : IParsable
     #pragma warning restore CS1591
     {
         /// <summary>The app_name property</summary>

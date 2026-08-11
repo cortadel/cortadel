@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Single turn in a conversation passed to `AddConversationRequest`.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class ConversationMessageItem : IParsable
+    internal partial class ConversationMessageItem : IParsable
     {
         /// <summary>Message text.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

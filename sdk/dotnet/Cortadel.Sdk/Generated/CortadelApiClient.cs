@@ -17,7 +17,7 @@ namespace Cortadel.Sdk.Generated
     /// The main entry point of the SDK, exposes the configuration and the fluent API.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class CortadelApiClient : BaseRequestBuilder
+    internal partial class CortadelApiClient : BaseRequestBuilder
     {
         /// <summary>The api property</summary>
         public global::Cortadel.Sdk.Generated.Api.ApiRequestBuilder Api

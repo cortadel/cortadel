@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Container for individual health checks.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class HealthChecks : IParsable
+    internal partial class HealthChecks : IParsable
     {
         /// <summary>Embedding provider health check result.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

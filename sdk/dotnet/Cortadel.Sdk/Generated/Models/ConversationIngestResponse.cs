@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Result of ingesting a conversation. The two members are mutually exclusive on thewire (matches the pre-existing untyped response, which sent one key or the other,never both): omit `no_facts_extracted` when facts were stored, omit`results` when nothing was extracted. Both are nullable so the server&apos;sglobal `DefaultIgnoreCondition = WhenWritingNull` drops the unset one instead ofserializing it as `[]` / `false` alongside the other.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class ConversationIngestResponse : IParsable
+    internal partial class ConversationIngestResponse : IParsable
     {
         /// <summary>True when the conversation yielded no storable facts; absent otherwise.</summary>
         public bool? NoFactsExtracted { get; set; }

@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// One fact distilled from a conversation and stored.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class ConversationIngestItem : IParsable
+    internal partial class ConversationIngestItem : IParsable
     {
         /// <summary>Failure detail when `event` is `ERROR` (or another failed branch); absent otherwise.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

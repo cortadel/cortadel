@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Response after deleting memories.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class DeleteMemoriesResponse : IParsable
+    internal partial class DeleteMemoriesResponse : IParsable
     {
         /// <summary>Confirmation message with delete count.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

@@ -15,7 +15,7 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories.Search
     /// Builds and executes requests for operations under \api\v1\memories\search
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class SearchRequestBuilder : BaseRequestBuilder
+    internal partial class SearchRequestBuilder : BaseRequestBuilder
     {
         /// <summary>
         /// Instantiates a new <see cref="global::Cortadel.Sdk.Generated.Api.V1.Memories.Search.SearchRequestBuilder"/> and sets the default values.

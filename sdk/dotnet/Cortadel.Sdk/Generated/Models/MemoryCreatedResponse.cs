@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Response returned after creating a memory.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class MemoryCreatedResponse : IParsable
+    internal partial class MemoryCreatedResponse : IParsable
     {
         /// <summary>Application name that created this memory.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER

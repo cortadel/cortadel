@@ -11,7 +11,7 @@ namespace Cortadel.Sdk.Generated.Models
     /// Paginated list of memory list items.
     /// </summary>
     [global::System.CodeDom.Compiler.GeneratedCode("Kiota", "1.0.0")]
-    public partial class MemoryListPagedResponse : IParsable
+    internal partial class MemoryListPagedResponse : IParsable
     {
         /// <summary>Memory items on the current page.</summary>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
