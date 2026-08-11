@@ -66,8 +66,8 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories
         /// <param name="cancellationToken">Cancellation token to use when cancelling requests</param>
         /// <param name="requestConfiguration">Configuration for the request such as headers, query parameters, and middleware options.</param>
         /// <exception cref="global::Cortadel.Sdk.Generated.Models.ValidationProblemDetails">When receiving a 400 status code</exception>
-        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ApiError">When receiving a 401 status code</exception>
-        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ApiError">When receiving a 500 status code</exception>
+        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ErrorResponse">When receiving a 401 status code</exception>
+        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ErrorResponse">When receiving a 500 status code</exception>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
         public async Task<global::Cortadel.Sdk.Generated.Models.DeleteMemoriesResponse?> DeleteAsync(global::Cortadel.Sdk.Generated.Models.DeleteMemoriesRequest body, Action<RequestConfiguration<DefaultQueryParameters>>? requestConfiguration = default, CancellationToken cancellationToken = default)
@@ -82,8 +82,8 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories
             var errorMapping = new Dictionary<string, ParsableFactory<IParsable>>
             {
                 { "400", global::Cortadel.Sdk.Generated.Models.ValidationProblemDetails.CreateFromDiscriminatorValue },
-                { "401", global::Cortadel.Sdk.Generated.Models.ApiError.CreateFromDiscriminatorValue },
-                { "500", global::Cortadel.Sdk.Generated.Models.ApiError.CreateFromDiscriminatorValue },
+                { "401", global::Cortadel.Sdk.Generated.Models.ErrorResponse.CreateFromDiscriminatorValue },
+                { "500", global::Cortadel.Sdk.Generated.Models.ErrorResponse.CreateFromDiscriminatorValue },
             };
             return await RequestAdapter.SendAsync<global::Cortadel.Sdk.Generated.Models.DeleteMemoriesResponse>(requestInfo, global::Cortadel.Sdk.Generated.Models.DeleteMemoriesResponse.CreateFromDiscriminatorValue, errorMapping, cancellationToken).ConfigureAwait(false);
         }
@@ -94,8 +94,8 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories
         /// <param name="cancellationToken">Cancellation token to use when cancelling requests</param>
         /// <param name="requestConfiguration">Configuration for the request such as headers, query parameters, and middleware options.</param>
         /// <exception cref="global::Cortadel.Sdk.Generated.Models.ValidationProblemDetails">When receiving a 400 status code</exception>
-        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ApiError">When receiving a 401 status code</exception>
-        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ApiError">When receiving a 500 status code</exception>
+        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ErrorResponse">When receiving a 401 status code</exception>
+        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ErrorResponse">When receiving a 500 status code</exception>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
         public async Task<global::Cortadel.Sdk.Generated.Models.MemoryListPagedResponse?> GetAsync(Action<RequestConfiguration<global::Cortadel.Sdk.Generated.Api.V1.Memories.MemoriesRequestBuilder.MemoriesRequestBuilderGetQueryParameters>>? requestConfiguration = default, CancellationToken cancellationToken = default)
@@ -109,8 +109,8 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories
             var errorMapping = new Dictionary<string, ParsableFactory<IParsable>>
             {
                 { "400", global::Cortadel.Sdk.Generated.Models.ValidationProblemDetails.CreateFromDiscriminatorValue },
-                { "401", global::Cortadel.Sdk.Generated.Models.ApiError.CreateFromDiscriminatorValue },
-                { "500", global::Cortadel.Sdk.Generated.Models.ApiError.CreateFromDiscriminatorValue },
+                { "401", global::Cortadel.Sdk.Generated.Models.ErrorResponse.CreateFromDiscriminatorValue },
+                { "500", global::Cortadel.Sdk.Generated.Models.ErrorResponse.CreateFromDiscriminatorValue },
             };
             return await RequestAdapter.SendAsync<global::Cortadel.Sdk.Generated.Models.MemoryListPagedResponse>(requestInfo, global::Cortadel.Sdk.Generated.Models.MemoryListPagedResponse.CreateFromDiscriminatorValue, errorMapping, cancellationToken).ConfigureAwait(false);
         }
@@ -122,9 +122,9 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories
         /// <param name="cancellationToken">Cancellation token to use when cancelling requests</param>
         /// <param name="requestConfiguration">Configuration for the request such as headers, query parameters, and middleware options.</param>
         /// <exception cref="global::Cortadel.Sdk.Generated.Models.ValidationProblemDetails">When receiving a 400 status code</exception>
-        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ApiError">When receiving a 401 status code</exception>
-        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ApiError">When receiving a 403 status code</exception>
-        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ApiError">When receiving a 500 status code</exception>
+        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ErrorResponse">When receiving a 401 status code</exception>
+        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ErrorResponse">When receiving a 403 status code</exception>
+        /// <exception cref="global::Cortadel.Sdk.Generated.Models.ErrorResponse">When receiving a 500 status code</exception>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_1_OR_GREATER
 #nullable enable
         public async Task<global::Cortadel.Sdk.Generated.Models.MemoryCreatedResponse?> PostAsync(global::Cortadel.Sdk.Generated.Models.CreateMemoryRequest body, Action<RequestConfiguration<DefaultQueryParameters>>? requestConfiguration = default, CancellationToken cancellationToken = default)
@@ -139,9 +139,9 @@ namespace Cortadel.Sdk.Generated.Api.V1.Memories
             var errorMapping = new Dictionary<string, ParsableFactory<IParsable>>
             {
                 { "400", global::Cortadel.Sdk.Generated.Models.ValidationProblemDetails.CreateFromDiscriminatorValue },
-                { "401", global::Cortadel.Sdk.Generated.Models.ApiError.CreateFromDiscriminatorValue },
-                { "403", global::Cortadel.Sdk.Generated.Models.ApiError.CreateFromDiscriminatorValue },
-                { "500", global::Cortadel.Sdk.Generated.Models.ApiError.CreateFromDiscriminatorValue },
+                { "401", global::Cortadel.Sdk.Generated.Models.ErrorResponse.CreateFromDiscriminatorValue },
+                { "403", global::Cortadel.Sdk.Generated.Models.ErrorResponse.CreateFromDiscriminatorValue },
+                { "500", global::Cortadel.Sdk.Generated.Models.ErrorResponse.CreateFromDiscriminatorValue },
             };
             return await RequestAdapter.SendAsync<global::Cortadel.Sdk.Generated.Models.MemoryCreatedResponse>(requestInfo, global::Cortadel.Sdk.Generated.Models.MemoryCreatedResponse.CreateFromDiscriminatorValue, errorMapping, cancellationToken).ConfigureAwait(false);
         }
