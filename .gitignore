@@ -27,3 +27,6 @@ Thumbs.db
 !.env.example
 *.key
 *.pem
+
+# Kiota generator log — churns on every regen, not part of the client surface
+.kiota.log
