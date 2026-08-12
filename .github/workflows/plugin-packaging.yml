@@ -1,0 +1,100 @@
+name: Plugin packaging
+
+# Guards the single-source-of-truth generator (packaging/plugin.metadata.json +
+# packaging/generate.mjs) that writes the four plugin/marketplace manifests:
+#   .claude-plugin/marketplace.json                          (repo root)
+#   .agents/plugins/marketplace.json                          (repo root)
+#   clients/cortadel-plugin/.claude-plugin/plugin.json
+#   clients/cortadel-plugin/.codex-plugin/plugin.json
+#
+# Three checks, in order:
+#   1. Regenerate, then `git status --porcelain --untracked-files=all` over exactly those four
+#      paths — fails the build if regenerating produces a diff, i.e. someone hand-edited a
+#      generated file (or the source drifted from committed output) instead of running the
+#      generator. `--untracked-files=all` matters here the same way it does in this repo's SDK
+#      workflows: without it, a *newly appearing* generated file (e.g. after adding a fifth
+#      output path) would show as nothing to `git status --porcelain` in some configurations and
+#      silently pass.
+#   2. `node --test packaging/test/` — the generator's own source- and output-level contract
+#      (userConfig shape, no `version` in any marketplace entry, marketplace source paths resolve
+#      to a real plugin, metadata<->env-var wiring).
+#   3. `claude plugin validate` against the plugin directory and both marketplace manifests, via
+#      the CLI installed from its published npm package (@anthropic-ai/claude-code — confirmed
+#      installable in a networked CI runner as of this workflow's authoring; see
+#      docs/plugin.md's Troubleshooting section for what --strict actually catches). This is the
+#      Claude Code schema validator; it has no Codex-specific equivalent, so passing it for
+#      .agents/plugins/marketplace.json and .codex-plugin/plugin.json only proves those files are
+#      well-formed and Claude-schema-clean, not that Codex itself accepts them.
+#
+# Its own literal concurrency group, not github.job: that context is only populated inside a
+# job's `steps` and is null everywhere else, including a job-level `concurrency:` block — using it
+# there silently collapses every job in the file into one shared group. Documented the hard way in
+# this repo's dotnet.yml/typescript.yml/python.yml header comments; avoided here the same way.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'clients/cortadel-plugin/.claude-plugin/**'
+      - 'clients/cortadel-plugin/.codex-plugin/**'
+      - 'clients/cortadel-plugin/skills/**'
+      - '.github/workflows/plugin-packaging.yml'
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - '.claude-plugin/**'
+      - '.agents/**'
+      - 'clients/cortadel-plugin/.claude-plugin/**'
+      - 'clients/cortadel-plugin/.codex-plugin/**'
+      - 'clients/cortadel-plugin/skills/**'
+      - '.github/workflows/plugin-packaging.yml'
+  workflow_dispatch:
+
+jobs:
+  packaging:
+    name: Generate, test, validate
+    concurrency:
+      group: plugin-packaging-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Regenerate plugin/marketplace manifests
+        run: node packaging/generate.mjs
+
+      - name: Fail if regenerating produced a diff (generated files must never be hand-edited)
+        run: |
+          git status --porcelain --untracked-files=all -- \
+            .claude-plugin/marketplace.json \
+            .agents/plugins/marketplace.json \
+            clients/cortadel-plugin/.claude-plugin/plugin.json \
+            clients/cortadel-plugin/.codex-plugin/plugin.json \
+            > /tmp/packaging-diff.txt
+          if [ -s /tmp/packaging-diff.txt ]; then
+            echo "Generated plugin/marketplace files are out of date. Run 'node packaging/generate.mjs' and commit the result:"
+            cat /tmp/packaging-diff.txt
+            exit 1
+          fi
+
+      - name: Packaging tests (generator + metadata + env-var wiring)
+        run: node --test packaging/test/
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validate Claude Code plugin manifest (strict)
+        run: claude plugin validate ./clients/cortadel-plugin --strict
+
+      - name: Validate Claude Code marketplace manifest (strict)
+        run: claude plugin validate ./.claude-plugin/marketplace.json --strict
+
+      - name: Validate Codex marketplace manifest against the Claude schema (best-effort; no Codex CLI exists to validate against directly)
+        run: claude plugin validate ./.agents/plugins/marketplace.json --strict

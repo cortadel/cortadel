@@ -1,0 +1,57 @@
+{
+  "name": "cortadel-memory",
+  "description": "Ambient Cortadel memory: push-recall on every prompt, session bootstrap, auto-capture on stop.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Cortadel",
+    "url": "https://cortadel.ai"
+  },
+  "homepage": "https://cortadel.ai",
+  "repository": "https://github.com/cortadel/cortadel",
+  "license": "Apache-2.0",
+  "keywords": [
+    "memory",
+    "mcp",
+    "agent-memory",
+    "knowledge-graph",
+    "rag"
+  ],
+  "userConfig": {
+    "base_url": {
+      "type": "string",
+      "title": "Cortadel server URL",
+      "description": "Base URL of the Cortadel server to use. Defaults to the hosted service at https://app.cortadel.ai — get an API key from its dashboard. Self-hosting instead? Replace this with your own origin, e.g. http://localhost:3001 — no trailing slash.",
+      "default": "https://app.cortadel.ai",
+      "required": true
+    },
+    "user_id": {
+      "type": "string",
+      "title": "User ID",
+      "description": "The user id your API key was minted for. Must be URL-safe (it is a path segment in the MCP URL) and must match the key's user, or the server responds 403.",
+      "required": true
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API key",
+      "description": "API key for your user. Mint one on the server with: dotnet Cortadel.Api.dll mint-key <user>.",
+      "required": true,
+      "sensitive": true
+    },
+    "client_name": {
+      "type": "string",
+      "title": "Client name",
+      "description": "Label for this client. Becomes the {clientName} path segment of the MCP endpoint and the app_name recorded on memories the hooks capture, so the hooks and the MCP server agree on the app label.",
+      "default": "claude-code",
+      "required": false
+    }
+  },
+  "mcpServers": {
+    "cortadel": {
+      "type": "http",
+      "url": "${user_config.base_url}/mcp/${user_config.client_name}/${user_config.user_id}",
+      "headers": {
+        "Authorization": "Bearer ${user_config.api_key}"
+      }
+    }
+  }
+}

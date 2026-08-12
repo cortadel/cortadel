@@ -77,8 +77,9 @@ cortadel/
 Place this skill in your Claude Code skills directory:
 
 ```bash
-# Project-level (this repo already has it at skills/cortadel/)
-.claude/skills/cortadel/    # or reference skills/cortadel/ directly if working in this repo
+# Project-level (this repo already has it at clients/cortadel-plugin/skills/cortadel/, shipped
+# as part of the cortadel-memory plugin — see ../../../../docs/plugin.md)
+.claude/skills/cortadel/    # or reference clients/cortadel-plugin/skills/cortadel/ directly if working in this repo
 
 # Personal (available in all projects)
 ~/.claude/skills/cortadel/
@@ -161,24 +162,26 @@ history with pagination.
 
 ## Resources Linked
 
-- **Getting started**: [`docs/getting-started.md`](../../docs/getting-started.md)
-- **Self-hosting**: [`docs/self-hosting.md`](../../docs/self-hosting.md)
-- **MCP integration**: [`docs/mcp.md`](../../docs/mcp.md)
-- **SDK references**: [`docs/sdk-dotnet.md`](../../docs/sdk-dotnet.md) ·
-  [`docs/sdk-typescript.md`](../../docs/sdk-typescript.md) ·
-  [`docs/sdk-python.md`](../../docs/sdk-python.md)
+- **Getting started**: [`docs/getting-started.md`](../../../../docs/getting-started.md)
+- **Self-hosting**: [`docs/self-hosting.md`](../../../../docs/self-hosting.md)
+- **MCP integration**: [`docs/mcp.md`](../../../../docs/mcp.md)
+- **Plugin (Claude Code & Codex)**: [`docs/plugin.md`](../../../../docs/plugin.md)
+- **SDK references**: [`docs/sdk-dotnet.md`](../../../../docs/sdk-dotnet.md) ·
+  [`docs/sdk-typescript.md`](../../../../docs/sdk-typescript.md) ·
+  [`docs/sdk-python.md`](../../../../docs/sdk-python.md)
 - **Website**: [cortadel.ai](https://cortadel.ai)
 - **GitHub**: [github.com/cortadel/cortadel](https://github.com/cortadel/cortadel)
 
 ## Contributing
 
-To improve this skill: edit the files under `skills/cortadel/`, verify every claim against
-`spec/openapi.json` and the SDK source under `sdk/*/`, and open a pull request against this repo.
+To improve this skill: edit the files under `clients/cortadel-plugin/skills/cortadel/`, verify
+every claim against `spec/openapi.json` and the SDK source under `sdk/*/`, and open a pull request
+against this repo.
 
 ## License
 
 This skill is part of the `cortadel/cortadel` repository and is licensed under Apache-2.0 — see
-the repository [`LICENSE`](../../LICENSE).
+the repository [`LICENSE`](../../../../LICENSE).
 
 ## Changelog
 

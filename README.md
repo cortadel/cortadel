@@ -142,7 +142,12 @@ Your memory, your box. **One container**, a graph DB, and an embedding provider 
 
 ## *Quick start*
 
-**1 · Run the server.** The fastest path is the **batteries-included** compose — graph DB, embeddings, and an LLM all bundled, running on CPU (no GPU needed):
+Two ways to get a `base_url` to point everything below at:
+
+**Hosted** — skip running anything; use the live service at `https://app.cortadel.ai` and get an
+API key from its dashboard.
+
+**Self-hosted · 1 · Run the server.** The fastest path is the **batteries-included** compose — graph DB, embeddings, and an LLM all bundled, running on CPU (no GPU needed):
 
 ```bash
 curl -O https://raw.githubusercontent.com/cortadel/cortadel/main/docker-compose.yml
@@ -155,10 +160,17 @@ Or just the server (bring your own graph DB + providers — see [Self-hosting](d
 docker run -p 3001:3001 ghcr.io/cortadel/cortadel:latest
 ```
 
-**2 · Connect an agent (no code)** — point any MCP client at:
+**2 · Connect an agent (no code)** — point any MCP client at `<base_url>/mcp/claude/alice`, e.g.
+self-hosted:
 
 ```
 http://localhost:3001/mcp/claude/alice
+```
+
+or hosted:
+
+```
+https://app.cortadel.ai/mcp/claude/alice
 ```
 
 **…or use the .NET SDK:**
@@ -231,12 +243,15 @@ Full walkthrough: [Getting started](docs/getting-started.md) · [Python SDK refe
 
 ## MCP tools
 
-One Streamable-HTTP endpoint — `http://<host>:3001/mcp/{clientName}/{userId}`:
+One Streamable-HTTP endpoint — `<base_url>/mcp/{clientName}/{userId}`, where `<base_url>` is
+either the hosted service (`https://app.cortadel.ai`) or your own self-hosted origin
+(`http://localhost:3001` below):
 
 ```json
 {
   "mcpServers": {
     "cortadel": {
+      "type": "http",
       "url": "http://localhost:3001/mcp/claude/alice",
       "headers": { "Authorization": "Bearer <token>" }
     }
@@ -287,7 +302,7 @@ flowchart LR
 | [`sdk/dotnet`](sdk/dotnet) | Official **.NET SDK** (`Cortadel.Sdk`) — a thin, typed client over the REST API. [Published on NuGet](https://www.nuget.org/packages/Cortadel.Sdk). |
 | [`sdk/python`](sdk/python) | Official **Python SDK** (`cortadel`) — a thin, typed client over the REST API. [Published on PyPI](https://pypi.org/project/cortadel/). |
 | [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API. [Published on npm](https://www.npmjs.com/package/@cortadel/sdk). |
-| [`clients/claude-code-plugin`](clients/claude-code-plugin) | Zero-dependency **Claude Code plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, and async capture on stop. |
+| [`clients/cortadel-plugin`](clients/cortadel-plugin) | Zero-dependency **Claude Code & Codex plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, async capture on stop (Claude Code), skill only (Codex). |
 | [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
 | [`examples`](examples) | Runnable samples |
 
@@ -302,7 +317,7 @@ flowchart LR
 - [.NET SDK reference](docs/sdk-dotnet.md)
 - [Python SDK reference](docs/sdk-python.md)
 - [TypeScript SDK reference](docs/sdk-typescript.md)
-- [Claude Code plugin](clients/claude-code-plugin/README.md) — ambient memory hooks (push-recall, session bootstrap, auto-capture)
+- [Claude Code & Codex plugin](docs/plugin.md) — install, config, ambient memory hooks (push-recall, session bootstrap, auto-capture), data flow & privacy
 
 ## Licensing
 

@@ -42,6 +42,27 @@ function readEnv(env, name) {
   return undefined;
 }
 
+// The plugin's four userConfig options (packaging/plugin.metadata.json) map 1:1 to these two env
+// tiers. When Claude Code installs the plugin from the marketplace, resolved userConfig values
+// are injected into hook child processes as `CLAUDE_PLUGIN_OPTION_<KEY>` (key upper-cased) — see
+// https://code.claude.com/docs/en/hooks (Plugin User Config Injection). That tier always wins.
+// Below it, `CORTADEL_<name>` is the pre-existing manual configuration surface: the
+// `--plugin-dir` dev flow, CI, or anyone running the hook scripts outside an installed plugin.
+// It is routed through readEnv() so the MEMFORGE_* rename diagnostic above still fires there too.
+const USER_CONFIG_OPTIONS = {
+  base_url: 'CORTADEL_URL',
+  user_id: 'CORTADEL_USER_ID',
+  api_key: 'CORTADEL_API_KEY',
+  client_name: 'CORTADEL_CLIENT_NAME',
+};
+
+/** Read one userConfig-backed option: CLAUDE_PLUGIN_OPTION_<KEY> first, then CORTADEL_<name>. */
+function readOption(env, optionKey) {
+  const pluginVar = `CLAUDE_PLUGIN_OPTION_${optionKey.toUpperCase()}`;
+  if (env[pluginVar] !== undefined) return env[pluginVar];
+  return readEnv(env, USER_CONFIG_OPTIONS[optionKey]);
+}
+
 /**
  * Read plugin configuration from environment variables. Returns null when
  * any required variable is missing or the hooks are disabled.
@@ -49,9 +70,9 @@ function readEnv(env, name) {
 export function cfg() {
   const env = process.env;
   if (readEnv(env, 'CORTADEL_HOOKS_DISABLE') === '1') return null;
-  const url = readEnv(env, 'CORTADEL_URL');
-  const apiKey = readEnv(env, 'CORTADEL_API_KEY');
-  const userId = readEnv(env, 'CORTADEL_USER_ID');
+  const url = readOption(env, 'base_url');
+  const apiKey = readOption(env, 'api_key');
+  const userId = readOption(env, 'user_id');
   if (!url || !apiKey || !userId) return null;
 
   const num = (v, dflt) => {
@@ -63,6 +84,9 @@ export function cfg() {
     url: url.replace(/\/+$/, ''),
     apiKey,
     userId,
+    // Also the {clientName} path segment of the MCP endpoint (packaging/plugin.metadata.json's
+    // mcp.urlTemplate) — the hooks and the MCP server must agree on this label.
+    clientName: readOption(env, 'client_name') || 'claude-code',
     topK: num(readEnv(env, 'CORTADEL_RECALL_TOPK'), 3),
     minPromptChars: num(readEnv(env, 'CORTADEL_MIN_PROMPT_CHARS'), 10),
     rerank: readEnv(env, 'CORTADEL_RECALL_RERANK') || undefined,

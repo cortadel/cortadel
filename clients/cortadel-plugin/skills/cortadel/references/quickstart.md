@@ -207,13 +207,18 @@ always unauthenticated by design, for orchestrator health probes, and never retu
 Point any MCP-capable client at:
 
 ```
-http://localhost:3001/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}/{userId}
 ```
+
+`<base_url>` is either the hosted service at `https://app.cortadel.ai` (get a key from its
+dashboard) or your own self-hosted server's origin, e.g. `http://localhost:3001` — same URL shape
+either way:
 
 ```json
 {
   "mcpServers": {
     "cortadel": {
+      "type": "http",
       "url": "http://localhost:3001/mcp/claude/alice",
       "headers": { "Authorization": "Bearer <token>" }
     }
