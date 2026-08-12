@@ -4,12 +4,12 @@
 // GENERATED-FILE GENERATOR. This script is the ONLY writer of:
 //   .claude-plugin/marketplace.json                          (repo root — Claude Code marketplace discovery)
 //   .agents/plugins/marketplace.json                          (repo root — documented Codex marketplace discovery path)
-//   clients/cortadel-plugin/.claude-plugin/plugin.json         (Claude Code plugin manifest — full: userConfig + inline mcpServers)
-//   clients/cortadel-plugin/.codex-plugin/plugin.json           (Codex plugin manifest — skills-only)
+//   cortadel-plugin/.claude-plugin/plugin.json                (Claude Code plugin manifest — full: userConfig + inline mcpServers)
+//   cortadel-plugin/.codex-plugin/plugin.json                 (Codex plugin manifest — skills-only)
 //
 // Source of truth: packaging/plugin.metadata.json — the only hand-written place for plugin
 // identity (name, displayName, version, description, author, homepage, repository, license,
-// keywords, category), the four userConfig options, and the MCP URL template.
+// keywords, category, pluginDir), the four userConfig options, and the MCP URL template.
 //
 // Never hand-edit any of the four generated files above. If output is wrong, fix
 // plugin.metadata.json or this generator, then re-run:
@@ -32,9 +32,9 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
-const PLUGIN_DIR_NAME = 'cortadel-plugin';
 
 export const METADATA_PATH = path.join(HERE, 'plugin.metadata.json');
+const PLUGIN_DIR_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 const OPTION_KEY_RE = /^[A-Za-z_]\w*$/;
 const ALLOWED_OPTION_KEYS = new Set([
@@ -54,6 +54,12 @@ const USER_CONFIG_PLACEHOLDER_RE = /\$\{user_config\.([A-Za-z_]\w*)\}/g;
 /** Load and structurally validate packaging/plugin.metadata.json. Throws on any violation. */
 export function loadMetadata(metadataPath = METADATA_PATH) {
   const meta = JSON.parse(readFileSync(metadataPath, 'utf8'));
+
+  if (typeof meta.pluginDir !== 'string' || !PLUGIN_DIR_RE.test(meta.pluginDir)) {
+    throw new Error(
+      `plugin.metadata.json: pluginDir must be a kebab-case directory name matching ${PLUGIN_DIR_RE}, got ${JSON.stringify(meta.pluginDir)}`
+    );
+  }
 
   for (const [key, opt] of Object.entries(meta.userConfig)) {
     if (!OPTION_KEY_RE.test(key)) {
@@ -139,7 +145,7 @@ export function buildCodexPluginJson(meta) {
 export function buildMarketplaceEntry(meta) {
   return {
     name: meta.name,
-    source: `./clients/${PLUGIN_DIR_NAME}`,
+    source: `./${meta.pluginDir}`,
     description: meta.description,
     author: meta.author,
     homepage: meta.homepage,
@@ -166,18 +172,18 @@ function writeJson(filePath, obj) {
   return filePath;
 }
 
-export function outputPaths(root = ROOT) {
+export function outputPaths(root = ROOT, meta = loadMetadata()) {
   return {
     claudeMarketplace: path.join(root, '.claude-plugin', 'marketplace.json'),
     codexMarketplace: path.join(root, '.agents', 'plugins', 'marketplace.json'),
-    claudePlugin: path.join(root, 'clients', PLUGIN_DIR_NAME, '.claude-plugin', 'plugin.json'),
-    codexPlugin: path.join(root, 'clients', PLUGIN_DIR_NAME, '.codex-plugin', 'plugin.json'),
+    claudePlugin: path.join(root, meta.pluginDir, '.claude-plugin', 'plugin.json'),
+    codexPlugin: path.join(root, meta.pluginDir, '.codex-plugin', 'plugin.json'),
   };
 }
 
 export function generate({ root = ROOT, metadataPath = METADATA_PATH, log = () => {} } = {}) {
   const meta = loadMetadata(metadataPath);
-  const paths = outputPaths(root);
+  const paths = outputPaths(root, meta);
   const marketplace = buildMarketplaceJson(meta);
 
   const written = [

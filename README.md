@@ -302,7 +302,7 @@ flowchart LR
 | [`sdk/dotnet`](sdk/dotnet) | Official **.NET SDK** (`Cortadel.Sdk`) — a thin, typed client over the REST API. [Published on NuGet](https://www.nuget.org/packages/Cortadel.Sdk). |
 | [`sdk/python`](sdk/python) | Official **Python SDK** (`cortadel`) — a thin, typed client over the REST API. [Published on PyPI](https://pypi.org/project/cortadel/). |
 | [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API. [Published on npm](https://www.npmjs.com/package/@cortadel/sdk). |
-| [`clients/cortadel-plugin`](clients/cortadel-plugin) | Zero-dependency **Claude Code & Codex plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, async capture on stop (Claude Code), skill only (Codex). |
+| [`cortadel-plugin`](cortadel-plugin) | Zero-dependency **Claude Code & Codex plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, async capture on stop (Claude Code), skill only (Codex). |
 | [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
 | [`examples`](examples) | Runnable samples |
 

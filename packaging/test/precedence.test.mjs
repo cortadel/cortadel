@@ -1,17 +1,17 @@
 // Cross-checks packaging/plugin.metadata.json's four userConfig option keys against
-// clients/cortadel-plugin/scripts/lib.mjs's actual cfg() behavior. Unlike the hardcoded
-// CLAUDE_PLUGIN_OPTION_* env var names in clients/cortadel-plugin/test/lib.test.mjs (which pin
+// cortadel-plugin/scripts/lib.mjs's actual cfg() behavior. Unlike the hardcoded
+// CLAUDE_PLUGIN_OPTION_* env var names in cortadel-plugin/test/lib.test.mjs (which pin
 // today's known-good values), this file DERIVES the expected env var name from
 // plugin.metadata.json itself — so if a userConfig option is ever renamed in the metadata without
 // updating lib.mjs's mapping, this test catches the drift even though the hand-written names in
 // lib.test.mjs would not. The broader "CLAUDE_PLUGIN_OPTION_* wins / CORTADEL_* alone still
-// works" behavioral suite lives in clients/cortadel-plugin/test/lib.test.mjs — this file is the
+// works" behavioral suite lives in cortadel-plugin/test/lib.test.mjs — this file is the
 // packaging-side half of that guarantee, not a duplicate of it.
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { cfg } from '../../clients/cortadel-plugin/scripts/lib.mjs';
+import { cfg } from '../../cortadel-plugin/scripts/lib.mjs';
 import { METADATA_PATH } from '../generate.mjs';
 
 const meta = JSON.parse(readFileSync(METADATA_PATH, 'utf8'));

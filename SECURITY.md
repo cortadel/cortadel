@@ -3,7 +3,7 @@
 ## Scope
 
 This repository is Cortadel's **open extension surface**: the `.NET`/`Python`/`TypeScript` SDKs
-under `sdk/`, the Claude Code & Codex plugin under `clients/`, the `cortadel` skill, the docs
+under `sdk/`, the Claude Code & Codex plugin under `cortadel-plugin/`, the `cortadel` skill, the docs
 (`docs/`, `website/`), and the OpenAPI contract mirror at `spec/openapi.json`. Vulnerability
 reports **in scope here** cover that surface — for example, a flaw in a published SDK's request
 signing, a plugin hook that leaks a credential, or a docs example that recommends unsafe config.

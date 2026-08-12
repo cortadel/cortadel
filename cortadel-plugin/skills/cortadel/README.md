@@ -77,9 +77,9 @@ cortadel/
 Place this skill in your Claude Code skills directory:
 
 ```bash
-# Project-level (this repo already has it at clients/cortadel-plugin/skills/cortadel/, shipped
+# Project-level (this repo already has it at cortadel-plugin/skills/cortadel/, shipped
 # as part of the cortadel-memory plugin — see ../../../../docs/plugin.md)
-.claude/skills/cortadel/    # or reference clients/cortadel-plugin/skills/cortadel/ directly if working in this repo
+.claude/skills/cortadel/    # or reference cortadel-plugin/skills/cortadel/ directly if working in this repo
 
 # Personal (available in all projects)
 ~/.claude/skills/cortadel/
@@ -174,7 +174,7 @@ history with pagination.
 
 ## Contributing
 
-To improve this skill: edit the files under `clients/cortadel-plugin/skills/cortadel/`, verify
+To improve this skill: edit the files under `cortadel-plugin/skills/cortadel/`, verify
 every claim against `spec/openapi.json` and the SDK source under `sdk/*/`, and open a pull request
 against this repo.
 
