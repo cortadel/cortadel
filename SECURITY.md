@@ -19,8 +19,7 @@ here to patch.
 
 **Please do not open a public GitHub issue for a security report.**
 
-<!-- TODO(owner): replace with a real, monitored address before this file ships. -->
-Email **security@cortadel.ai** *(placeholder — owner to confirm or replace this address)* with:
+Email **security@cortadel.ai** with:
 
 - Affected component (SDK + language, plugin, skill, docs, or the server/hosted service)
 - Affected version or commit
