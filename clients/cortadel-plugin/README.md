@@ -7,7 +7,7 @@ single metadata source ([`packaging/plugin.metadata.json`](../../packaging/plugi
 | Host | What's included |
 | --- | --- |
 | **Claude Code** | Three hooks + an inline MCP server (`mcpServers.cortadel`) + the `cortadel` skill. Zero dependencies (Node 18+ built-in `fetch`, ESM, no build step), Windows-safe (exec-form hooks, no shell). |
-| **Codex** | Skills only (`skills/cortadel`). Codex's plugin format has no way to template a self-hosted URL with a per-user path segment, so it cannot express the MCP endpoint or the hooks' config — see `.codex-plugin/plugin.json`. |
+| **Codex** | Skills only (`skills/cortadel`). Codex's plugin format has no way to template a configurable base URL with a per-user path segment, so it cannot express the MCP endpoint or the hooks' config — see `.codex-plugin/plugin.json`. |
 
 **The plugin is enabled by default as soon as it's installed and configured** — see
 [Privacy](#privacy) before pointing it at a server. Full walkthrough, troubleshooting, and the
@@ -59,9 +59,9 @@ manual run). Missing **any** of the first three leaves all hooks silent no-ops:
 
 | `userConfig` key | `CLAUDE_PLUGIN_OPTION_*` | `CORTADEL_*` fallback | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `base_url` | `CLAUDE_PLUGIN_OPTION_BASE_URL` | `CORTADEL_URL` | yes | Base URL of your Cortadel server, e.g. `https://cortadel.example.com`. No trailing slash. |
+| `base_url` | `CLAUDE_PLUGIN_OPTION_BASE_URL` | `CORTADEL_URL` | yes | Base URL of the Cortadel server to use. Defaults to the hosted service, `https://app.cortadel.ai`; replace with your own origin (e.g. `http://localhost:3001`) to self-host instead. No trailing slash. |
 | `user_id` | `CLAUDE_PLUGIN_OPTION_USER_ID` | `CORTADEL_USER_ID` | yes | The user id the key was minted for — must match, or the server returns 403. Also the MCP `{userId}` path segment. |
-| `api_key` | `CLAUDE_PLUGIN_OPTION_API_KEY` | `CORTADEL_API_KEY` | yes | API key for your user. Mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
+| `api_key` | `CLAUDE_PLUGIN_OPTION_API_KEY` | `CORTADEL_API_KEY` | yes | API key for your user. **Hosted**: the `https://app.cortadel.ai` dashboard issues keys. **Self-hosted**: mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
 | `client_name` | `CLAUDE_PLUGIN_OPTION_CLIENT_NAME` | `CORTADEL_CLIENT_NAME` | no (default `claude-code`) | The MCP `{clientName}` path segment **and** the `app_name` the hooks stamp on memories — kept in sync by reading this one value for both. |
 
 `scripts/lib.mjs`'s `cfg()`/`readOption()` implements this precedence.

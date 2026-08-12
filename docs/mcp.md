@@ -8,16 +8,30 @@ Cursor, your own agent) can read and write memory with **no glue code**.
 A single Streamable-HTTP endpoint — there is **no `/sse` segment**:
 
 ```
-http://<host>:3001/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}/{userId}
 ```
 
 - `{clientName}` — a label for the calling app; it becomes the memory's **app name**.
 - `{userId}` — the memory namespace. It must match the user your API key was minted for.
 
-Example:
+`<base_url>` is either of two things — the rest of this page (and the MCP shape itself) is
+identical either way:
+
+- **Hosted** — `https://app.cortadel.ai`, the live Cortadel service. Get an API key from its
+  dashboard.
+- **Self-hosted** — your own server's origin, e.g. `http://localhost:3001` for a local
+  `docker compose up` (see [Self-hosting](self-hosting.md)).
+
+Example (self-hosted):
 
 ```
 http://localhost:3001/mcp/claude/alice
+```
+
+Example (hosted):
+
+```
+https://app.cortadel.ai/mcp/claude/alice
 ```
 
 ## Authentication
@@ -48,12 +62,28 @@ Tools only — the server exposes no MCP resources or prompts.
 
 ### Claude Desktop / Cursor (HTTP MCP)
 
+Self-hosted:
+
 ```json
 {
   "mcpServers": {
     "cortadel": {
       "type": "http",
       "url": "http://localhost:3001/mcp/claude/alice",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Hosted — same shape, just point `url` at `https://app.cortadel.ai` instead:
+
+```json
+{
+  "mcpServers": {
+    "cortadel": {
+      "type": "http",
+      "url": "https://app.cortadel.ai/mcp/claude/alice",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
@@ -69,7 +99,7 @@ For Claude Code and Codex specifically, this repo ships a packaged plugin (`cort
 for Claude Code, a zero-dependency hooks plugin that auto-recalls on each prompt, bootstraps
 context at session start, and auto-captures at the end of a turn, plus this same MCP server wired
 in via inline `mcpServers`; for Codex, the `cortadel` skill only (Codex's plugin format can't
-template this self-hosted, per-user MCP URL):
+template this configurable, per-user MCP URL — hosted or self-hosted):
 
 ```
 /plugin marketplace add cortadel/cortadel

@@ -54,12 +54,17 @@ document ingestion.
 ### 1. MCP — zero code, point an agent at a URL
 
 ```
-http://<host>:3001/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}/{userId}
 ```
 
 No `/sse` segment. `{clientName}` becomes the memory's app name; `{userId}` must match the API
 key's user or the server returns 403. Auth via `Authorization: Bearer <token>`, the `API_KEY`
-header, or `?api_key=<token>` — omit entirely when the server has auth disabled (the default).
+header, or `?api_key=<token>` — omit entirely when the server has auth disabled (self-hosted
+default only; the hosted service requires a key).
+
+`<base_url>` is either the hosted service, `https://app.cortadel.ai` (get a key from its
+dashboard), or your own self-hosted server's origin, e.g. `http://localhost:3001` — same URL shape
+either way:
 
 ```json
 {

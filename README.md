@@ -142,7 +142,12 @@ Your memory, your box. **One container**, a graph DB, and an embedding provider 
 
 ## *Quick start*
 
-**1 · Run the server.** The fastest path is the **batteries-included** compose — graph DB, embeddings, and an LLM all bundled, running on CPU (no GPU needed):
+Two ways to get a `base_url` to point everything below at:
+
+**Hosted** — skip running anything; use the live service at `https://app.cortadel.ai` and get an
+API key from its dashboard.
+
+**Self-hosted · 1 · Run the server.** The fastest path is the **batteries-included** compose — graph DB, embeddings, and an LLM all bundled, running on CPU (no GPU needed):
 
 ```bash
 curl -O https://raw.githubusercontent.com/cortadel/cortadel/main/docker-compose.yml
@@ -155,10 +160,17 @@ Or just the server (bring your own graph DB + providers — see [Self-hosting](d
 docker run -p 3001:3001 ghcr.io/cortadel/cortadel:latest
 ```
 
-**2 · Connect an agent (no code)** — point any MCP client at:
+**2 · Connect an agent (no code)** — point any MCP client at `<base_url>/mcp/claude/alice`, e.g.
+self-hosted:
 
 ```
 http://localhost:3001/mcp/claude/alice
+```
+
+or hosted:
+
+```
+https://app.cortadel.ai/mcp/claude/alice
 ```
 
 **…or use the .NET SDK:**
@@ -231,7 +243,9 @@ Full walkthrough: [Getting started](docs/getting-started.md) · [Python SDK refe
 
 ## MCP tools
 
-One Streamable-HTTP endpoint — `http://<host>:3001/mcp/{clientName}/{userId}`:
+One Streamable-HTTP endpoint — `<base_url>/mcp/{clientName}/{userId}`, where `<base_url>` is
+either the hosted service (`https://app.cortadel.ai`) or your own self-hosted origin
+(`http://localhost:3001` below):
 
 ```json
 {

@@ -18,7 +18,10 @@ Concrete integration patterns, each grounded in the operations documented in
 
 ## 1. Zero-Code Agent Memory via MCP
 
-Give any MCP-capable client durable memory by pointing it at one URL — no SDK, no server code.
+Give any MCP-capable client durable memory by pointing it at one URL — no SDK, no server code. The
+URL is `<base_url>/mcp/{clientName}/{userId}`, where `<base_url>` is either the hosted service at
+`https://app.cortadel.ai` (get a key from its dashboard) or your own self-hosted server's origin
+(shown below):
 
 ```json
 {

@@ -11,7 +11,7 @@ and generated for two hosts:
 | Host | What you get |
 | --- | --- |
 | **Claude Code** | Full: three hooks (push-recall, session bootstrap, auto-capture) + an inline MCP server (`search_memory`, `add_memories`, …) + the `cortadel` skill. |
-| **Codex** | Skills only. Codex's plugin format has no way to template a self-hosted URL with a per-user path segment, so it cannot express `<base_url>/mcp/{clientName}/{userId}` — the MCP server and hooks are Claude-Code-only. Wire Codex to the MCP endpoint manually per [MCP integration](/mcp/) if you want it there too. |
+| **Codex** | Skills only. Codex's plugin format has no way to template a configurable base URL with a per-user path segment, so it cannot express `<base_url>/mcp/{clientName}/{userId}` (hosted or self-hosted) — the MCP server and hooks are Claude-Code-only. Wire Codex to the MCP endpoint manually per [MCP integration](/mcp/) if you want it there too. |
 
 The plugin is **zero-dependency Node** (18+ built-in `fetch`, ESM, no build step) and
 **enabled by default** once installed — see [Data flow & privacy](#data-flow--privacy) before you
@@ -57,10 +57,21 @@ Claude Code `userConfig` schema and this table:
 
 | Option | Required | Sensitive | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `base_url` | yes | no | `http://localhost:3001` | Base URL of your self-hosted Cortadel server. No trailing slash. |
+| `base_url` | yes | no | `https://app.cortadel.ai` | Base URL of the Cortadel server to use. No trailing slash. |
 | `user_id` | yes | no | — | The user id your API key was minted for. It is a **path segment** in the MCP URL, so it must be URL-safe, and it must match the key's user or the server responds 403. |
-| `api_key` | yes | yes | — | API key for your user. Mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
+| `api_key` | yes | yes | — | API key for your user. **Hosted** (`https://app.cortadel.ai`): the dashboard there issues keys. **Self-hosted**: mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
 | `client_name` | no | no | `claude-code` | Label for this client. Becomes the `{clientName}` path segment of the MCP endpoint (`<base_url>/mcp/{client_name}/{user_id}`) **and** the `app_name` the hooks record on every memory they write or search — the two must agree, and this one setting keeps them that way. |
+
+### Hosted vs self-hosted
+
+`base_url` is the only thing that changes between the two — everything else about the plugin
+(hooks, MCP tools, `user_id`/`client_name` semantics) is identical either way, because the user id
+is still a path segment of the same URL shape:
+
+- **Hosted** (default) — leave `base_url` at `https://app.cortadel.ai`, the live Cortadel service.
+  Get an API key from its dashboard.
+- **Self-hosted** — replace `base_url` with your own server's origin, e.g. `http://localhost:3001`
+  for a local `docker compose up` (see [Self-hosting](/self-hosting/)), no trailing slash.
 
 ### Two ways to set these
 
@@ -103,9 +114,10 @@ opt-in step beyond installing it. Concretely, once `base_url`/`user_id`/`api_key
 - **Every final exchange of a session** (the last user + assistant turn) is sent to your
   configured `base_url` for fact extraction, on the `Stop` hook.
 
-Point the plugin only at a server you trust with that content — this is your own self-hosted
-Cortadel instance, not a third-party service, but the plugin itself does not filter or redact
-anything before sending it.
+Point the plugin only at a `base_url` you trust with that content. The default is the hosted
+Cortadel service at `https://app.cortadel.ai`; pointing `base_url` at your own self-hosted instance
+instead keeps this content on infrastructure you control. Either way, the plugin itself does not
+filter or redact anything before sending it.
 
 ### Off switch
 

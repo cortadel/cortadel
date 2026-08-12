@@ -20,8 +20,8 @@
     "base_url": {
       "type": "string",
       "title": "Cortadel server URL",
-      "description": "Base URL of your self-hosted Cortadel server, e.g. http://localhost:3001 — no trailing slash.",
-      "default": "http://localhost:3001",
+      "description": "Base URL of the Cortadel server to use. Defaults to the hosted service at https://app.cortadel.ai — get an API key from its dashboard. Self-hosting instead? Replace this with your own origin, e.g. http://localhost:3001 — no trailing slash.",
+      "default": "https://app.cortadel.ai",
       "required": true
     },
     "user_id": {
