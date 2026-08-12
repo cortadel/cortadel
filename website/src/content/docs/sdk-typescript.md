@@ -5,12 +5,13 @@ description: Every method, option, and model in the @cortadel/sdk TypeScript cli
 
 `@cortadel/sdk` is a thin, typed client over the Cortadel REST API. ESM-only, targets **Node ≥ 20**.
 
-:::caution[Not yet published to npm]
-The SDK is written and tested in this repo, but the npm publish hasn't gone out yet —
-`npm install @cortadel/sdk` will not work today. This page documents the API it will expose once
-it's live. Need TypeScript now? Build from source: clone the repo, `cd sdk/typescript`,
-`pnpm install && pnpm build`, then import from `./dist`. The [.NET SDK](/sdk-dotnet/) and
-[Python SDK](/sdk-python/) are both published and installable today.
+```bash
+npm install @cortadel/sdk
+```
+
+:::tip[Published on npm]
+[`@cortadel/sdk`](https://www.npmjs.com/package/@cortadel/sdk) is published and installable today,
+alongside the [.NET SDK](/sdk-dotnet/) and [Python SDK](/sdk-python/).
 :::
 
 ## Construct a client
