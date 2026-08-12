@@ -61,9 +61,9 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
 
@@ -87,8 +87,25 @@ jobs:
       - name: Packaging tests (generator + metadata + env-var wiring)
         run: node --test packaging/test/
 
+      # Pinned to an exact version (was a bare, unpinned `npm install -g @anthropic-ai/claude-code`,
+      # i.e. always "whatever is latest right now") so this job installs a known-good, reproducible
+      # CLI build instead of silently picking up an unreviewed new release the moment it publishes.
+      # Bump deliberately when there's a reason to (a needed validator fix, a new plugin-manifest
+      # field this workflow should start checking) — this is not on Dependabot's github-actions
+      # ecosystem (it's an npm global install inside a `run:` step, not a `uses:` action reference),
+      # so it won't drift on its own; revisit periodically by hand.
+      #
+      # Deliberately NOT --ignore-scripts here, unlike every pnpm/npm install step elsewhere in this
+      # repo's workflows: @anthropic-ai/claude-code's postinstall (`node install.cjs`) downloads the
+      # platform-native `claude` binary the rest of this job's steps (`claude plugin validate ...`)
+      # actually invoke — there is no prebuilt-wheel-style optional-dependency fallback the way
+      # sharp/esbuild have elsewhere. Verified empirically: `npm install --ignore-scripts` leaves
+      # `node_modules/@anthropic-ai/claude-code/cli.js` missing entirely and `claude --version`
+      # fails with the package's own error ("claude native binary not installed... Either
+      # postinstall did not run (--ignore-scripts...)"). Accepting this Sonar finding (S6505) as-is:
+      # the alternative is a broken validate step, which is worse than the finding.
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.228
 
       - name: Validate Claude Code plugin manifest (strict)
         run: claude plugin validate ./clients/cortadel-plugin --strict

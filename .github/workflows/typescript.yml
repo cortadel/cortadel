@@ -74,16 +74,24 @@ jobs:
       run:
         working-directory: sdk/typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20.x'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts: blocks lifecycle scripts (preinstall/install/postinstall) from any
+      # dependency in the tree from running arbitrary code during install. Verified this doesn't
+      # break anything here: sdk/typescript's own package.json declares no scripts, and
+      # pnpm-lock.yaml's only borderline case (esbuild, listed only as vite's optional peer
+      # dependency, pulled in transitively via vitest) never actually resolves as an installed
+      # package in this lockfile — no `esbuild@<version>:` entry exists, only the peerDependencies
+      # mention. Confirmed empirically too: a clean `pnpm install --frozen-lockfile --ignore-scripts`
+      # followed by `tsc --noEmit`, `vitest run "test/"`, and `pnpm run build` all pass unchanged.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec tsc --noEmit
       # test/ only — conformance/ is exercised (skips-cleanly, exit 0, with nothing configured) by
       # this same command, but is gated for real by conformance-base/conformance-full below, which
@@ -100,8 +108,8 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
       - run: dotnet tool restore
@@ -159,16 +167,17 @@ jobs:
       run:
         working-directory: sdk/typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20.x'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts: see the build job's own comment on why this is safe here.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
       # The no-LLM tier needs only a reachable Memgraph (get()/list()/delete() all issue store
       # queries even for a lookup that finds nothing) and explicitly *no* LLM or embedding provider.
@@ -299,16 +308,17 @@ jobs:
       run:
         working-directory: sdk/typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20.x'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts: see the build job's own comment on why this is safe here.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
       # The repo's own documented one-command quickstart (README "Quick start" / self-hosting.md),
       # unmodified: Memgraph + Ollama (pulls the LLM and embedding model, gated by `ollama-pull`'s
@@ -384,21 +394,22 @@ jobs:
       run:
         working-directory: sdk/typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: 10
       # registry-url makes setup-node write an .npmrc that reads the auth token from
       # $NODE_AUTH_TOKEN — the publish step below sets that from the NPM_TOKEN repo secret. This is
       # the standard actions/setup-node mechanism and works for `pnpm publish` the same way it does
       # for `npm publish`, since pnpm honors the same .npmrc.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20.x'
           registry-url: 'https://registry.npmjs.org'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts: see the build job's own comment on why this is safe here.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm run build
 
       # @cortadel/sdk is scoped, and npm defaults scoped packages to restricted — --access public is

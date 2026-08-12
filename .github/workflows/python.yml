@@ -104,24 +104,46 @@ jobs:
       run:
         working-directory: sdk/python
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
           cache-dependency-glob: sdk/python/uv.lock
-      - run: uv sync --extra test
+      # --no-install-project defers installing the local `cortadel` package to the step below;
+      # --no-build forces uv to use pre-built wheels for every *third-party* dependency resolved
+      # here, so a compromised transitive dependency can't run arbitrary code from a setup.py/
+      # build-backend hook as a side effect of this install. --locked asserts uv.lock is already
+      # consistent with pyproject.toml instead of silently re-resolving.
+      - run: uv sync --extra test --no-install-project --no-build --locked
+      # The local project still needs a source build to install in editable mode (hatchling
+      # packaging our own tree) — that's not the third-party supply-chain risk --no-build above
+      # guards against, so it's installed separately here with --no-deps (every dependency is
+      # already in place from the step above; this step resolves nothing external). Verified
+      # locally: `uv sync --no-build` alone fails on the local editable install itself
+      # ("marked as --no-build but has no binary distribution") — this two-step split is what
+      # keeps --no-build meaningful without breaking the project's own install.
+      - run: uv pip install --no-deps -e .
       # tests/ only — conformance/ needs a live server and is gated for real by
       # conformance-base/conformance-full below. This is already true of a bare `uv run pytest`
       # (pyproject.toml's `testpaths = ["tests"]`), but the path is passed explicitly anyway so
       # this step documents its own scope rather than relying on config a reader of this file
       # might not have open.
-      - run: uv run pytest tests -q
+      # --no-sync: the venv is already fully synced by the two steps above, so this skips uv's own
+      # automatic re-sync (which would otherwise try to build/install packages again) — the step
+      # only ever runs the given test command. --no-build/--locked are kept anyway so the flags
+      # stay visible on the exact line that executes.
+      - run: uv run --no-sync --no-build --locked pytest tests -q
       # python -m build (not `uv build`): the task specifies this literal tool. `build` itself is
       # not a project dependency (see file header comment) — `uv run --with build` injects it into
-      # an ephemeral overlay for just this invocation.
+      # an ephemeral overlay for just this invocation. --no-sync/--no-build/--locked: same
+      # reasoning as the test step above — the project venv is already synced, and --no-build
+      # blocks uv from building a source distribution for anything in the ephemeral `--with build`
+      # overlay (that overlay only ever needs `build`+`hatchling`, both of which ship wheels). This
+      # doesn't touch what `python -m build` itself does afterward — building an sdist/wheel from
+      # our own trusted source is the entire point of this step.
       - name: Build sdist and wheel
-        run: uv run --with build python -m build --sdist --wheel .
+        run: uv run --no-sync --no-build --locked --with build python -m build --sdist --wheel .
       # py.typed (PEP 561) is what makes type checkers treat an installed `cortadel` as typed
       # rather than falling back to Any everywhere. Checked directly inside the built archives —
       # not assumed from the sdist/wheel include lists in pyproject.toml — because a hatchling
@@ -135,7 +157,7 @@ jobs:
       # for Python regardless of how deeply this step is nested in the workflow file.
       - name: Confirm py.typed ships in both the sdist and the wheel
         run: |
-          uv run python - <<'PY'
+          uv run --no-sync --no-build --locked python - <<'PY'
           import glob
           import sys
           import tarfile
@@ -163,8 +185,8 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
       - run: dotnet tool restore
@@ -214,13 +236,19 @@ jobs:
       run:
         working-directory: sdk/python
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: '3.12'
           enable-cache: true
           cache-dependency-glob: sdk/python/uv.lock
-      - run: uv sync --extra test
+      # See the build job's own comment on this exact two-step split (--no-install-project
+      # --no-build --locked, then a --no-deps editable install of the local project): --no-build
+      # blocks uv from building a source distribution for any *third-party* dependency resolved
+      # here — the local project is installed separately below since it legitimately needs its own
+      # trusted source built, which isn't the risk --no-build guards against.
+      - run: uv sync --extra test --no-install-project --no-build --locked
+      - run: uv pip install --no-deps -e .
 
       # The no-LLM tier needs only a reachable Memgraph (get()/list()/delete() all issue store
       # queries even for a lookup that finds nothing) and explicitly *no* LLM or embedding provider.
@@ -320,7 +348,9 @@ jobs:
       - name: Run base-tier conformance suite (4 tests x 2 facades = 8)
         env:
           CORTADEL_CONFORMANCE_URL: http://localhost:3001
-        run: uv run pytest conformance -q
+        # --no-sync: the venv is already fully synced by the two steps above — see the build job's
+        # own comment on this pattern.
+        run: uv run --no-sync --no-build --locked pytest conformance -q
 
       - name: Container logs
         if: failure()
@@ -352,13 +382,19 @@ jobs:
       run:
         working-directory: sdk/python
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: '3.12'
           enable-cache: true
           cache-dependency-glob: sdk/python/uv.lock
-      - run: uv sync --extra test
+      # See the build job's own comment on this exact two-step split (--no-install-project
+      # --no-build --locked, then a --no-deps editable install of the local project): --no-build
+      # blocks uv from building a source distribution for any *third-party* dependency resolved
+      # here — the local project is installed separately below since it legitimately needs its own
+      # trusted source built, which isn't the risk --no-build guards against.
+      - run: uv sync --extra test --no-install-project --no-build --locked
+      - run: uv pip install --no-deps -e .
 
       # The repo's own documented one-command quickstart (README "Quick start" / self-hosting.md),
       # unmodified: Memgraph + Ollama (pulls the LLM and embedding model, gated by `ollama-pull`'s
@@ -393,7 +429,9 @@ jobs:
         env:
           CORTADEL_CONFORMANCE_URL: http://localhost:3001
           CORTADEL_CONFORMANCE_LLM: "1"
-        run: uv run pytest conformance -q
+        # --no-sync: the venv is already fully synced by the two steps above — see the build job's
+        # own comment on this pattern.
+        run: uv run --no-sync --no-build --locked pytest conformance -q
 
       - name: Container logs
         if: failure()
@@ -440,8 +478,8 @@ jobs:
       run:
         working-directory: sdk/python
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v9.0.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: '3.12'
 
@@ -450,15 +488,22 @@ jobs:
       # its own fresh build from the tag ref rather than reusing an artifact from `build`'s matrix,
       # the same way dotnet.yml's publish-nuget re-runs `dotnet pack` and typescript.yml's
       # publish-npm re-runs `pnpm run build` instead of downloading either job's output.
+      # --no-sync/--no-build/--locked: same reasoning as the build job's identical step — this job
+      # never calls `uv sync` at all (it needs no project-level dependency, only the `build` tool
+      # injected via `--with build`), and --no-sync/--no-build together mean uv never attempts to
+      # build the local project *or* any third-party sdist to satisfy this invocation; verified
+      # locally that the combination still works from a completely clean .venv. This doesn't touch
+      # what `python -m build` itself does afterward — building an sdist/wheel from our own trusted
+      # source is the entire point of this step.
       - name: Build sdist and wheel
-        run: uv run --with build python -m build --sdist --wheel .
+        run: uv run --no-sync --no-build --locked --with build python -m build --sdist --wheel .
 
       # pypa/gh-action-pypi-publish's own documented non-Trusted-Publishing mode: __token__ as the
       # username, an API token (scoped to this project or account-wide) as the password. A repo
       # secret named PYPI_TOKEN is expected to already exist — this job does not create it (out of
       # scope; the repo owner provisions and rotates it).
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}
