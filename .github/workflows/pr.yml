@@ -1,0 +1,214 @@
+name: PR gate
+
+# The always-runs gate for every pull request, regardless of which paths it touches. The existing
+# per-language workflows (dotnet.yml/typescript.yml/python.yml/docs.yml/cortadel-plugin.yml/
+# plugin-packaging.yml) are all `paths:`-filtered and several start service containers (Memgraph, a
+# real Cortadel server) — appropriate for gating the area they own, but it means a PR that only
+# touches, say, a top-level script or a file outside every filter currently gets **no CI at all**
+# before a human reviews it. This file exists to close that gap with checks that are cheap enough
+# to run on literally every PR: no service containers, no `secrets.*` reference anywhere in this
+# file, and nothing here checks out and executes PR head code with elevated permissions — the
+# trigger is plain `pull_request` (fork PRs get a read-only GITHUB_TOKEN and no repo secrets), never
+# `pull_request_target`. Job 5 below (supply-chain-diff) exists specifically to keep it that way:
+# it fails the PR itself if a future change tries to introduce `pull_request_target` or an unpinned
+# `uses:` ref.
+#
+# Every job gets its own **literal** concurrency group, not one built from `github.job` — that
+# context is only populated inside a job's `steps` and is null everywhere else, including a
+# job-level `concurrency:` block. Using it there silently collapses every job in the file into one
+# shared group, which self-cancels jobs that should run independently. Documented the hard way in
+# this repo's dotnet.yml/typescript.yml/python.yml/cortadel-plugin.yml/plugin-packaging.yml header
+# comments (a real past red run); avoided here by keying each group off a fixed per-job string plus
+# the PR number instead.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # 1. Every workflow file has to at least parse, and the plugin/marketplace manifests have to
+  #    validate against the Claude Code CLI's schema — plugin-packaging.yml already does the latter
+  #    for PRs that touch packaging/**, .claude-plugin/**, .agents/**, or the plugin's own
+  #    manifests, but this job's whole point is running that class of check unconditionally.
+  workflow-integrity:
+    name: Workflow & manifest integrity
+    concurrency:
+      group: pr-gate-workflow-integrity-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # python3 ships on every GitHub-hosted ubuntu-latest runner; PyYAML does not, so it's
+      # installed on demand (fast — it's a small pure-metadata wheel, no compilation) rather than
+      # assumed present. This only checks that each file is syntactically valid YAML (parses
+      # without error) — it is not a GitHub Actions schema validator.
+      - name: Every workflow file parses as YAML
+        run: |
+          python3 -c "import yaml" 2>/dev/null || pip install --quiet --disable-pip-version-check pyyaml
+          fail=0
+          for f in .github/workflows/*.yml; do
+            if ! python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f"; then
+              echo "::error file=$f::Invalid YAML syntax"
+              fail=1
+            fi
+          done
+          if [ "$fail" -eq 0 ]; then
+            echo "All $(ls .github/workflows/*.yml | wc -l) workflow file(s) parse."
+          fi
+          exit $fail
+
+      # Best-effort install, matching plugin-packaging.yml's own pinned version. If the npm
+      # registry is unreachable (or the package is otherwise uninstallable) this step is recorded
+      # as a non-fatal outcome via continue-on-error, and the steps below skip the manifest
+      # validation with a clear, visible warning instead of the job failing opaquely on an
+      # unrelated network hiccup — see the task brief this job implements.
+      - name: Install Claude Code CLI (best-effort)
+        id: claude-cli
+        continue-on-error: true
+        run: npm install -g @anthropic-ai/claude-code@2.1.228
+
+      - name: Validate Claude Code plugin + marketplace manifests (strict)
+        if: steps.claude-cli.outcome == 'success'
+        run: |
+          claude plugin validate ./clients/cortadel-plugin --strict
+          claude plugin validate ./.claude-plugin/marketplace.json --strict
+          claude plugin validate ./.agents/plugins/marketplace.json --strict
+
+      - name: Manifest validation skipped
+        if: steps.claude-cli.outcome != 'success'
+        run: |
+          echo "::warning::Could not install @anthropic-ai/claude-code (npm registry unreachable or the package failed to install) — plugin/marketplace manifest validation was SKIPPED for this run, not passed. This does not block the PR gate by itself, but re-run the job if you'd expect this install to succeed."
+
+  # 2. packaging/plugin.metadata.json is the single source of truth for four generated manifest
+  #    files (see packaging/generate.mjs's own header comment). plugin-packaging.yml already
+  #    enforces this for PRs that touch the relevant paths; this reruns the identical two-step
+  #    check unconditionally, cheaply (plain Node, no install) since packaging drift is exactly the
+  #    kind of thing that should never reach a human reviewer regardless of what else a PR touches.
+  generated-content-drift:
+    name: Generated-content drift (packaging manifests)
+    concurrency:
+      group: pr-gate-generated-drift-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+
+      - name: Regenerate plugin/marketplace manifests
+        run: node packaging/generate.mjs
+
+      # --untracked-files=all, not a bare `git diff`: a plain `git diff` is blind to files the
+      # generator newly *creates* (e.g. a fifth output path added later) — it only reports
+      # modifications to already-tracked files. That gap is the exact hole that let generated-file
+      # drift through before; --untracked-files=all catches both modifications and additions, same
+      # choice plugin-packaging.yml/dotnet.yml/typescript.yml/python.yml all make for their own
+      # generated trees.
+      - name: Fail if regenerating produced a diff (generated files must never be hand-edited)
+        run: |
+          git status --porcelain --untracked-files=all -- \
+            .claude-plugin/marketplace.json \
+            .agents/plugins/marketplace.json \
+            clients/cortadel-plugin/.claude-plugin/plugin.json \
+            clients/cortadel-plugin/.codex-plugin/plugin.json \
+            > /tmp/packaging-diff.txt
+          if [ -s /tmp/packaging-diff.txt ]; then
+            echo "::error::Generated plugin/marketplace files are out of date. Run 'node packaging/generate.mjs' and commit the result:"
+            cat /tmp/packaging-diff.txt
+            exit 1
+          fi
+          echo "Generated manifests match packaging/plugin.metadata.json."
+
+  # 3. This repo shipped a live docs site teaching a removed API because only one copy of a page
+  #    was updated — twice (see CONTRIBUTING.md#docs, which says as much and notes that fact was
+  #    NOT CI-enforced before this job existed). See .github/scripts/check-docs-mirror.mjs for the
+  #    normalization this applies (Starlight frontmatter/asides/root-relative links are expected,
+  #    intentional differences between the two copies — only substantive content drift fails).
+  docs-website-mirror:
+    name: docs/website mirror parity
+    concurrency:
+      group: pr-gate-docs-mirror-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      - run: node .github/scripts/check-docs-mirror.mjs
+
+  # 4. Fast unit tests only — the plugin's own node:test suite, the packaging generator's node:test
+  #    suite, and the TypeScript SDK's vitest unit tests. Deliberately NOT the conformance suites
+  #    (any SDK's `conformance/` tree, or .NET's `*.Conformance` project): those need a running
+  #    Memgraph + Cortadel server (dotnet.yml/typescript.yml/python.yml's own conformance-base
+  #    jobs), which is exactly the kind of infrastructure this always-on gate is meant to avoid.
+  fast-unit-tests:
+    name: Fast unit tests (plugin, packaging, TypeScript SDK)
+    concurrency:
+      group: pr-gate-fast-tests-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 10
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20.x'
+          cache: pnpm
+          cache-dependency-path: sdk/typescript/pnpm-lock.yaml
+
+      # Zero dependencies by design (clients/cortadel-plugin/README.md) — no install step.
+      - name: Plugin suite (node --test)
+        run: node --test clients/cortadel-plugin/test/
+
+      # Also zero dependencies — packaging/generate.mjs and its tests only use Node built-ins.
+      - name: Packaging tests (node --test)
+        run: node --test packaging/test/
+
+      # --ignore-scripts: see typescript.yml's build job for why this is safe here (no lifecycle
+      # scripts in this package.json; its one borderline transitive dependency never resolves as an
+      # installed package in this lockfile). test/ only, not conformance/ — see this job's own
+      # header comment.
+      - name: TypeScript SDK unit tests (vitest)
+        working-directory: sdk/typescript
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm exec vitest run "test/"
+
+  # 5. Keeps the "no workflow here uses pull_request_target, fork PRs get no secrets and a
+  #    read-only token" property from silently regressing, and catches the two other classes of
+  #    change that shouldn't need a human to spot: a freshly-added unpinned `uses:` action
+  #    reference (chore/harden-workflows pinned every existing one to a commit SHA; this stops a
+  #    new one sneaking back in unpinned), and an obvious committed credential. The credential
+  #    check is deliberately narrow — fixed, high-signal prefixes/formats only (AWS access key ids,
+  #    PEM private key headers, GitHub/Slack tokens) — a scanner that flags every hex-looking string
+  #    would cry wolf on a contributor's first PR, which is worse than the gap it closes.
+  #
+  #    fetch-depth: 0 (only this job needs it): the diff is computed against the PR's actual base
+  #    commit (github.event.pull_request.base.sha), which a shallow checkout wouldn't have fetched.
+  supply-chain-diff:
+    name: Supply-chain sanity (PR diff)
+    concurrency:
+      group: pr-gate-supply-chain-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Diff-based supply-chain sanity checks
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/check-diff-supply-chain.sh "$BASE_SHA" "$HEAD_SHA"
