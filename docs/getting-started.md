@@ -28,8 +28,9 @@ curl http://localhost:3001/api/health
 dotnet add package Cortadel.Sdk
 ```
 
-> Prefer Python? `pip install cortadel` — see the [Python SDK reference](sdk-python.md) for the
-> equivalent walkthrough. (A TypeScript SDK is written but not yet published to npm.)
+> Prefer Python or TypeScript? `pip install cortadel` — see the [Python SDK reference](sdk-python.md)
+> — or `npm install @cortadel/sdk` — see the [TypeScript SDK reference](sdk-typescript.md) — for the
+> equivalent walkthrough.
 
 ## 3. Store and recall
 
@@ -76,3 +77,4 @@ await cortadel.DeleteAsync(new[] { page.Items[0].Id });
 - [MCP integration](mcp.md) — connect Claude, Cursor, or any MCP client with no code.
 - [.NET SDK reference](sdk-dotnet.md) — every method, option, and model.
 - [Python SDK reference](sdk-python.md) — every method, option, and model.
+- [TypeScript SDK reference](sdk-typescript.md) — every method, option, and model.

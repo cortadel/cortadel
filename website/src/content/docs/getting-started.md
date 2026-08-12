@@ -33,9 +33,10 @@ runs the container alone — see [Self-hosting](/self-hosting/) to wire a graph 
 dotnet add package Cortadel.Sdk
 ```
 
-:::tip[Prefer Python?]
-`pip install cortadel` — see the [Python SDK reference](/sdk-python/) for the equivalent
-walkthrough. (A TypeScript SDK is written but not yet published to npm.)
+:::tip[Prefer Python or TypeScript?]
+`pip install cortadel` — see the [Python SDK reference](/sdk-python/) — or
+`npm install @cortadel/sdk` — see the [TypeScript SDK reference](/sdk-typescript/) — for the
+equivalent walkthrough.
 :::
 
 ## 3. Store and recall
@@ -83,3 +84,4 @@ await cortadel.DeleteAsync(new[] { page.Items[0].Id });
 - [MCP integration](/mcp/) — connect Claude, Cursor, or any MCP client with no code.
 - [.NET SDK reference](/sdk-dotnet/) — every method, option, and model.
 - [Python SDK reference](/sdk-python/) — every method, option, and model.
+- [TypeScript SDK reference](/sdk-typescript/) — every method, option, and model.
