@@ -9,7 +9,7 @@ description: Every method, option, and model in the @cortadel/sdk TypeScript cli
 npm install @cortadel/sdk
 ```
 
-:::tip[Published on npm]
+:::tip
 [`@cortadel/sdk`](https://www.npmjs.com/package/@cortadel/sdk) is published and installable today,
 alongside the [.NET SDK](/sdk-dotnet/) and [Python SDK](/sdk-python/).
 :::

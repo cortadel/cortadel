@@ -110,10 +110,12 @@ at, and `e2e-*` is this project's convention for marking data as disposable.
 ## Docs — update both copies
 
 Every page in `docs/*.md` has a matching file under `website/src/content/docs/` (same basename;
-the website copy adds Starlight frontmatter and root-relative links instead of relative `.md`
-links). **Update both in the same commit.** This is not CI-enforced — `docs.yml` only rebuilds the
-website, it does not diff the two trees — so it's on you to keep them in sync; a past change that
-touched only one left the live site describing a removed API.
+the website copy adds Starlight frontmatter, converts `> ` blockquotes to `:::note`/`:::tip[...]`
+asides, and uses root-relative links instead of relative `.md` links). **Update both in the same
+commit.** `pr.yml`'s `docs-website-mirror` job enforces this on every PR — it normalizes away those
+three known formatting differences and fails if the remaining text still diverges, naming the
+specific file pair — but the check only runs on what you push; it can't write the second copy for
+you. A past change that touched only one copy left the live site describing a removed API, twice.
 
 ## Commit messages
 
@@ -129,8 +131,65 @@ a new one for an existing area.
   any user-facing change.
 - Make sure the relevant SDK's build/test commands above pass locally. CI mirrors them (see
   `.github/workflows/dotnet.yml`, `typescript.yml`, `python.yml`) plus a generation-drift check and
-  the base-tier conformance suite on every PR.
+  the base-tier conformance suite when your PR touches that SDK's paths — see "Continuous
+  integration" below for exactly what runs where.
 - Never commit secrets, API keys, or real user data — test fixtures use `e2e-*` ids (see above).
+- Use the PR template's checklist — it names the traps this section (and the ones above it) covers.
+
+## Continuous integration
+
+What runs on every PR, what only runs when you touch certain paths, and what a fork PR can and
+can't trigger.
+
+### Always runs: the PR gate (`.github/workflows/pr.yml`)
+
+Every pull request, regardless of which files it touches, runs five fast jobs with no service
+containers and no repository secrets (target: under two minutes):
+
+1. **Workflow & manifest integrity** — every `.github/workflows/*.yml` parses, and the Claude Code
+   plugin + marketplace manifests validate (best-effort: if the validator CLI can't be installed,
+   e.g. the npm registry is unreachable, this step is skipped with a warning rather than failing
+   the job on an unrelated network issue).
+2. **Generated-content drift** — regenerates the plugin/marketplace manifests from
+   `packaging/plugin.metadata.json` and fails on any resulting diff, including newly-created files
+   (`git status --untracked-files=all`, not a bare `git diff` — see that job's own comment).
+3. **docs/website mirror parity** — every `docs/*.md` has a matching, content-equal
+   `website/src/content/docs/*.md` (see "Docs — update both copies" above).
+4. **Fast unit tests** — the plugin's `node --test` suite, the packaging generator's `node --test`
+   suite, and the TypeScript SDK's `vitest` unit tests. Deliberately not conformance (next section).
+5. **Supply-chain sanity on the diff** — fails if the PR *adds* a workflow using
+   `pull_request_target`, an unpinned `uses: ...@vN`-style action reference, or something that
+   looks like a committed credential (fixed, high-signal patterns only — an AWS access key id, a
+   PEM private key header, a GitHub/Slack token — not a generic entropy scanner). Only flags lines
+   the PR itself introduces, never pre-existing content on `main`.
+
+### Path-filtered: the per-SDK/area workflows
+
+`dotnet.yml`, `typescript.yml`, `python.yml`, `docs.yml`, `cortadel-plugin.yml`, and
+`plugin-packaging.yml` each run only when a PR touches the paths they own (see each file's own
+`on.pull_request.paths`). Most also run a `conformance-base` job that starts a real Memgraph
+container plus a real `ghcr.io/cortadel/cortadel:latest` server and exercises the SDK against it —
+heavier than the always-on gate (containers, a health-gate wait loop), so it's scoped to PRs that
+actually touch that SDK rather than running for everyone.
+
+### What a fork PR can and can't trigger
+
+No workflow in this repository uses `pull_request_target` — everything, including `pr.yml` and the
+path-filtered workflows above, triggers on plain `pull_request`, which GitHub runs with **no
+repository secrets** and a **read-only** `GITHUB_TOKEN` regardless of whether the PR is from a
+fork. Concretely:
+
+- Everything above **does** run automatically on a fork PR, including the conformance-base suites
+  when their paths match — they need Docker (the Memgraph/Cortadel images are public), not a
+  secret.
+- The one thing a fork PR can never trigger is a `publish-*` job (npm/PyPI/NuGet) — those need
+  either a repository secret or trusted-publishing OIDC, gated behind a tag push, which a
+  `pull_request` event can't produce.
+- The weekly `conformance-full` tier (LLM + embeddings via Ollama, ~9.6 GB of models) never runs on
+  any PR, fork or not — see each SDK workflow's own header comment for why.
+
+If a maintainer wants conformance results for your fork PR sooner than a path-filtered workflow
+would otherwise give them, they can `workflow_dispatch` the relevant file against your branch.
 
 ## Releasing
 

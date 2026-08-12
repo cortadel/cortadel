@@ -6,8 +6,8 @@
 npm install @cortadel/sdk
 ```
 
-> Published on npm as [`@cortadel/sdk`](https://www.npmjs.com/package/@cortadel/sdk). The [.NET
-> SDK](sdk-dotnet.md) and [Python SDK](sdk-python.md) are published too.
+> [`@cortadel/sdk`](https://www.npmjs.com/package/@cortadel/sdk) is published and installable today,
+> alongside the [.NET SDK](sdk-dotnet.md) and [Python SDK](sdk-python.md).
 
 ## Construct a client
 
