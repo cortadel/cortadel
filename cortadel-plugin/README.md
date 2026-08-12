@@ -41,7 +41,7 @@ points at this directory. Claude Code prompts for the four `userConfig` values b
 ### Trial run (no install)
 
 ```
-claude --plugin-dir <repo>/clients/cortadel-plugin
+claude --plugin-dir <repo>/cortadel-plugin
 ```
 
 This skips the marketplace `userConfig` prompt, so configure via the `CORTADEL_*` environment
@@ -103,7 +103,7 @@ counterpart to detect.
 ## Skill
 
 `skills/cortadel/` — the Cortadel Agent Skill, shipped once here as the single copy both hosts'
-manifests point at (`clients/cortadel-plugin/.claude-plugin/plugin.json`'s default `./skills/`
+manifests point at (`cortadel-plugin/.claude-plugin/plugin.json`'s default `./skills/`
 path and `.codex-plugin/plugin.json`'s explicit `skills` field).
 
 ## Privacy
@@ -143,11 +143,11 @@ curl -H "Authorization: Bearer $CORTADEL_API_KEY" "$CORTADEL_URL/api/v1/memories
 ## Tests
 
 ```
-node --test clients/cortadel-plugin/test/
+node --test cortadel-plugin/test/
 ```
 
 (Windows note: some Node builds don't expand a bare directory for `--test`;
-use `node --test "clients/cortadel-plugin/test/*.test.mjs"` locally.)
+use `node --test "cortadel-plugin/test/*.test.mjs"` locally.)
 Tests spawn the real hook scripts against an ephemeral `node:http` stub and
 assert the wire contract plus every fail-open path. Packaging-level tests (the generator, the
 generated manifests, and the metadata↔env-var contract) live in

@@ -74,7 +74,7 @@ jobs:
       - name: Validate Claude Code plugin + marketplace manifests (strict)
         if: steps.claude-cli.outcome == 'success'
         run: |
-          claude plugin validate ./clients/cortadel-plugin --strict
+          claude plugin validate ./cortadel-plugin --strict
           claude plugin validate ./.claude-plugin/marketplace.json --strict
           claude plugin validate ./.agents/plugins/marketplace.json --strict
 
@@ -115,8 +115,8 @@ jobs:
           git status --porcelain --untracked-files=all -- \
             .claude-plugin/marketplace.json \
             .agents/plugins/marketplace.json \
-            clients/cortadel-plugin/.claude-plugin/plugin.json \
-            clients/cortadel-plugin/.codex-plugin/plugin.json \
+            cortadel-plugin/.claude-plugin/plugin.json \
+            cortadel-plugin/.codex-plugin/plugin.json \
             > /tmp/packaging-diff.txt
           if [ -s /tmp/packaging-diff.txt ]; then
             echo "::error::Generated plugin/marketplace files are out of date. Run 'node packaging/generate.mjs' and commit the result:"
@@ -167,9 +167,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
 
-      # Zero dependencies by design (clients/cortadel-plugin/README.md) — no install step.
+      # Zero dependencies by design (cortadel-plugin/README.md) — no install step.
       - name: Plugin suite (node --test)
-        run: node --test clients/cortadel-plugin/test/
+        run: node --test cortadel-plugin/test/
 
       # Also zero dependencies — packaging/generate.mjs and its tests only use Node built-ins.
       - name: Packaging tests (node --test)

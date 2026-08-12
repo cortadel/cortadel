@@ -85,7 +85,7 @@ shape. Eight tools, no MCP resources or prompts: `add_memories`, `add_conversati
 `list_merge_suggestions`. Full detail: `docs/mcp.md`.
 
 For Claude Code/Codex specifically, this repo also ships a packaged plugin
-(`clients/cortadel-plugin/`, `cortadel-memory`) with push-recall/session-bootstrap/auto-capture
+(`cortadel-plugin/`, `cortadel-memory`) with push-recall/session-bootstrap/auto-capture
 hooks in addition to this same MCP server — see `docs/plugin.md`.
 
 ## Three SDKs — real install commands and constructors
@@ -191,7 +191,7 @@ TypeScript, PascalCase+Async in .NET, snake_case in Python.
 |---|---|
 | `sdk/dotnet/`, `sdk/typescript/`, `sdk/python/` | The three published SDKs (facade + generated transport each). |
 | `spec/openapi.json` | The REST contract every SDK is generated from. |
-| `clients/cortadel-plugin/` | The Claude Code/Codex plugin, including the `cortadel` skill under `skills/cortadel/`. |
+| `cortadel-plugin/` | The Claude Code/Codex plugin, including the `cortadel` skill under `skills/cortadel/`. |
 | `docs/`, `website/` | Hand-written docs and their Starlight-site mirror (see `AGENTS.md` — they must be updated together). |
 | `examples/` | Runnable sample projects. |
 

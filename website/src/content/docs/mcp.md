@@ -109,10 +109,10 @@ template this configurable, per-user MCP URL — hosted or self-hosted):
 /plugin install cortadel-memory@cortadel
 ```
 
-or, for a trial run with no install: `claude --plugin-dir <repo>/clients/cortadel-plugin`.
+or, for a trial run with no install: `claude --plugin-dir <repo>/cortadel-plugin`.
 
 Configure it with the `base_url`, `user_id`, `api_key`, and `client_name` values (env var
 equivalents: `CORTADEL_URL`, `CORTADEL_USER_ID`, `CORTADEL_API_KEY`, `CORTADEL_CLIENT_NAME`) —
 full setup, the data-flow/privacy statement, and troubleshooting are in
 [`docs/plugin.md`](/plugin/) and the plugin's own
-[`clients/cortadel-plugin/README.md`](https://github.com/cortadel/cortadel/tree/main/clients/cortadel-plugin).
+[`cortadel-plugin/README.md`](https://github.com/cortadel/cortadel/tree/main/cortadel-plugin).

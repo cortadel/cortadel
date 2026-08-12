@@ -12,7 +12,7 @@
 
 ## Checklist
 
-- [ ] I did not hand-edit a generated file (`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `clients/cortadel-plugin/.claude-plugin/plugin.json`, `clients/cortadel-plugin/.codex-plugin/plugin.json`, or any SDK's `Generated`/`generated`/`_generated` tree) — I changed the source (`packaging/plugin.metadata.json` or `spec/openapi.json` upstream) and re-ran the generator instead.
+- [ ] I did not hand-edit a generated file (`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `cortadel-plugin/.claude-plugin/plugin.json`, `cortadel-plugin/.codex-plugin/plugin.json`, or any SDK's `Generated`/`generated`/`_generated` tree) — I changed the source (`packaging/plugin.metadata.json` or `spec/openapi.json` upstream) and re-ran the generator instead.
 - [ ] If this touches `docs/*.md`, I updated the matching `website/src/content/docs/*.md` file in the same commit (and vice versa) — see [`CONTRIBUTING.md`](../CONTRIBUTING.md#docs--update-both-copies).
 - [ ] I ran the relevant tests locally and they pass (see [`CONTRIBUTING.md`](../CONTRIBUTING.md#building-and-testing-each-sdk) for the commands per SDK/package).
 - [ ] I did not commit secrets, API keys, or real user data (test fixtures use `e2e-*` ids).

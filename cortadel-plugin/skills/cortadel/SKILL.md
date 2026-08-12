@@ -81,7 +81,7 @@ either way:
 Eight tools, no MCP resources or prompts: `add_memories`, `add_conversation`, `search_memory`,
 `get_skill`, `add_media`, `reconcile_memories`, `reconcile_status`, `list_merge_suggestions`. See
 `references/architecture.md` for what each does. For Claude Code specifically, this repo also ships
-a zero-dependency hooks plugin (`clients/cortadel-plugin`) that auto-recalls on each prompt and
+a zero-dependency hooks plugin (`cortadel-plugin`) that auto-recalls on each prompt and
 auto-captures at the end of a turn.
 
 ### 2. REST API + SDKs — typed, direct integration

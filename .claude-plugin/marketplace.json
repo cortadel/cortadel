@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "cortadel-memory",
-      "source": "./clients/cortadel-plugin",
+      "source": "./cortadel-plugin",
       "description": "Ambient Cortadel memory: push-recall on every prompt, session bootstrap, auto-capture on stop.",
       "author": {
         "name": "Cortadel",

@@ -2,6 +2,7 @@
   "name": "cortadel-memory",
   "displayName": "Cortadel Memory",
   "version": "0.2.0",
+  "pluginDir": "cortadel-plugin",
   "description": "Ambient Cortadel memory: push-recall on every prompt, session bootstrap, auto-capture on stop.",
   "author": { "name": "Cortadel", "url": "https://cortadel.ai" },
   "homepage": "https://cortadel.ai",

@@ -4,8 +4,8 @@ name: Plugin packaging
 # packaging/generate.mjs) that writes the four plugin/marketplace manifests:
 #   .claude-plugin/marketplace.json                          (repo root)
 #   .agents/plugins/marketplace.json                          (repo root)
-#   clients/cortadel-plugin/.claude-plugin/plugin.json
-#   clients/cortadel-plugin/.codex-plugin/plugin.json
+#   cortadel-plugin/.claude-plugin/plugin.json
+#   cortadel-plugin/.codex-plugin/plugin.json
 #
 # Three checks, in order:
 #   1. Regenerate, then `git status --porcelain --untracked-files=all` over exactly those four
@@ -38,18 +38,18 @@ on:
       - 'packaging/**'
       - '.claude-plugin/**'
       - '.agents/**'
-      - 'clients/cortadel-plugin/.claude-plugin/**'
-      - 'clients/cortadel-plugin/.codex-plugin/**'
-      - 'clients/cortadel-plugin/skills/**'
+      - 'cortadel-plugin/.claude-plugin/**'
+      - 'cortadel-plugin/.codex-plugin/**'
+      - 'cortadel-plugin/skills/**'
       - '.github/workflows/plugin-packaging.yml'
   pull_request:
     paths:
       - 'packaging/**'
       - '.claude-plugin/**'
       - '.agents/**'
-      - 'clients/cortadel-plugin/.claude-plugin/**'
-      - 'clients/cortadel-plugin/.codex-plugin/**'
-      - 'clients/cortadel-plugin/skills/**'
+      - 'cortadel-plugin/.claude-plugin/**'
+      - 'cortadel-plugin/.codex-plugin/**'
+      - 'cortadel-plugin/skills/**'
       - '.github/workflows/plugin-packaging.yml'
   workflow_dispatch:
 
@@ -75,8 +75,8 @@ jobs:
           git status --porcelain --untracked-files=all -- \
             .claude-plugin/marketplace.json \
             .agents/plugins/marketplace.json \
-            clients/cortadel-plugin/.claude-plugin/plugin.json \
-            clients/cortadel-plugin/.codex-plugin/plugin.json \
+            cortadel-plugin/.claude-plugin/plugin.json \
+            cortadel-plugin/.codex-plugin/plugin.json \
             > /tmp/packaging-diff.txt
           if [ -s /tmp/packaging-diff.txt ]; then
             echo "Generated plugin/marketplace files are out of date. Run 'node packaging/generate.mjs' and commit the result:"
@@ -108,7 +108,7 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code@2.1.228
 
       - name: Validate Claude Code plugin manifest (strict)
-        run: claude plugin validate ./clients/cortadel-plugin --strict
+        run: claude plugin validate ./cortadel-plugin --strict
 
       - name: Validate Claude Code marketplace manifest (strict)
         run: claude plugin validate ./.claude-plugin/marketplace.json --strict

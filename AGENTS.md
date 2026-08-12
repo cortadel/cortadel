@@ -27,7 +27,7 @@ Two ways to get a running server to point the SDKs/plugin at: the hosted service
 | `sdk/python/` | `cortadel` (PyPI, `1.0.0`) — facade in `cortadel/client.py` (async) and `cortadel/sync_client.py` (blocking) over `cortadel/_generated/`. Unit tests in `tests/`, conformance in `conformance/`. |
 | `spec/openapi.json` | The REST contract every SDK generates from. **Synced from a private repo — do not edit.** |
 | `packaging/` | `plugin.metadata.json` (hand-written source of truth for the plugin's identity + config) and `generate.mjs` (the only writer of the plugin/marketplace manifests). See "Never hand-edit these". |
-| `clients/cortadel-plugin/` | The packaged `cortadel-memory` plugin — Claude Code hooks + inline MCP server + the `cortadel` skill (`skills/cortadel/`); Codex gets the skill only. |
+| `cortadel-plugin/` | The packaged `cortadel-memory` plugin — Claude Code hooks + inline MCP server + the `cortadel` skill (`skills/cortadel/`); Codex gets the skill only. |
 | `docs/` | Hand-written docs; **every page here has a mirror** under `website/` — see below. |
 | `website/` | Astro/Starlight docs site built from `website/src/content/docs/`, one file per `docs/*.md` page plus its own frontmatter and root-relative links. |
 | `examples/` | Runnable sample projects (currently `dotnet-quickstart/`). |
@@ -41,7 +41,7 @@ Two ways to get a running server to point the SDKs/plugin at: the hosted service
 | `sdk/typescript/src/generated/` | Kiota | `dotnet tool run kiota generate -l typescript -c CortadelApiClient -d ./spec/openapi.json -o ./sdk/typescript/src/generated --exclude-backward-compatible -m application/json --clean-output` |
 | `sdk/python/cortadel/_generated/` | Kiota | `dotnet tool run kiota generate -l python -c CortadelApiClient -n cortadel._generated -d ./spec/openapi.json -o ./sdk/python/cortadel/_generated --exclude-backward-compatible -m application/json --clean-output` |
 | `spec/openapi.json` | The private server repo's `scripts/sync-openapi.sh` | Not run from here — resync from that repo. |
-| `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `clients/cortadel-plugin/.claude-plugin/plugin.json`, `clients/cortadel-plugin/.codex-plugin/plugin.json` | `packaging/generate.mjs`, from `packaging/plugin.metadata.json` | `node packaging/generate.mjs` |
+| `.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `cortadel-plugin/.claude-plugin/plugin.json`, `cortadel-plugin/.codex-plugin/plugin.json` | `packaging/generate.mjs`, from `packaging/plugin.metadata.json` | `node packaging/generate.mjs` |
 
 Every one of these is CI-gated with `git status --porcelain --untracked-files=all` against the
 regenerated output — **including untracked files**, deliberately: a new operation in
@@ -99,7 +99,7 @@ uv run pytest tests -q
 ```
 
 Windows note (Node test runner): a bare `node --test packaging/test/` or
-`node --test clients/cortadel-plugin/test/` doesn't expand the directory on some Node builds — use
+`node --test cortadel-plugin/test/` doesn't expand the directory on some Node builds — use
 the explicit glob, e.g. `node --test "packaging/test/*.test.mjs"`.
 
 ## Conformance suites — gated on env vars, not mocks

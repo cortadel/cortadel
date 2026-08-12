@@ -20,7 +20,7 @@ describing the observed behavior so it can be routed to the maintainers.
 
 See [`AGENTS.md`](AGENTS.md#repository-layout) for the full table. The short version: one
 directory per published package under `sdk/` (`dotnet`, `typescript`, `python`), the plugin under
-`clients/cortadel-plugin/` (which also carries the `cortadel` skill), docs in `docs/` mirrored
+`cortadel-plugin/` (which also carries the `cortadel` skill), docs in `docs/` mirrored
 into `website/`, the shared REST contract at `spec/openapi.json`, and the plugin/marketplace
 manifest generator under `packaging/`.
 
@@ -30,7 +30,7 @@ manifest generator under `packaging/`.
 `sdk/*/**/{Generated,generated,_generated}/` tree is generated from that contract by
 [Kiota](https://github.com/microsoft/kiota); the plugin/marketplace manifests
 (`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`,
-`clients/cortadel-plugin/.claude-plugin/plugin.json`, `clients/cortadel-plugin/.codex-plugin/plugin.json`)
+`cortadel-plugin/.claude-plugin/plugin.json`, `cortadel-plugin/.codex-plugin/plugin.json`)
 are generated from `packaging/plugin.metadata.json`. **Never hand-edit any of these** — CI
 regenerates each one and fails the build on *any* resulting diff, including newly-created
 untracked files (a schema addition emits a brand-new file, which a hand-edit-then-forget-to-run-
@@ -74,12 +74,12 @@ uv sync --extra test
 uv run pytest tests -q
 ```
 
-### Plugin & packaging (`clients/cortadel-plugin/`, `packaging/`)
+### Plugin & packaging (`cortadel-plugin/`, `packaging/`)
 
 ```bash
-node --test "clients/cortadel-plugin/test/*.test.mjs"
+node --test "cortadel-plugin/test/*.test.mjs"
 node --test "packaging/test/*.test.mjs"
-claude plugin validate ./clients/cortadel-plugin --strict
+claude plugin validate ./cortadel-plugin --strict
 claude plugin validate ./.claude-plugin/marketplace.json --strict
 claude plugin validate ./.agents/plugins/marketplace.json --strict
 ```
