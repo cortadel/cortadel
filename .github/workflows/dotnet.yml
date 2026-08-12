@@ -93,8 +93,8 @@ jobs:
     env:
       DOTNET_ROLL_FORWARD: LatestMajor
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
       - run: dotnet restore Cortadel.slnx
@@ -107,8 +107,8 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
       - run: dotnet tool restore
@@ -167,10 +167,17 @@ jobs:
     env:
       DOTNET_ROLL_FORWARD: LatestMajor
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
+
+      # Explicit build ahead of the --no-build test step below (added purely for hardening: a bare
+      # `dotnet test` would otherwise implicitly restore+build using whatever NuGet feed/SDK state
+      # is live at that moment, right before the run that matters). No `--no-restore` here (unlike
+      # the build job's own `dotnet build --no-restore`) since this job never runs `dotnet restore`
+      # separately first.
+      - run: dotnet build sdk/dotnet/Cortadel.Sdk.Conformance -c Release
 
       # Per task-4-report.md's "Provisioning requirements", the no-LLM tier needs only a
       # reachable Memgraph (GetAsync/ListAsync/DeleteAsync all issue store queries even for a
@@ -272,7 +279,7 @@ jobs:
       - name: Run base-tier conformance suite (4 tests)
         env:
           CORTADEL_CONFORMANCE_URL: http://localhost:3001
-        run: dotnet test sdk/dotnet/Cortadel.Sdk.Conformance -c Release --nologo
+        run: dotnet test sdk/dotnet/Cortadel.Sdk.Conformance --no-build -c Release --nologo
 
       - name: Container logs
         if: failure()
@@ -304,10 +311,14 @@ jobs:
     env:
       DOTNET_ROLL_FORWARD: LatestMajor
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
+
+      # Explicit build ahead of the --no-build test step below — see conformance-base's identical
+      # step for the reasoning.
+      - run: dotnet build sdk/dotnet/Cortadel.Sdk.Conformance -c Release
 
       # The repo's own documented one-command quickstart (README "Quick start" / self-hosting.md),
       # unmodified: Memgraph + Ollama (pulls the LLM and embedding model, gated by
@@ -338,7 +349,7 @@ jobs:
         env:
           CORTADEL_CONFORMANCE_URL: http://localhost:3001
           CORTADEL_CONFORMANCE_LLM: "1"
-        run: dotnet test sdk/dotnet/Cortadel.Sdk.Conformance -c Release --nologo
+        run: dotnet test sdk/dotnet/Cortadel.Sdk.Conformance --no-build -c Release --nologo
 
       - name: Container logs
         if: failure()
@@ -373,8 +384,8 @@ jobs:
       id-token: write   # required for the NuGet/login OIDC exchange
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
 
@@ -386,7 +397,7 @@ jobs:
       # file, not in a repo secret.
       - name: NuGet login (OIDC -> short-lived API key)
         id: nuget-login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: cortadel-admin
 

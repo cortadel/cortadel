@@ -40,21 +40,30 @@ jobs:
       run:
         working-directory: website
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: 10
           run_install: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: website/pnpm-lock.yaml
 
+      # --ignore-scripts: blocks lifecycle scripts (preinstall/install/postinstall) from any
+      # dependency in the tree from running arbitrary code during install. Verified this doesn't
+      # break anything here: website/package.json declares no scripts of its own besides the astro
+      # CLI wrappers (build/dev/preview), and its one native-code dependency, sharp, ships prebuilt
+      # per-platform binaries as ordinary optionalDependencies (e.g. @img/sharp-linux-x64) rather
+      # than compiling via a postinstall hook — confirmed directly against website/pnpm-lock.yaml
+      # (no `requiresBuild`/script markers on the sharp entry). Confirmed empirically too: a clean
+      # `pnpm install --frozen-lockfile --ignore-scripts` followed by `pnpm build` succeeds
+      # unchanged (10 pages built, Pagefind search index included).
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build
         run: pnpm build

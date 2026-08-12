@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Every workflow in .github/workflows/ now pins its actions to a full commit SHA (with the
+  # human-readable version kept as a trailing comment, e.g. `actions/checkout@<sha> # v4.4.0`) —
+  # see this repo's workflow-hardening changes for why. A SHA pin freezes that action on the exact
+  # commit forever unless something goes back and bumps it; Dependabot's github-actions ecosystem
+  # is that something; it understands SHA-pinned `uses:` references, resolves the newest matching
+  # tag, and opens a PR that updates both the SHA and its version comment together, so the comment
+  # never drifts out of sync with what's actually pinned.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
