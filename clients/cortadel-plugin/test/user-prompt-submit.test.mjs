@@ -11,6 +11,7 @@ const ENV_KEYS = [
   'CORTADEL_URL',
   'CORTADEL_API_KEY',
   'CORTADEL_USER_ID',
+  'CORTADEL_CLIENT_NAME',
   'CORTADEL_RECALL_TOPK',
   'CORTADEL_MIN_PROMPT_CHARS',
   'CORTADEL_RECALL_RERANK',
@@ -24,6 +25,10 @@ const ENV_KEYS = [
   'MEMFORGE_RECALL_RERANK',
   'MEMFORGE_CAPTURE_MAX_CHARS',
   'MEMFORGE_HOOKS_DISABLE',
+  'CLAUDE_PLUGIN_OPTION_BASE_URL',
+  'CLAUDE_PLUGIN_OPTION_USER_ID',
+  'CLAUDE_PLUGIN_OPTION_API_KEY',
+  'CLAUDE_PLUGIN_OPTION_CLIENT_NAME',
 ];
 
 /** Env for the spawned script: inherited minus any plugin var (old or new), plus overrides. */
@@ -199,7 +204,7 @@ test('normal prompt → exact request body (no rerank key) + nested context outp
     assert.deepEqual(req.body, {
       query: prompt,
       user_id: 'test-user',
-      app_name: 'claude-code-hooks',
+      app_name: 'claude-code',
       top_k: 3,
       mode: 'hybrid',
     });
@@ -225,6 +230,61 @@ test('CORTADEL_RECALL_RERANK=cross_encoder → rerank included in body', async (
     assert.equal(requests.length, 1);
     assert.equal(requests[0].body.rerank, 'cross_encoder');
     assert.equal(requests[0].body.top_k, 5);
+  } finally {
+    server.close();
+  }
+});
+
+// ---------- client_name -> app_name wiring ----------
+// app_name must come from cfg().clientName (never a hard-coded string), so the hooks and the MCP
+// server ({clientName} path segment) agree on the same app label. End-to-end via the real
+// spawned hook process, covering both the CORTADEL_CLIENT_NAME dev-flow surface and the
+// CLAUDE_PLUGIN_OPTION_CLIENT_NAME surface Claude Code injects for an installed plugin.
+
+test('CORTADEL_CLIENT_NAME reaches app_name in the request body', async () => {
+  const { server, requests, url } = await startStub(okResponder(FIXTURE_RESULTS));
+  try {
+    const env = requiredEnv(url, { CORTADEL_CLIENT_NAME: 'my-custom-agent' });
+    const r = await runScript(JSON.stringify({ prompt: 'a perfectly normal question about things' }), env);
+    assert.equal(r.code, 0);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].body.app_name, 'my-custom-agent');
+  } finally {
+    server.close();
+  }
+});
+
+test('CLAUDE_PLUGIN_OPTION_CLIENT_NAME reaches app_name and wins over CORTADEL_CLIENT_NAME', async () => {
+  const { server, requests, url } = await startStub(okResponder(FIXTURE_RESULTS));
+  try {
+    const env = requiredEnv(url, {
+      CORTADEL_CLIENT_NAME: 'dev-flow-name',
+      CLAUDE_PLUGIN_OPTION_CLIENT_NAME: 'installed-plugin-name',
+    });
+    const r = await runScript(JSON.stringify({ prompt: 'a perfectly normal question about things' }), env);
+    assert.equal(r.code, 0);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].body.app_name, 'installed-plugin-name');
+  } finally {
+    server.close();
+  }
+});
+
+test('CLAUDE_PLUGIN_OPTION_* alone (no CORTADEL_* set) configures and reaches app_name', async () => {
+  const { server, requests, url } = await startStub(okResponder(FIXTURE_RESULTS));
+  try {
+    const env = makeEnv({
+      CLAUDE_PLUGIN_OPTION_BASE_URL: url,
+      CLAUDE_PLUGIN_OPTION_API_KEY: 'plugin-key',
+      CLAUDE_PLUGIN_OPTION_USER_ID: 'plugin-user',
+      CLAUDE_PLUGIN_OPTION_CLIENT_NAME: 'plugin-client',
+    });
+    const r = await runScript(JSON.stringify({ prompt: 'a perfectly normal question about things' }), env);
+    assert.equal(r.code, 0);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].auth, 'Bearer plugin-key');
+    assert.equal(requests[0].body.user_id, 'plugin-user');
+    assert.equal(requests[0].body.app_name, 'plugin-client');
   } finally {
     server.close();
   }

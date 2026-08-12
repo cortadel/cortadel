@@ -55,6 +55,7 @@ Tools only — the server exposes no MCP resources or prompts.
 {
   "mcpServers": {
     "cortadel": {
+      "type": "http",
       "url": "http://localhost:3001/mcp/claude/alice",
       "headers": { "Authorization": "Bearer <token>" }
     }
@@ -65,16 +66,23 @@ Tools only — the server exposes no MCP resources or prompts.
 Once connected, the agent can call `search_memory` before answering and `add_memories` after — giving
 it durable recall across sessions.
 
-## Claude Code plugin
+## Claude Code & Codex plugin
 
-For Claude Code specifically, this repo ships a zero-dependency hooks plugin (`cortadel-memory`)
-that auto-recalls on each prompt, bootstraps context at session start, and auto-captures at the
-end of a turn:
+For Claude Code and Codex specifically, this repo ships a packaged plugin (`cortadel-memory`) —
+for Claude Code, a zero-dependency hooks plugin that auto-recalls on each prompt, bootstraps
+context at session start, and auto-captures at the end of a turn, plus this same MCP server wired
+in via inline `mcpServers`; for Codex, the `cortadel` skill only (Codex's plugin format can't
+template this self-hosted, per-user MCP URL):
 
 ```
-claude --plugin-dir <repo>/clients/claude-code-plugin
+/plugin marketplace add cortadel/cortadel
+/plugin install cortadel-memory@cortadel
 ```
 
-Configure it with `CORTADEL_URL`, `CORTADEL_API_KEY`, and `CORTADEL_USER_ID` — full setup, all
-environment variables, and troubleshooting are in the plugin's own
-[`clients/claude-code-plugin/README.md`](https://github.com/cortadel/cortadel/tree/main/clients/claude-code-plugin).
+or, for a trial run with no install: `claude --plugin-dir <repo>/clients/cortadel-plugin`.
+
+Configure it with the `base_url`, `user_id`, `api_key`, and `client_name` values (env var
+equivalents: `CORTADEL_URL`, `CORTADEL_USER_ID`, `CORTADEL_API_KEY`, `CORTADEL_CLIENT_NAME`) —
+full setup, the data-flow/privacy statement, and troubleshooting are in
+[`docs/plugin.md`](/plugin/) and the plugin's own
+[`clients/cortadel-plugin/README.md`](https://github.com/cortadel/cortadel/tree/main/clients/cortadel-plugin).

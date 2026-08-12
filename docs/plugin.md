@@ -1,0 +1,158 @@
+# Claude Code & Codex plugin
+
+This repo ships a packaged plugin — `cortadel-memory` — under
+[`clients/cortadel-plugin/`](https://github.com/cortadel/cortadel/tree/main/clients/cortadel-plugin),
+built once from a single metadata source ([`packaging/plugin.metadata.json`](https://github.com/cortadel/cortadel/blob/main/packaging/plugin.metadata.json))
+and generated for two hosts:
+
+| Host | What you get |
+| --- | --- |
+| **Claude Code** | Full: three hooks (push-recall, session bootstrap, auto-capture) + an inline MCP server (`search_memory`, `add_memories`, …) + the `cortadel` skill. |
+| **Codex** | Skills only. Codex's plugin format has no way to template a self-hosted URL with a per-user path segment, so it cannot express `<base_url>/mcp/{clientName}/{userId}` — the MCP server and hooks are Claude-Code-only. Wire Codex to the MCP endpoint manually per [MCP integration](mcp.md) if you want it there too. |
+
+The plugin is **zero-dependency Node** (18+ built-in `fetch`, ESM, no build step) and
+**enabled by default** once installed — see [Data flow & privacy](#data-flow--privacy) before you
+point it at a server.
+
+## Install
+
+### Claude Code — via marketplace (recommended)
+
+```
+/plugin marketplace add cortadel/cortadel
+/plugin install cortadel-memory@cortadel
+```
+
+This reads the root [`.claude-plugin/marketplace.json`](https://github.com/cortadel/cortadel/blob/main/.claude-plugin/marketplace.json),
+which points at `clients/cortadel-plugin`. On install, Claude Code prompts for the four
+configuration values below and stores them (the `api_key` value goes to secure storage, since the
+option is marked `sensitive`).
+
+### Claude Code — trial run / dev flow, no install
+
+```bash
+claude --plugin-dir <repo>/clients/cortadel-plugin
+```
+
+This skips the marketplace `userConfig` prompt entirely, so configure via the `CORTADEL_*`
+environment variables instead (see [Configuration](#configuration) — every option has both a
+`user_config` name and a `CORTADEL_*` env var name).
+
+### Codex — skills only
+
+Codex discovers the same repo at its own marketplace path,
+[`.agents/plugins/marketplace.json`](https://github.com/cortadel/cortadel/blob/main/.agents/plugins/marketplace.json),
+pointing at the same `clients/cortadel-plugin` directory. Its manifest
+(`clients/cortadel-plugin/.codex-plugin/plugin.json`) declares only the `cortadel` skill — no
+hooks, no MCP server, no config prompt. Install it the way your Codex client documents installing
+a skill-only plugin from a marketplace entry.
+
+## Configuration
+
+Four values, declared once in `packaging/plugin.metadata.json` and generated into both the
+Claude Code `userConfig` schema and this table:
+
+| Option | Required | Sensitive | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| `base_url` | yes | no | `http://localhost:3001` | Base URL of your self-hosted Cortadel server. No trailing slash. |
+| `user_id` | yes | no | — | The user id your API key was minted for. It is a **path segment** in the MCP URL, so it must be URL-safe, and it must match the key's user or the server responds 403. |
+| `api_key` | yes | yes | — | API key for your user. Mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
+| `client_name` | no | no | `claude-code` | Label for this client. Becomes the `{clientName}` path segment of the MCP endpoint (`<base_url>/mcp/{client_name}/{user_id}`) **and** the `app_name` the hooks record on every memory they write or search — the two must agree, and this one setting keeps them that way. |
+
+### Two ways to set these
+
+- **Installed from the marketplace** — Claude Code resolves `userConfig` and injects each value
+  into every hook process as `CLAUDE_PLUGIN_OPTION_<KEY>` (e.g. `CLAUDE_PLUGIN_OPTION_BASE_URL`).
+  This tier always wins.
+- **`--plugin-dir` / manual** — set the matching `CORTADEL_*` environment variable
+  (`CORTADEL_URL`, `CORTADEL_USER_ID`, `CORTADEL_API_KEY`, `CORTADEL_CLIENT_NAME`). Read only when
+  the `CLAUDE_PLUGIN_OPTION_*` name is unset, per option — you can mix both (e.g. install from the
+  marketplace for `base_url`/`user_id`/`api_key` but still override `client_name` via env var).
+
+`clients/cortadel-plugin/scripts/lib.mjs`'s `cfg()` is the single place this resolution happens;
+see that file's `readOption()` for the exact precedence.
+
+Five more environment-variable-only options exist beyond the four `userConfig` fields above
+(`CORTADEL_RECALL_TOPK`, `CORTADEL_MIN_PROMPT_CHARS`, `CORTADEL_RECALL_RERANK`,
+`CORTADEL_CAPTURE_MAX_CHARS`, `CORTADEL_HOOKS_DISABLE`) — see
+[`clients/cortadel-plugin/README.md`](https://github.com/cortadel/cortadel/blob/main/clients/cortadel-plugin/README.md#configuration-environment-variables)
+for the full table.
+
+## Hook behaviour
+
+| Hook | What it does | Budget |
+| --- | --- | --- |
+| `UserPromptSubmit` | Push-recall: searches Cortadel with your prompt (hybrid mode) and injects the top hits as context on **every** prompt. | 12 s request budget inside a 15 s hook timeout. |
+| `SessionStart` | Bootstrap: injects a short "memory is active" notice plus your most recent memories. | 7 s budget / 10 s timeout. |
+| `Stop` | Auto-capture: sends the last user→assistant exchange of the session transcript to `POST /api/v1/memories/from-conversation` for fact extraction. Runs **async** — never blocks the UI. | 110 s budget / 120 s timeout. |
+
+Everything fails open: missing config, server errors, timeouts, or malformed input all exit `0`
+with no output. The plugin can slow a prompt down by at most its request budget; it can never
+break a Claude Code session.
+
+## Data flow & privacy
+
+**The plugin is enabled by default as soon as it's installed and configured** — there is no
+opt-in step beyond installing it. Concretely, once `base_url`/`user_id`/`api_key` are set:
+
+- **Every prompt you type** is sent (first 4000 chars) to your configured `base_url` as a search
+  query, on the `UserPromptSubmit` hook.
+- **Every final exchange of a session** (the last user + assistant turn) is sent to your
+  configured `base_url` for fact extraction, on the `Stop` hook.
+
+Point the plugin only at a server you trust with that content — this is your own self-hosted
+Cortadel instance, not a third-party service, but the plugin itself does not filter or redact
+anything before sending it.
+
+### Off switch
+
+Set `CORTADEL_HOOKS_DISABLE=1` (env var, not a `userConfig` option — see
+[Configuration](#configuration)) to silence all three hooks without uninstalling the plugin. The
+MCP server (if you've also wired it into an agent) is unaffected — only the automatic hooks are
+gated by this variable. To stop everything, disable or uninstall the plugin via `/plugin`.
+
+## MCP tool naming
+
+The inline MCP server is named `cortadel` in `mcpServers` (visible as `mcp__cortadel__<tool>` in
+tool-use output) and exposes all eight Cortadel MCP tools — `add_memories`, `add_conversation`,
+`search_memory`, `get_skill`, `add_media`, `reconcile_memories`, `reconcile_status`,
+`list_merge_suggestions`. Its URL is templated from your `userConfig`:
+
+```
+${user_config.base_url}/mcp/${user_config.client_name}/${user_config.user_id}
+```
+
+`client_name` is what the *server* sees as the calling app's name (the `{clientName}` path
+segment — see [MCP integration](mcp.md)) and, independently, what the *hooks* stamp on the
+memories they write via `UserPromptSubmit`'s `app_name` field. Because both read the same
+`client_name` value, memories written by the hooks and memories written through the MCP tools
+show up under one consistent app label instead of two.
+
+## Troubleshooting
+
+The hooks are deliberately silent on failure, so "nothing happens" is the main failure mode.
+Check connectivity directly:
+
+```bash
+curl -H "Authorization: Bearer $CORTADEL_API_KEY" \
+  "$CORTADEL_URL/api/v1/memories?user_id=$CORTADEL_USER_ID&size=1"
+```
+
+- **401** — missing/invalid API key.
+- **403** — the key is valid but `user_id` doesn't match the user the key was minted for.
+- **No memories injected** — prompt too short (`CORTADEL_MIN_PROMPT_CHARS`, default 10), a
+  slash/`!` command, an empty search result, or the request exceeded its budget.
+- **Stop captures "nothing"** — tool-only or trivial (<80 chars combined) exchanges are skipped;
+  `{"no_facts_extracted":true}` from the server is a normal outcome, not an error.
+- **`claude plugin validate` fails after editing the plugin** — you likely hand-edited a generated
+  file. `clients/cortadel-plugin/.claude-plugin/plugin.json`, `clients/cortadel-plugin/.codex-plugin/plugin.json`,
+  `.claude-plugin/marketplace.json`, and `.agents/plugins/marketplace.json` are all generated by
+  `node packaging/generate.mjs` from `packaging/plugin.metadata.json` — edit the source and
+  regenerate, never the output.
+- **Upgraded and hooks stopped finding a server** — check stderr for a
+  `[cortadel-memory] MEMFORGE_* is set, but ...` diagnostic; the plugin's env vars were renamed
+  from `MEMFORGE_*` to `CORTADEL_*` with no backward-compatible fallback.
+
+See also [`clients/cortadel-plugin/README.md`](https://github.com/cortadel/cortadel/blob/main/clients/cortadel-plugin/README.md)
+for the full environment-variable reference and [MCP integration](mcp.md) for the underlying
+endpoint contract.

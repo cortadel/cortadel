@@ -65,6 +65,7 @@ header, or `?api_key=<token>` — omit entirely when the server has auth disable
 {
   "mcpServers": {
     "cortadel": {
+      "type": "http",
       "url": "http://localhost:3001/mcp/claude/alice",
       "headers": { "Authorization": "Bearer <token>" }
     }
@@ -75,7 +76,7 @@ header, or `?api_key=<token>` — omit entirely when the server has auth disable
 Eight tools, no MCP resources or prompts: `add_memories`, `add_conversation`, `search_memory`,
 `get_skill`, `add_media`, `reconcile_memories`, `reconcile_status`, `list_merge_suggestions`. See
 `references/architecture.md` for what each does. For Claude Code specifically, this repo also ships
-a zero-dependency hooks plugin (`clients/claude-code-plugin`) that auto-recalls on each prompt and
+a zero-dependency hooks plugin (`clients/cortadel-plugin`) that auto-recalls on each prompt and
 auto-captures at the end of a turn.
 
 ### 2. REST API + SDKs — typed, direct integration

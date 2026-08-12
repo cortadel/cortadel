@@ -1,9 +1,13 @@
-name: Claude Code plugin
+name: Cortadel plugin
 
-# Runs the zero-dependency Claude Code plugin's node:test suite. The plugin moved here from the
-# private engine repo's own ci.yml `plugin` job (memforge chore/move-claude-code-plugin) as part
-# of open-sourcing it under clients/claude-code-plugin/ — mirroring where it lived there — with a
-# rebrand (memforge-memory -> cortadel-memory, MEMFORGE_* -> CORTADEL_* env vars).
+# Runs the zero-dependency Claude Code / Codex plugin's node:test suite. The plugin moved here
+# from the private engine repo's own ci.yml `plugin` job (memforge chore/move-claude-code-plugin)
+# as part of open-sourcing it under clients/cortadel-plugin/ (rebranded memforge-memory ->
+# cortadel-memory, MEMFORGE_* -> CORTADEL_* env vars) and was later renamed a second time from
+# clients/claude-code-plugin/ to clients/cortadel-plugin/ (this workflow's own former filename,
+# claude-code-plugin.yml) once the plugin started shipping Codex packaging too — see
+# packaging/plugin.metadata.json and .github/workflows/plugin-packaging.yml, which own generating
+# and validating the manifests this suite's fixtures assume already exist.
 #
 # No install step: the plugin has zero dependencies by design (Node 18+ built-in fetch, ESM), so
 # `node --test` runs directly against the checked-out scripts. Node 20 matches the private repo's
@@ -19,19 +23,19 @@ on:
   push:
     branches: [main]
     paths:
-      - 'clients/claude-code-plugin/**'
-      - '.github/workflows/claude-code-plugin.yml'
+      - 'clients/cortadel-plugin/**'
+      - '.github/workflows/cortadel-plugin.yml'
   pull_request:
     paths:
-      - 'clients/claude-code-plugin/**'
-      - '.github/workflows/claude-code-plugin.yml'
+      - 'clients/cortadel-plugin/**'
+      - '.github/workflows/cortadel-plugin.yml'
   workflow_dispatch:
 
 jobs:
   test:
-    name: Claude Code plugin (node --test)
+    name: Cortadel plugin (node --test)
     concurrency:
-      group: claude-code-plugin-test-${{ github.ref }}
+      group: cortadel-plugin-test-${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
@@ -43,4 +47,4 @@ jobs:
 
       # Zero dependencies by design — no install step, just the built-in runner.
       - name: Test
-        run: node --test clients/claude-code-plugin/test/
+        run: node --test clients/cortadel-plugin/test/

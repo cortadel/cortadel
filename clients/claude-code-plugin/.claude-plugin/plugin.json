@@ -1,5 +1,0 @@
-{
-  "name": "cortadel-memory",
-  "description": "Ambient Cortadel memory for Claude Code: push-recall on every prompt, session bootstrap, auto-capture on stop.",
-  "version": "0.1.0"
-}

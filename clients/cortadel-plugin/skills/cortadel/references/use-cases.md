@@ -24,6 +24,7 @@ Give any MCP-capable client durable memory by pointing it at one URL — no SDK,
 {
   "mcpServers": {
     "cortadel": {
+      "type": "http",
       "url": "http://localhost:3001/mcp/claude/alice",
       "headers": { "Authorization": "Bearer <token>" }
     }
@@ -35,7 +36,7 @@ Give any MCP-capable client durable memory by pointing it at one URL — no SDK,
 namespace and must match the key's user. Once connected, the agent calls `search_memory` before
 answering and `add_memories`/`add_conversation` after — durable recall across sessions with zero
 glue code. For Claude Code specifically, this repo also ships a zero-dependency hooks plugin
-(`clients/claude-code-plugin`, package `cortadel-memory`) that automates exactly this push/recall
+(`clients/cortadel-plugin`, package `cortadel-memory`) that automates exactly this push/recall
 loop — see its own README for setup.
 
 ---

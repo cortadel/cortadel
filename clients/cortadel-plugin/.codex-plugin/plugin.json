@@ -1,0 +1,20 @@
+{
+  "name": "cortadel-memory",
+  "description": "Ambient Cortadel memory: push-recall on every prompt, session bootstrap, auto-capture on stop.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Cortadel",
+    "url": "https://cortadel.ai"
+  },
+  "homepage": "https://cortadel.ai",
+  "repository": "https://github.com/cortadel/cortadel",
+  "license": "Apache-2.0",
+  "keywords": [
+    "memory",
+    "mcp",
+    "agent-memory",
+    "knowledge-graph",
+    "rag"
+  ],
+  "skills": "./skills/"
+}

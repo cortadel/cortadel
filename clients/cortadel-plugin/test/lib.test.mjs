@@ -12,6 +12,7 @@ const ENV_KEYS = [
   'CORTADEL_URL',
   'CORTADEL_API_KEY',
   'CORTADEL_USER_ID',
+  'CORTADEL_CLIENT_NAME',
   'CORTADEL_RECALL_TOPK',
   'CORTADEL_MIN_PROMPT_CHARS',
   'CORTADEL_RECALL_RERANK',
@@ -25,6 +26,12 @@ const ENV_KEYS = [
   'MEMFORGE_RECALL_RERANK',
   'MEMFORGE_CAPTURE_MAX_CHARS',
   'MEMFORGE_HOOKS_DISABLE',
+  // Claude Code plugin userConfig injection (packaging/plugin.metadata.json's four options) —
+  // this tier must win over CORTADEL_* when set. See lib.mjs's readOption().
+  'CLAUDE_PLUGIN_OPTION_BASE_URL',
+  'CLAUDE_PLUGIN_OPTION_USER_ID',
+  'CLAUDE_PLUGIN_OPTION_API_KEY',
+  'CLAUDE_PLUGIN_OPTION_CLIENT_NAME',
 ];
 
 const saved = {};
@@ -100,6 +107,7 @@ test('cfg() parses defaults', () => {
   assert.equal(c.minPromptChars, 10);
   assert.equal(c.rerank, undefined);
   assert.equal(c.captureMaxChars, 16000);
+  assert.equal(c.clientName, 'claude-code', 'client_name defaults to claude-code, matching packaging/plugin.metadata.json');
 });
 
 test('cfg() respects overrides', () => {
@@ -129,6 +137,70 @@ test('cfg() strips trailing slash from url', () => {
   process.env.CORTADEL_URL = 'http://127.0.0.1:9/';
   const c = cfg();
   assert.equal(c.url, 'http://127.0.0.1:9');
+});
+
+// ---------- CLAUDE_PLUGIN_OPTION_* vs CORTADEL_* precedence ----------
+// The four userConfig options (packaging/plugin.metadata.json) are readable two ways: Claude
+// Code injects resolved userConfig as CLAUDE_PLUGIN_OPTION_<KEY> when the plugin is installed
+// from the marketplace; CORTADEL_<name> is the pre-existing manual surface (the --plugin-dir dev
+// flow, CI, or running the scripts directly). CLAUDE_PLUGIN_OPTION_* must win when both are set.
+
+test('cfg() reads CLAUDE_PLUGIN_OPTION_* when no CORTADEL_* is set at all', () => {
+  process.env.CLAUDE_PLUGIN_OPTION_BASE_URL = 'http://127.0.0.1:9';
+  process.env.CLAUDE_PLUGIN_OPTION_API_KEY = 'plugin-key';
+  process.env.CLAUDE_PLUGIN_OPTION_USER_ID = 'plugin-user';
+  const c = cfg();
+  assert.ok(c, 'CLAUDE_PLUGIN_OPTION_* alone must be enough to configure the plugin');
+  assert.equal(c.url, 'http://127.0.0.1:9');
+  assert.equal(c.apiKey, 'plugin-key');
+  assert.equal(c.userId, 'plugin-user');
+});
+
+test('cfg() prefers CLAUDE_PLUGIN_OPTION_* over CORTADEL_* when both are set', () => {
+  setRequired(); // CORTADEL_URL/API_KEY/USER_ID = test-* values
+  process.env.CLAUDE_PLUGIN_OPTION_BASE_URL = 'http://127.0.0.1:1234';
+  process.env.CLAUDE_PLUGIN_OPTION_API_KEY = 'plugin-key';
+  process.env.CLAUDE_PLUGIN_OPTION_USER_ID = 'plugin-user';
+  const c = cfg();
+  assert.ok(c);
+  assert.equal(c.url, 'http://127.0.0.1:1234', 'CLAUDE_PLUGIN_OPTION_BASE_URL must win over CORTADEL_URL');
+  assert.equal(c.apiKey, 'plugin-key');
+  assert.equal(c.userId, 'plugin-user');
+});
+
+test('cfg() falls back to CORTADEL_* per-field when only some CLAUDE_PLUGIN_OPTION_* are set', () => {
+  setRequired();
+  process.env.CLAUDE_PLUGIN_OPTION_BASE_URL = 'http://127.0.0.1:1234';
+  // API key and user id deliberately left to the CORTADEL_* tier.
+  const c = cfg();
+  assert.ok(c);
+  assert.equal(c.url, 'http://127.0.0.1:1234');
+  assert.equal(c.apiKey, 'test-key');
+  assert.equal(c.userId, 'test-user');
+});
+
+test('cfg() CORTADEL_* alone (no CLAUDE_PLUGIN_OPTION_*) still fully configures the plugin', () => {
+  setRequired();
+  const c = cfg();
+  assert.ok(c);
+  assert.equal(c.url, 'http://127.0.0.1:9');
+  assert.equal(c.apiKey, 'test-key');
+  assert.equal(c.userId, 'test-user');
+});
+
+test('cfg().clientName: CLAUDE_PLUGIN_OPTION_CLIENT_NAME wins over CORTADEL_CLIENT_NAME', () => {
+  setRequired();
+  process.env.CORTADEL_CLIENT_NAME = 'from-cortadel-env';
+  process.env.CLAUDE_PLUGIN_OPTION_CLIENT_NAME = 'from-plugin-option';
+  const c = cfg();
+  assert.equal(c.clientName, 'from-plugin-option');
+});
+
+test('cfg().clientName: CORTADEL_CLIENT_NAME works when CLAUDE_PLUGIN_OPTION_CLIENT_NAME is unset', () => {
+  setRequired();
+  process.env.CORTADEL_CLIENT_NAME = 'my-agent';
+  const c = cfg();
+  assert.equal(c.clientName, 'my-agent');
 });
 
 // ---------- renamed env vars: no fallback, loud diagnostic ----------

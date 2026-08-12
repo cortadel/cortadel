@@ -237,6 +237,7 @@ One Streamable-HTTP endpoint — `http://<host>:3001/mcp/{clientName}/{userId}`:
 {
   "mcpServers": {
     "cortadel": {
+      "type": "http",
       "url": "http://localhost:3001/mcp/claude/alice",
       "headers": { "Authorization": "Bearer <token>" }
     }
@@ -287,7 +288,7 @@ flowchart LR
 | [`sdk/dotnet`](sdk/dotnet) | Official **.NET SDK** (`Cortadel.Sdk`) — a thin, typed client over the REST API. [Published on NuGet](https://www.nuget.org/packages/Cortadel.Sdk). |
 | [`sdk/python`](sdk/python) | Official **Python SDK** (`cortadel`) — a thin, typed client over the REST API. [Published on PyPI](https://pypi.org/project/cortadel/). |
 | [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API. [Published on npm](https://www.npmjs.com/package/@cortadel/sdk). |
-| [`clients/claude-code-plugin`](clients/claude-code-plugin) | Zero-dependency **Claude Code plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, and async capture on stop. |
+| [`clients/cortadel-plugin`](clients/cortadel-plugin) | Zero-dependency **Claude Code & Codex plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, async capture on stop (Claude Code), skill only (Codex). |
 | [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
 | [`examples`](examples) | Runnable samples |
 
@@ -302,7 +303,7 @@ flowchart LR
 - [.NET SDK reference](docs/sdk-dotnet.md)
 - [Python SDK reference](docs/sdk-python.md)
 - [TypeScript SDK reference](docs/sdk-typescript.md)
-- [Claude Code plugin](clients/claude-code-plugin/README.md) — ambient memory hooks (push-recall, session bootstrap, auto-capture)
+- [Claude Code & Codex plugin](docs/plugin.md) — install, config, ambient memory hooks (push-recall, session bootstrap, auto-capture), data flow & privacy
 
 ## Licensing
 

@@ -32,7 +32,7 @@ async function main() {
   const body = {
     query: prompt.slice(0, 4000),
     user_id: c.userId,
-    app_name: 'claude-code-hooks',
+    app_name: c.clientName,
     top_k: c.topK,
     mode: 'hybrid',
     // Omit rerank entirely for raw RRF; only send when explicitly configured

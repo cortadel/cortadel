@@ -214,6 +214,7 @@ http://localhost:3001/mcp/{clientName}/{userId}
 {
   "mcpServers": {
     "cortadel": {
+      "type": "http",
       "url": "http://localhost:3001/mcp/claude/alice",
       "headers": { "Authorization": "Bearer <token>" }
     }

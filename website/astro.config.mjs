@@ -27,6 +27,7 @@ export default defineConfig({
           label: 'Integrate',
           items: [
             { label: 'MCP integration', slug: 'mcp' },
+            { label: 'Claude Code & Codex plugin', slug: 'plugin' },
             { label: '.NET SDK reference', slug: 'sdk-dotnet' },
             { label: 'Python SDK reference', slug: 'sdk-python' },
             { label: 'TypeScript SDK reference', slug: 'sdk-typescript' },

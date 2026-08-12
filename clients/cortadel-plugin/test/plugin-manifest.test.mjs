@@ -1,6 +1,8 @@
 // Guards the plugin-id/description rename (memforge-memory -> cortadel-memory, "MemForge" ->
 // "Cortadel" in the description) so a partially-reverted rebrand fails CI instead of shipping
-// silently — the manifest has no other test coverage.
+// silently. plugin.json is generated (packaging/generate.mjs from packaging/plugin.metadata.json
+// — see packaging/test/ for the broader generated-output contract); this test is a narrow,
+// standalone smoke check that survives even if packaging/test/ itself is skipped.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
