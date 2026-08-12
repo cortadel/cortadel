@@ -1,0 +1,46 @@
+name: Claude Code plugin
+
+# Runs the zero-dependency Claude Code plugin's node:test suite. The plugin moved here from the
+# private engine repo's own ci.yml `plugin` job (memforge chore/move-claude-code-plugin) as part
+# of open-sourcing it under clients/claude-code-plugin/ — mirroring where it lived there — with a
+# rebrand (memforge-memory -> cortadel-memory, MEMFORGE_* -> CORTADEL_* env vars).
+#
+# No install step: the plugin has zero dependencies by design (Node 18+ built-in fetch, ESM), so
+# `node --test` runs directly against the checked-out scripts. Node 20 matches the private repo's
+# own job (and the plugin's package-free floor); this is deliberately its own workflow file, not a
+# job folded into another one — see the concurrency note below.
+#
+# Its own literal concurrency group, not github.job: that context is only populated inside a job's
+# `steps` and is null everywhere else, including a job-level `concurrency:` block — using it there
+# silently collapses every job in the file into one shared group. Documented the hard way in this
+# repo's dotnet.yml/typescript.yml/python.yml header comments; avoided here the same way.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'clients/claude-code-plugin/**'
+      - '.github/workflows/claude-code-plugin.yml'
+  pull_request:
+    paths:
+      - 'clients/claude-code-plugin/**'
+      - '.github/workflows/claude-code-plugin.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Claude Code plugin (node --test)
+    concurrency:
+      group: claude-code-plugin-test-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Zero dependencies by design — no install step, just the built-in runner.
+      - name: Test
+        run: node --test clients/claude-code-plugin/test/

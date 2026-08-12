@@ -18,9 +18,9 @@
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5B5BD6?style=flat-square" alt="License Apache-2.0" /></a>
   <img src="https://img.shields.io/badge/.NET-8%2B-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 8+" />
-  <img src="https://img.shields.io/badge/NuGet-Cortadel.Sdk-004880?style=flat-square&logo=nuget&logoColor=white" alt="NuGet Cortadel.Sdk" />
-  <img src="https://img.shields.io/badge/PyPI-cortadel-3775A9?style=flat-square&logo=pypi&logoColor=white" alt="PyPI cortadel" />
-  <img src="https://img.shields.io/badge/npm-%40cortadel%2Fsdk-CB3837?style=flat-square&logo=npm&logoColor=white" alt="npm @cortadel/sdk" />
+  <a href="https://www.nuget.org/packages/Cortadel.Sdk"><img src="https://img.shields.io/nuget/v/Cortadel.Sdk?style=flat-square&logo=nuget&logoColor=white&label=NuGet&color=004880" alt="Cortadel.Sdk on NuGet" /></a>
+  <a href="https://pypi.org/project/cortadel/"><img src="https://img.shields.io/pypi/v/cortadel?style=flat-square&logo=pypi&logoColor=white&label=PyPI&color=3775A9" alt="cortadel on PyPI" /></a>
+  <a href="https://www.npmjs.com/package/@cortadel/sdk"><img src="https://img.shields.io/npm/v/%40cortadel%2Fsdk?style=flat-square&logo=npm&logoColor=white&label=npm&color=CB3837" alt="@cortadel/sdk on npm" /></a>
   <img src="https://img.shields.io/badge/MCP-ready-000000?style=flat-square" alt="MCP ready" />
   <img src="https://img.shields.io/badge/graph-FalkorDB%20%7C%20Memgraph-FF4438?style=flat-square" alt="FalkorDB or Memgraph" />
 </p>
@@ -287,6 +287,7 @@ flowchart LR
 | [`sdk/dotnet`](sdk/dotnet) | Official **.NET SDK** (`Cortadel.Sdk`) — a thin, typed client over the REST API. [Published on NuGet](https://www.nuget.org/packages/Cortadel.Sdk). |
 | [`sdk/python`](sdk/python) | Official **Python SDK** (`cortadel`) — a thin, typed client over the REST API. [Published on PyPI](https://pypi.org/project/cortadel/). |
 | [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API. [Published on npm](https://www.npmjs.com/package/@cortadel/sdk). |
+| [`clients/claude-code-plugin`](clients/claude-code-plugin) | Zero-dependency **Claude Code plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, and async capture on stop. |
 | [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
 | [`examples`](examples) | Runnable samples |
 
@@ -301,6 +302,7 @@ flowchart LR
 - [.NET SDK reference](docs/sdk-dotnet.md)
 - [Python SDK reference](docs/sdk-python.md)
 - [TypeScript SDK reference](docs/sdk-typescript.md)
+- [Claude Code plugin](clients/claude-code-plugin/README.md) — ambient memory hooks (push-recall, session bootstrap, auto-capture)
 
 ## Licensing
 
