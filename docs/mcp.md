@@ -64,7 +64,14 @@ it durable recall across sessions.
 
 ## Claude Code plugin
 
-For Claude Code specifically, the repo ships a zero-dependency hooks plugin that auto-recalls on each
-prompt and auto-captures at the end of a turn. See the plugin under
-[`clients/claude-code-plugin`](https://github.com/cortadel/cortadel/tree/main/clients/claude-code-plugin)
-(published separately).
+For Claude Code specifically, this repo ships a zero-dependency hooks plugin (`cortadel-memory`)
+that auto-recalls on each prompt, bootstraps context at session start, and auto-captures at the
+end of a turn:
+
+```
+claude --plugin-dir <repo>/clients/claude-code-plugin
+```
+
+Configure it with `CORTADEL_URL`, `CORTADEL_API_KEY`, and `CORTADEL_USER_ID` — full setup, all
+environment variables, and troubleshooting are in the plugin's own
+[`clients/claude-code-plugin/README.md`](https://github.com/cortadel/cortadel/tree/main/clients/claude-code-plugin).

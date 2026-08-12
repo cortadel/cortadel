@@ -287,6 +287,7 @@ flowchart LR
 | [`sdk/dotnet`](sdk/dotnet) | Official **.NET SDK** (`Cortadel.Sdk`) — a thin, typed client over the REST API. [Published on NuGet](https://www.nuget.org/packages/Cortadel.Sdk). |
 | [`sdk/python`](sdk/python) | Official **Python SDK** (`cortadel`) — a thin, typed client over the REST API. [Published on PyPI](https://pypi.org/project/cortadel/). |
 | [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API. [Published on npm](https://www.npmjs.com/package/@cortadel/sdk). |
+| [`clients/claude-code-plugin`](clients/claude-code-plugin) | Zero-dependency **Claude Code plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, and async capture on stop. |
 | [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
 | [`examples`](examples) | Runnable samples |
 
@@ -301,6 +302,7 @@ flowchart LR
 - [.NET SDK reference](docs/sdk-dotnet.md)
 - [Python SDK reference](docs/sdk-python.md)
 - [TypeScript SDK reference](docs/sdk-typescript.md)
+- [Claude Code plugin](clients/claude-code-plugin/README.md) — ambient memory hooks (push-recall, session bootstrap, auto-capture)
 
 ## Licensing
 

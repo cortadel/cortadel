@@ -1,0 +1,7 @@
+{"type":"user","uuid":"1a111111-1111-4111-8111-111111111111","origin":{"kind":"human"},"message":{"role":"user","content":"EARLY-USER: how is the GPU reranker wired into the prod memforge deployment right now?"}}
+{"type":"assistant","uuid":"2b222222-2222-4222-8222-222222222222","message":{"role":"assistant","content":[{"type":"text","text":"EARLY-ASSISTANT: it is wired via the MEMFORGE_Rerank__HttpEndpoint environment variable."},{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"docker ps"}}]}}
+{"type":"user","uuid":"3c333333-3333-4333-8333-333333333333","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"CONTAINER ID   IMAGE   ix-bge-reranker"}]}}
+{this line is deliberately malformed JSON and must be tolerated
+{"type":"user","uuid":"4d444444-4444-4444-8444-444444444444","origin":{"kind":"human"},"message":{"role":"user","content":"FINAL-USER: summarize what we changed in the stop-capture hook implementation today, please."}}
+{"type":"user","uuid":"5e555555-5555-4555-8555-555555555555","isMeta":true,"message":{"role":"user","content":"META-USER: system-injected context reminder text that must never be captured as the user turn."}}
+{"type":"assistant","uuid":"6f666666-6666-4666-8666-666666666666","message":{"role":"assistant","content":[{"type":"text","text":"FINAL-ASSISTANT: we implemented async Stop auto-capture with fail-open exits and tolerant transcript parsing."}]}}
