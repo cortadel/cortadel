@@ -69,12 +69,15 @@ the hosted service add `"apiKey": "${CORTADEL_API_KEY}"` and export the variable
 
 A complete, runnable walkthrough — capture a turn, recall it on the next one, query it by tool, and
 read it back through OpenClaw's own memory tool — lives in
-[`examples/local-turn.mjs`](examples/local-turn.mjs):
+[`examples/local-turn.ts`](examples/local-turn.ts):
 
 ```bash
 pnpm install && pnpm build
-node examples/local-turn.mjs
+node examples/local-turn.ts
 ```
+
+`node` runs the TypeScript file directly — it strips types natively, and this package's Node floor
+is well past the 22.18 that made that the default — so the example needs no loader of its own.
 
 [`examples/openclaw.json`](examples/openclaw.json) is a ready-to-merge config block, annotated
 line-by-line in [`examples/README.md`](examples/README.md). The annotations live there rather than
@@ -199,10 +202,15 @@ rather than inventing a namespace.
 
 ```bash
 pnpm install
-pnpm exec vitest run     # 143 unit tests, fully offline
-pnpm typecheck           # src and test, against the real openclaw type declarations
+pnpm exec vitest run     # 145 unit tests, fully offline
+pnpm typecheck           # src, test and examples, against the real openclaw type declarations
 pnpm build
 ```
+
+The examples are TypeScript for that second line's sake: `tsconfig.test.json` type-checks
+`examples/` against this package's own source (`@cortadel/openclaw` is mapped to `src/index.ts`, so
+the pass needs no prior build), which is what stops a documented example from drifting away from the
+API it demonstrates.
 
 The tests need no network, no Cortadel server, and no API keys — the Cortadel client is stubbed at
 its own boundary, and `register()` is driven against a fake plugin API. Test data uses `e2e-*` user

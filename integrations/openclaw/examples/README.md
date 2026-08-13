@@ -5,7 +5,7 @@ Two things live here:
 | File | What it is |
 |---|---|
 | [`openclaw.json`](openclaw.json) | A ready-to-merge OpenClaw config block enabling this plugin. |
-| [`local-turn.mjs`](local-turn.mjs) | A runnable end-to-end walkthrough that drives the plugin's real `register()` against a ~30-line stand-in for OpenClaw. |
+| [`local-turn.ts`](local-turn.ts) | A runnable end-to-end walkthrough that drives the plugin's real `register()` against a ~40-line stand-in for OpenClaw. |
 
 ## `openclaw.json`
 
@@ -51,18 +51,25 @@ Every option, including the ones the example leaves at their defaults
 (`appName`, `promptSupplement`, `minPromptChars`, `project`), is in the
 [configuration table in the main README](../README.md#configuration).
 
-## `local-turn.mjs`
+## `local-turn.ts`
 
 ```bash
 pnpm install && pnpm build
-node examples/local-turn.mjs
+node examples/local-turn.ts
 ```
+
+`node` runs the `.ts` file as-is: type stripping has been on by default since Node
+22.18, and this package requires ≥ 22.22.3, so no loader, no `tsx`, no separate
+compile step. `pnpm build` is for the plugin the example imports, not for the
+example. It is TypeScript so that `pnpm typecheck` covers it — `tsconfig.test.json`
+includes `examples/` and maps `@cortadel/openclaw` to `src/index.ts`, so this file is
+compiled against the plugin's current source and cannot quietly fall behind it.
 
 It talks to a **real** Cortadel server — start one with `docker compose up` from the
 Cortadel repo root, or point it at the hosted service:
 
 ```bash
-CORTADEL_BASE_URL=https://app.cortadel.ai CORTADEL_API_KEY=... node examples/local-turn.mjs
+CORTADEL_BASE_URL=https://app.cortadel.ai CORTADEL_API_KEY=... node examples/local-turn.ts
 ```
 
 With no server reachable it still runs to completion, which demonstrates the other
