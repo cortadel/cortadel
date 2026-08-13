@@ -1,181 +1,177 @@
 # Cortadel × Microsoft Agent Framework
 
-Long-term memory for agents built on the [Microsoft Agent Framework](https://github.com/microsoft/agent-framework) (Python).
+Long-term memory for [Microsoft Agent Framework](https://learn.microsoft.com/agent-framework/)
+agents, backed by [Cortadel](https://cortadel.ai). Attach one `AIContextProvider` and your agent
+recalls what it learned in earlier conversations before every model call, and files the new turn
+away after it — no bookkeeping in your own code, and nothing lost when the session ends.
 
-[Cortadel](https://cortadel.ai) is self-hosted long-term temporal graph memory for AI agents — a
-bi-temporal graph store with hybrid BM25 + vector search. This package wires it into Agent
-Framework through the framework's own extension points: a `ContextProvider` that recalls before
-every model call and stores after every turn, plus `search_memory` / `add_memories` as real
-`FunctionTool`s the agent can call on its own initiative. Your agent remembers what a user told
-it last week, in a store you run yourself.
+Cortadel is self-hosted long-term temporal graph memory for AI agents: a bi-temporal graph store
+with hybrid BM25 + vector search, so memories can be superseded and re-dated rather than just piled
+up. This package makes it feel native inside Agent Framework, using the framework's own extension
+points and nothing else.
 
 ## Install
 
 ```bash
-pip install cortadel-agent-framework
+dotnet add package Cortadel.AgentFramework
 ```
-
-This pulls in `agent-framework-core` (the framework's core abstractions, not the full
-`agent-framework` metapackage with every model provider) and the `cortadel` Python SDK. You will
-also want a chat client — e.g. `pip install agent-framework-openai`.
 
 ## Quickstart
 
-```python
-import asyncio
+```csharp
+using Cortadel.AgentFramework;
+using Microsoft.Agents.AI;
+using OpenAI;
 
-from agent_framework import Agent
-from agent_framework.openai import OpenAIChatClient
-from cortadel_agent_framework import CortadelContextProvider, cortadel_memory_tools
+// One provider per end user: a Cortadel client is bound to a single user id at construction,
+// so `memory` *is* the per-user object. `await using` flushes and closes it on the way out.
+await using var memory = new CortadelContextProvider(new CortadelContextProviderOptions
+{
+    BaseUrl = "http://localhost:3001",
+    UserId = "e2e-alice",
+});
 
+AIAgent agent = new OpenAIClient(Environment.GetEnvironmentVariable("OPENAI_API_KEY"))
+    .GetChatClient("gpt-4o-mini")
+    .AsAIAgent(new ChatClientAgentOptions
+    {
+        AIContextProviders = [memory],
+    });
 
-async def main() -> None:
-    # One provider per end user: a Cortadel client is bound to a single user id.
-    async with CortadelContextProvider(
-        base_url="http://localhost:3001",  # or https://app.cortadel.ai
-        user_id="e2e-alice",               # in a real app, your end user's stable id
-    ) as memory:
-        agent = Agent(
-            client=OpenAIChatClient("gpt-4o-mini"),
-            instructions="You are a helpful assistant with long-term memory.",
-            context_providers=[memory],                     # automatic recall + storage
-            tools=cortadel_memory_tools(memory.client),     # optional: deliberate recall
-        )
+var session = await agent.CreateSessionAsync();
+Console.WriteLine((await agent.RunAsync("I ship on Fridays.", session)).Text);
 
-        # Turn one — stored automatically after the turn completes.
-        await agent.run("I ship on Fridays and I prefer dark mode.")
-
-        # Turn two, or next week, or a brand-new session: recalled automatically.
-        reply = await agent.run("When should we schedule the release?")
-        print(reply.text)
-
-
-asyncio.run(main())
+// A brand-new session, no chat history — whatever it knows here came out of Cortadel.
+var later = await agent.CreateSessionAsync();
+Console.WriteLine((await agent.RunAsync("When do I usually ship?", later)).Text);
 ```
+
+A complete, runnable version is in [`examples/BasicMemoryAgent`](examples/BasicMemoryAgent). It is a
+real project in the solution, so `dotnet build` compiles it.
 
 ## What you get
 
-### `CortadelContextProvider` — automatic memory
-
-A subclass of `agent_framework.ContextProvider`, attached with `Agent(context_providers=[...])`.
-It implements the framework's two hooks:
+**Automatic memory — `CortadelContextProvider`.** A `Microsoft.Agents.AI.AIContextProvider`, which
+is the framework's own memory seam. It overrides the two methods the base class defines for exactly
+this:
 
 | Hook | What it does |
 |---|---|
-| `before_run` | Hybrid-searches Cortadel with the current turn's input and injects the hits into the invocation context — as an attributed context message (default) or appended to the system instructions. |
-| `after_run` | Sends the completed turn (input + the agent's response) to Cortadel's conversation pipeline, which distils durable facts from it off the request path. |
+| `ProvideAIContextAsync` | Hybrid-searches Cortadel with the current turn's input and returns an `AIContext` the framework merges into the invocation — as a user-role context message by default, or as system instructions (`InjectAs`). |
+| `StoreAIContextAsync` | Hands the completed turn to Cortadel's conversation pipeline, which distils durable facts out of it off the request path. |
 
-Three things it does that a naive wrapper would not:
+Attach it through `ChatClientAgentOptions.AIContextProviders`. Per-session state (already-injected
+memory ids, the Cortadel session id) lives in `AgentSession.StateBag` under this provider's
+`StateKeys`, so one provider instance safely serves many sessions and the state survives
+`SerializeSessionAsync`.
 
-- **It never takes your agent down.** Every Cortadel call fails open: transport and HTTP errors
-  are swallowed, so a memory outage degrades the agent to "no long-term memory", not "no agent".
-  Pass `on_error` to observe those failures, or `raise_on_error=True` if you would rather the
-  turn fail loudly; a failure that is neither observed nor propagated is logged as a warning.
-  `asyncio.CancelledError` is deliberately re-raised — cancellation is your intent, not a
-  Cortadel failure.
-- **It does not re-inject the same memories every turn.** Injected memory ids are tracked in the
-  provider-scoped `state` dict Agent Framework hands to each hook (persisted in
-  `AgentSession.state`, so it survives a session store round-trip), bounded to
-  `max_remembered_ids`.
-- **It does not re-ingest its own output.** The context block it injected is filtered out before
-  the turn is stored, so retrieved memories are never written back as if the user had said them.
+**Memory tools — `CortadelMemoryTools`.** `search_memory` and `add_memories` as
+`Microsoft.Extensions.AI.AIFunction`s (built with `AIFunctionFactory.Create`, so the JSON schema
+comes from the signature). Where the provider gives an agent memory it never has to ask for, these
+give it memory it can *choose* to use:
 
-### `cortadel_memory_tools` — agent-invoked memory
+```csharp
+using Microsoft.Extensions.AI;
 
-Real `agent_framework.FunctionTool`s built with the framework's `tool` primitive, so their JSON
-schemas come from the annotated signatures:
+var cortadel = CortadelMemoryClient.Create("http://localhost:3001", "e2e-alice");
 
-| Tool | Signature | Purpose |
-|---|---|---|
-| `search_memory` | `(query: str, top_k: int \| None = None)` | Recall on demand mid-reasoning. Returns one memory per line. `top_k` is nullable in the schema the model sees; omitting it falls back to the builder's `top_k` (10), and any value is clamped into Cortadel's 1–50 range. |
-| `add_memories` | `(text: str)` | Deliberately commit a fact worth keeping. Reports the store pipeline's real verdict (`ADD`, `SKIP_DUPLICATE`, …). |
+AIAgent agent = chatClient.AsAIAgent(new ChatClientAgentOptions
+{
+    ChatOptions = new ChatOptions { Tools = CortadelMemoryTools.CreateAll(cortadel) },
+});
+```
 
-Both are bound to a client at build time, so **no tool parameter accepts a user id** — the model
-cannot reach another user's memories. Use `search_memory_tool()` / `add_memories_tool()`
-individually if you want only one, or to rename them.
+Both tools are bound to a client at build time, so they are already scoped to that client's user —
+the model cannot reach another user's memories by asking. Set `IncludeMemoryTools = true` on the
+provider to get both capabilities from a single attachment.
 
-The builders take these options — `cortadel_memory_tools()` forwards all but `name` and
-`memory_type`:
-
-| Option | Type | Default | Applies to | Meaning |
-|---|---|---|---|---|
-| `name` | `str` | the tool's own name | both | Rename the tool the model sees. |
-| `top_k` | `int` | `10` | `search_memory` | Result count used when the model does not ask for one. Higher than the provider's `5`: this tool only runs when the model decided it needed memory, so it can afford a wider net — and `10` is the Cortadel SDK's own `SearchOptions` default. |
-| `rerank` | `str \| None` | `None` | `search_memory` | `"cross_encoder"` to rerank server-side. |
-| `infer` | `bool \| None` | `None` | `add_memories` | `False` stores the text verbatim and skips background extraction (dedup still applies). |
-| `memory_type` | `str \| None` | `None` | `add_memories` | Pin the cognitive type: `episodic`, `semantic` or `procedural`. |
-| `raise_on_error` | `bool` | `False` | both | Propagate a Cortadel failure instead of answering the model with a graceful "memory is unavailable" note. |
-| `on_error` | `Callable[[Exception], None] \| None` | `None` | both | Observe Cortadel failures. Replaces the warning log. |
-
-The provider and the tools compose: attach the provider for ambient recall and add the tools when
-you want the agent to be able to go looking.
+**Graceful degradation.** Every Cortadel call fails open: if the server is unreachable the agent
+still answers, just without long-term memory, and the tools reply "memory is temporarily
+unavailable" instead of throwing at the model. `OnError` observes those failures;
+`ThrowOnError = true` propagates them instead. `OperationCanceledException` is always rethrown
+untouched — cancellation is your intent, not a Cortadel failure.
 
 ## Configuration
 
-`CortadelContextProvider(base_url=..., user_id=..., **options)` — pass `base_url` and `user_id`
-and the provider builds (and closes) its own Cortadel client, or pass `client=` and keep
-ownership yourself.
+`CortadelContextProviderOptions`. Either set `BaseUrl` and `UserId` and let the provider build (and
+own) a Cortadel client, or set `Client` to one you own yourself.
 
 | Option | Type | Default | Meaning |
 |---|---|---|---|
-| `base_url` | `str` | — | Cortadel server URL. Required unless `client` is given. |
-| `user_id` | `str` | — | The user who owns these memories. Required unless `client` is given. |
-| `api_key` | `str \| None` | `None` | Bearer token. Omit when the server runs with auth disabled. |
-| `app_name` | `str` | `"cortadel-agent-framework"` | Recorded by Cortadel for access logging on searches. |
-| `client` | `CortadelClient \| None` | `None` | Pre-built client. When given, the four options above are ignored and **you** own its lifecycle. |
-| `source_id` | `str` | `"cortadel"` | Attribution id for injected messages and provider state. Give each provider a distinct id if you attach two. |
-| `top_k` | `int` | `5` | Memories retrieved per turn (Cortadel accepts 1–50). |
-| `search_mode` | `str` | `"hybrid"` | `hybrid`, `text` or `vector`. |
-| `rerank` | `str \| None` | `None` | `"cross_encoder"` to rerank server-side. Cortadel accepts no other value. |
-| `memory_type` | `str \| None` | `None` | Restrict recall to `episodic`, `semantic` or `procedural`. |
-| `context_prompt` | `str \| None` | a generic "## Memories" header | Header placed above the injected memories. |
-| `inject_as` | `str` | `"message"` | `"message"` injects a user-role context message; `"instructions"` appends to the system instructions. |
-| `scope_recall_to_session` | `bool` | `False` | Restrict recall to the current `AgentSession`. Off by default — cross-session recall is the point. |
-| `deduplicate_across_turns` | `bool` | `True` | Skip memories already injected in this session. |
-| `max_remembered_ids` | `int` | `256` | Cap on remembered ids per session, bounding state growth. `0` remembers nothing, which makes every hit eligible for re-injection each turn. |
-| `store_turns` | `bool` | `True` | Persist each completed turn. `False` gives a read-only agent. |
-| `await_persist` | `bool` | `True` | Await the write before the turn returns. **Defaults to `True`, unlike most Cortadel integrations**, because Agent Framework gives a `ContextProvider` no shutdown hook: a script that returns from `agent.run()` and exits would drop an in-flight write. Set `False` to take the write off the turn's critical path — then close the provider (`async with` / `aclose()`) to flush it, and observe write failures through `on_error`, since a fire-and-forget write has no caller left to raise into. |
-| `is_agent_memory` | `bool` | `False` | Extract facts about the *assistant* rather than the user. |
-| `tags` | `list[str] \| None` | `None` | Tags applied to every fact extracted from stored turns. |
-| `project` | `str \| None` | `None` | Project scope (e.g. a repo name) applied to stored turns. |
-| `raise_on_error` | `bool` | `False` | Propagate Cortadel failures to the caller instead of swallowing them. Fail-open is the default: a memory outage must never take the agent down. |
-| `on_error` | `Callable[[Exception], None] \| None` | `None` | Callback invoked with the exception when a Cortadel call fails. Replaces the warning log; a callback that itself raises is logged and swallowed. |
+| `BaseUrl` | `string?` | `null` | Cortadel server URL, e.g. `https://app.cortadel.ai` or `http://localhost:3001`. Required unless `Client` is set. |
+| `UserId` | `string?` | `null` | The user whose memories this provider reads and writes. Required unless `Client` is set. Every call is scoped to it. |
+| `ApiKey` | `string?` | `null` | Bearer token. Omit when the server runs with auth disabled. |
+| `AppName` | `string` | `"Cortadel.AgentFramework"` | App name Cortadel records for access logging on searches. |
+| `Client` | `ICortadelMemory?` | `null` | A pre-built client. When set, `BaseUrl`/`UserId`/`ApiKey`/`AppName` are ignored and you own its lifetime. |
+| `TopK` | `int` | `5` | Maximum memories to recall per turn (Cortadel accepts 1–50). Lower than the search *tool*'s 10 because this runs on every turn. |
+| `SearchMode` | `string` | `"hybrid"` | `hybrid` (default), `text` or `vector`. |
+| `Rerank` | `string?` | `null` | Set to `cross_encoder` to rerank with the server's cross-encoder. Cortadel accepts no other value. |
+| `MemoryType` | `string?` | `null` | Restrict recall to one cognitive type: `episodic`, `semantic` or `procedural`. |
+| `ContextPrompt` | `string` | a generic `## Memories` header | Header placed above the injected memories. |
+| `InjectAs` | `MemoryInjectionMode` | `MemoryInjectionMode.Message` | `Message` injects a user-role context message; `Instructions` appends to the system instructions instead. |
+| `ScopeRecallToSession` | `bool` | `false` | Restrict recall to the current session. Off by default — cross-session recall is the point of long-term memory. |
+| `DeduplicateAcrossTurns` | `bool` | `true` | Skip memories already injected earlier in this session. |
+| `MaxRememberedIds` | `int` | `256` | Cap on remembered ids per session. `0` remembers nothing, so every hit stays eligible each turn. |
+| `StoreTurns` | `bool` | `true` | Persist each completed turn. Set `false` for a read-only agent. |
+| `AwaitPersist` | `bool` | `true` | Await the write before the turn returns. See the note below. |
+| `IsAgentMemory` | `bool` | `false` | Extract facts about the *assistant* rather than the user. |
+| `Tags` | `IReadOnlyList<string>?` | `null` | Tags applied to every fact extracted from stored turns. |
+| `Project` | `string?` | `null` | Project scope (e.g. a repo name) applied to stored turns. |
+| `IncludeMemoryTools` | `bool` | `false` | Also offer `search_memory` / `add_memories` for the invocation, so one attachment gives both automatic and deliberate memory. |
+| `ThrowOnError` | `bool` | `false` | Propagate Cortadel failures instead of swallowing them. |
+| `OnError` | `Action<Exception>?` | `null` | Invoked with the exception when a Cortadel call fails. Replaces the warning log. |
+| `Logger` | `ILogger?` | `null` | Logger for swallowed, unobserved failures. Falls back to `Console.Error`. |
+| `StateKeyPrefix` | `string?` | `null` | Prefix for this provider's `AgentSession.StateBag` keys. Defaults to `CortadelContextProvider`. Give each one a distinct prefix when attaching more than one provider to the same agent. |
 
-### How ids map
+**Why `AwaitPersist` defaults to `true` here**, unlike most Cortadel integrations: the framework
+never disposes a provider, so a program that returns from `RunAsync` and exits would drop an
+in-flight write. Set it to `false` to take the write off the turn's critical path — then you must
+dispose the provider (`await using` / `DisposeAsync`) to flush it, and a failed write can only be
+seen through `OnError`.
 
-- **User** — a Cortadel client is bound to one `user_id` at construction; no Cortadel method takes
-  a user id per call. So **a provider instance is a per-user object**. Build one per end user and
-  cache it; never share one across users.
-- **Session** — Agent Framework's `AgentSession.session_id` is passed as Cortadel's `session_id`
-  when *writing*, so facts stay grouped by conversation. Reads deliberately span every session
-  unless you set `scope_recall_to_session=True`.
+### Tool options
+
+`CortadelMemoryToolOptions`, accepted by `CortadelMemoryTools.CreateAll`,
+`CreateSearchMemoryTool` and `CreateAddMemoriesTool`. The builders take these options:
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `SearchToolName` | `string` | `"search_memory"` | Name the search tool is exposed under to the model. |
+| `AddToolName` | `string` | `"add_memories"` | Name the write tool is exposed under to the model. |
+| `TopK` | `int` | `10` | Result count `search_memory` uses when the model does not ask, matching the Cortadel SDK's own `SearchOptions` default for an explicit search. |
+| `Rerank` | `string?` | `null` | Set to `cross_encoder` to rerank search results server-side. |
+| `Infer` | `bool?` | `null` | Forwarded to `add_memories`; `false` stores the text verbatim and skips background entity/category extraction. Defaults to the server's `true`. |
+| `MemoryType` | `string?` | `null` | Pin the cognitive type written by `add_memories`. |
+| `ThrowOnError` | `bool` | `false` | Propagate a Cortadel failure to the framework's function-invocation machinery instead of answering the model with a graceful note. |
+| `OnError` | `Action<Exception>?` | `null` | Invoked with the exception when a tool call fails. |
+| `Logger` | `ILogger?` | `null` | Logger for swallowed, unobserved failures. |
 
 ## Running the tests
 
-Offline unit tests — no network, no Cortadel server, no API keys:
-
 ```bash
 cd integrations/microsoft-agent-framework
-uv sync --extra test
-uv run pytest -q
+dotnet test
 ```
+
+The suite is fully offline: no Cortadel server, no network and no API keys. It stubs
+`ICortadelMemory` (the interface the package's three Cortadel calls go through) and substitutes an
+`IChatClient` that never reaches a model, so the end-to-end tests still drive a real
+`ChatClientAgent`. `dotnet build` also compiles `examples/`, which is how the sample code stays
+honest.
 
 ## Requirements
 
-- **Python** ≥ 3.10
-- **`agent-framework-core`** ≥ 1.13.0 — the release this package is built and tested against. The
-  floor is conservative rather than a hard compatibility boundary: `ContextProvider`'s
-  `before_run` / `after_run` hook pair and `SessionContext.extend_messages` are byte-identical in
-  1.12.0, so the integration would very likely work there too — it is simply not tested there.
-- **`cortadel`** ≥ 1.0.0
-- **A running Cortadel server** — either the hosted service at `https://app.cortadel.ai`, or
-  self-host it: `docker compose up` from the repo root gives you `http://localhost:3001`. See
-  [docs/self-hosting.md](https://github.com/cortadel/cortadel/blob/main/docs/self-hosting.md).
+- **.NET 8.0 or later** (`net8.0` target).
+- **Microsoft.Agents.AI ≥ 1.17.0** — and `Microsoft.Agents.AI.OpenAI` (or any other
+  `Microsoft.Extensions.AI` chat client) to actually talk to a model.
+- **A running Cortadel server**: hosted at `https://app.cortadel.ai`, or self-hosted with
+  `docker compose up` → `http://localhost:3001`. Self-hosted defaults to auth disabled, in which
+  case `ApiKey` may be omitted.
 
 ## Links
 
-- [Cortadel on GitHub](https://github.com/cortadel/cortadel)
-- [cortadel.ai](https://cortadel.ai)
-- [Microsoft Agent Framework](https://github.com/microsoft/agent-framework)
+- Cortadel — <https://cortadel.ai>
+- Source and issues — <https://github.com/cortadel/cortadel>
+- Microsoft Agent Framework — <https://github.com/microsoft/agent-framework>
 
-Apache-2.0.
+Licensed under Apache-2.0.

@@ -1,17 +1,28 @@
-# Virtual environments
-.venv/
-venv/
+# Build output
+bin/
+obj/
+out/
+publish/
 
-# Python bytecode / cache
-__pycache__/
-*.pyc
+# NuGet
+*.nupkg
+*.snupkg
+packages/
 
-# Packaging build output
-build/
-dist/
-*.egg-info/
+# IDE / tooling
+.vs/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
 
-# Test / tool caches
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+# Test output
+TestResults/
+*.trx
+coverage*.xml
+coverage*.json
+
+# Local env / secrets — never commit
+.env
+.env.*
+!.env.example
