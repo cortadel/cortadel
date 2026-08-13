@@ -724,7 +724,8 @@ export class CortadelStore extends BaseStore {
     this.warnedFilterKeys.add(key);
     this.logger.warn(
       `CortadelStore cannot evaluate the search filter key "${key}" (Cortadel exposes ` +
-        `${[...FILTERABLE_KEYS].sort().join(", ")} on a hit); it is being ignored, so results ` +
+        `${[...FILTERABLE_KEYS].sort((a, b) => a.localeCompare(b)).join(", ")} on a hit); it is ` +
+        `being ignored, so results ` +
         "are NOT filtered by it.",
     );
   }
@@ -787,12 +788,25 @@ function parseIso(value: string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/**
+ * Compares by UTF-16 code unit — deliberately NOT `localeCompare`.
+ *
+ * This orders keys for {@link stableJson}, whose whole job is that the same value always produces
+ * the same text. `localeCompare` is locale- and ICU-version-dependent, so it would make the
+ * "stable" JSON differ between two machines that disagree on collation — exactly the property
+ * being relied on. Code-unit order is the same everywhere, forever.
+ */
+function byCodeUnit(a: string, b: string): number {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 /** Deterministic JSON: object keys sorted, so the same value always produces the same text. */
 function stableJson(value: unknown): string {
   return JSON.stringify(value, (_key, inner: unknown) => {
     if (inner === null || typeof inner !== "object" || Array.isArray(inner)) return inner;
     const record = inner as Record<string, unknown>;
-    return Object.fromEntries(Object.keys(record).sort().map((key) => [key, record[key]]));
+    return Object.fromEntries(Object.keys(record).sort(byCodeUnit).map((key) => [key, record[key]]));
   });
 }
 
