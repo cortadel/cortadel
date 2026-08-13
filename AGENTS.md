@@ -28,11 +28,11 @@ Two ways to get a running server to point the SDKs/plugin at: the hosted service
 | `spec/openapi.json` | The REST contract every SDK generates from. **Synced from a private repo — do not edit.** |
 | `packaging/` | `plugin.metadata.json` (hand-written source of truth for the plugin's identity + config) and `generate.mjs` (the only writer of the plugin/marketplace manifests). See "Never hand-edit these". |
 | `cortadel-plugin/` | The packaged `cortadel-memory` plugin — Claude Code hooks + inline MCP server + the `cortadel` skill (`skills/cortadel/`); Codex gets the skill only. |
-| `integrations/` | Twelve framework integration packages (`langgraph`, `crewai`, `pydantic-ai`, `openai-agents`, `google-adk`, `claude-agent-sdk`, `microsoft-agent-framework`, `deepagents`, `vercel-ai-sdk`, `mastra`, `n8n-nodes-cortadel`, `openclaw`) — **one standalone publishable package per directory**, each depending on the published `cortadel`/`@cortadel/sdk` package like any third party would. No workspace root; own manifest, lockfile and tests each. Contributor contract: `integrations/README.md`. |
+| `integrations/` | Twelve framework integration packages in **three languages** — **TypeScript (8)**: `claude-agent-sdk`, `deepagents`, `langgraph`, `mastra`, `n8n-nodes-cortadel`, `openai-agents`, `openclaw`, `vercel-ai-sdk`; **Python (3)**: `crewai`, `google-adk`, `pydantic-ai`; **.NET (1)**: `microsoft-agent-framework` (`Cortadel.AgentFramework`, `net8.0`). The rule is "follow the host framework": first-party TypeScript wins where the framework ships it as well as Python, the three Python ones have no first-party TS package, and Agent Framework is .NET-first. **One standalone publishable package per directory**, each depending on the published `@cortadel/sdk`/`cortadel`/`Cortadel.Sdk` package like any third party would. No workspace root and no root solution; own manifest and tests each (the .NET one has a folder-local `Cortadel.AgentFramework.slnx` and no lockfile). Contributor contract: `integrations/README.md`. |
 | `docs/` | Hand-written docs; **every page here has a mirror** under `website/` — see below. |
 | `website/` | Astro/Starlight docs site built from `website/src/content/docs/`, one file per `docs/*.md` page plus its own frontmatter and root-relative links. |
 | `examples/` | Runnable sample projects (currently `dotnet-quickstart/`). |
-| `.github/workflows/` | `dotnet.yml`, `typescript.yml`, `python.yml` (build + generation-drift + tiered conformance + publish, one per SDK), `docs.yml` (website build/deploy), `plugin-packaging.yml` (packaging generator drift + `claude plugin validate`), `cortadel-plugin.yml` (plugin's own test suite), `integrations.yml` (the twelve `integrations/` packages — a matrix of offline uv/pytest and pnpm/tsc/vitest legs; no conformance tier and no publish job, since none is released yet), `pr.yml` (the always-runs PR gate — the other seven are all `paths:`-filtered, so this one runs the cheap checks on *every* pull request regardless of what it touched). |
+| `.github/workflows/` | `dotnet.yml`, `typescript.yml`, `python.yml` (build + generation-drift + tiered conformance + publish, one per SDK), `docs.yml` (website build/deploy), `plugin-packaging.yml` (packaging generator drift + `claude plugin validate`), `cortadel-plugin.yml` (plugin's own test suite), `integrations.yml` (the twelve `integrations/` packages — three offline matrices, pnpm/tsc/vitest × 8, uv/pytest × 3 and dotnet build/test/pack × 1, plus a `matrix-coverage` job that re-derives each package's toolchain and floor from the manifest on disk so a language move can't silently keep testing the old one; no conformance tier and no publish job, since none is released yet), `pr.yml` (the always-runs PR gate — the other seven are all `paths:`-filtered, so this one runs the cheap checks on *every* pull request regardless of what it touched). |
 
 ## Never hand-edit these — regenerate instead
 
@@ -102,17 +102,21 @@ uv sync --extra test
 uv run pytest tests -q
 
 # Framework integrations (integrations/<slug>/ — self-contained, cd into the one you changed)
-cd integrations/langgraph && uv sync --extra test && uv run pytest -q   # any Python integration
-cd integrations/mastra && pnpm install && pnpm exec vitest run && pnpm run typecheck   # any TS integration
+cd integrations/langgraph && pnpm install && pnpm run typecheck && pnpm test   # any of the 8 TS integrations
+cd integrations/crewai && uv sync --extra test && uv run pytest -q             # any of the 3 Python ones
+cd integrations/microsoft-agent-framework && dotnet test                       # the .NET one (81 tests)
 # `pnpm run typecheck`, never a bare `tsc --noEmit`: the script chains a second pass over
 # tsconfig.test.json so test/ is type-checked too. CI runs the script; the bare command misses test/.
+# `dotnet test` builds the folder-local .slnx, examples/ included — never the repo-root Cortadel.slnx,
+# which does not contain this package.
 ```
 
 Every integration suite is offline — no server, no network, no keys, no `CORTADEL_*` env. Runtime
-floors differ per package (`deepagents` needs Python ≥ 3.11, `crewai` caps at < 3.14); let `uv`
-fetch the interpreter the manifest asks for rather than lowering a floor. What a new integration
-must contain is in `integrations/README.md`; the user-facing page it lands on is
-`docs/integrations.md` (which has a website mirror — see above).
+floors differ per package and are not to be unified: Node ≥ 20 for five TS packages and ≥ 22 for
+`mastra`/`openclaw`/`vercel-ai-sdk`, Python ≥ 3.10 for `google-adk`/`pydantic-ai` and ≥ 3.11 < 3.14
+for `crewai`, `net8.0` for the .NET one. Let `pnpm`/`uv`/`dotnet` fetch what the manifest asks for
+rather than lowering a floor. What a new integration must contain is in `integrations/README.md`;
+the user-facing page it lands on is `docs/integrations.md` (which has a website mirror — see above).
 
 Windows note (Node test runner): a bare `node --test packaging/test/` or
 `node --test cortadel-plugin/test/` doesn't expand the directory on some Node builds — use

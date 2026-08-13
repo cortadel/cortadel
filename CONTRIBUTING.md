@@ -78,38 +78,60 @@ uv run pytest tests -q
 ### Framework integrations (`integrations/`)
 
 Each directory under `integrations/` is a standalone, publishable package — its own manifest,
-lockfile and tests — built on the published `cortadel` / `@cortadel/sdk` package the way any third
-party would. There is no workspace root, so `cd` into the one you're changing.
+lockfile (or solution) and tests — built on the published `@cortadel/sdk` / `cortadel` /
+`Cortadel.Sdk` package the way any third party would. There is no workspace root and no root
+solution, so `cd` into the one you're changing.
+
+**Twelve packages, three languages: 8 TypeScript, 3 Python, 1 .NET.** The language follows the host
+framework — first-party TypeScript wherever the framework ships it (LangGraph, DeepAgents, the
+OpenAI Agents SDK and the Claude Agent SDK ship both TS and Python, and all four integrations are
+TS), Python for CrewAI / Google ADK / Pydantic AI because they publish nothing else, and .NET for
+the Microsoft Agent Framework. `integrations/README.md` states the rule; don't switch a package's
+language without it.
 
 ```bash
-# Python integrations (uv-managed, like sdk/python/)
+# TypeScript integrations (pnpm, like sdk/typescript/) — claude-agent-sdk, deepagents, langgraph,
+# mastra, n8n-nodes-cortadel, openai-agents, openclaw, vercel-ai-sdk
 cd integrations/langgraph
+pnpm install
+pnpm test            # vitest run
+pnpm run typecheck   # not a bare `tsc --noEmit` — see below
+
+# Python integrations (uv-managed, like sdk/python/) — crewai, google-adk, pydantic-ai
+cd integrations/crewai
 uv sync --extra test
 uv run pytest -q
 
-# TypeScript integrations (pnpm, like sdk/typescript/)
-cd integrations/mastra
-pnpm install
-pnpm exec vitest run
-pnpm run typecheck   # not a bare `tsc --noEmit` — see below
+# The .NET integration (like sdk/dotnet/) — microsoft-agent-framework
+cd integrations/microsoft-agent-framework
+dotnet test            # builds the folder-local .slnx (examples/ included) and runs xUnit
+dotnet pack -c Release # proves it still packs to a .nupkg
 ```
 
-Use `pnpm run typecheck`, not `pnpm exec tsc --noEmit`, for these four packages. Each one's
-`typecheck` script chains a second pass over `tsconfig.test.json` so the `test/` tree is
+Use `pnpm run typecheck`, not `pnpm exec tsc --noEmit`, for the eight TypeScript packages. Each
+one's `typecheck` script chains a second pass over `tsconfig.test.json` so the `test/` tree is
 type-checked too. CI runs the full script; a bare `tsc --noEmit` covers only `src/`, so it can pass
-locally while the gate that judges your PR fails on a type error in a test file.
+locally while the gate that judges your PR fails on a type error in a test file. On the .NET side
+build `integrations/microsoft-agent-framework/Cortadel.AgentFramework.slnx`, never the repo-root
+`Cortadel.slnx` — it does not include this package.
 
 Every integration suite is offline — no Cortadel server, no network, no API keys, no `CORTADEL_*`
 env vars. Runtime floors differ per package, legitimately: each one is whatever its host framework
-and lockfile can actually resolve (`cortadel-deepagents` needs Python ≥ 3.11, `cortadel-crewai`
-declares ≥ 3.11 and < 3.14, the n8n nodes run on Node ≥ 20 while the other three TypeScript packages
-want ≥ 22). Let `uv` and `pnpm` fetch what the manifest declares rather than lowering a floor to
-match your machine.
+and lockfile can actually resolve (`@cortadel/claude-agent-sdk`, `@cortadel/deepagents`,
+`@cortadel/langgraph`, `@cortadel/openai-agents` and the n8n nodes run on Node ≥ 20 while
+`@cortadel/mastra`, `@cortadel/openclaw` and `@cortadel/vercel-ai-provider` want ≥ 22;
+`cortadel-crewai` declares Python ≥ 3.11 and < 3.14 while the other two declare ≥ 3.10; the .NET
+package targets `net8.0`). Let `pnpm`, `uv` and `dotnet` fetch what the manifest declares rather
+than lowering a floor to match your machine.
 
-**Public option names are canonical across all twelve.** `raise_on_error` / `throwOnError`,
-`on_error` / `onError` (always a callback), `top_k` / `topK`, `await_persist` / `awaitPersist`,
-`scope_recall_to_session`, the tool names `search_memory` / `add_memories`, and an `app_name`
-defaulting to the package's own published name. The table and its rules live in
+**Public option names are canonical across all twelve.** In every row the three spellings are
+TypeScript / Python / .NET: `throwOnError` / `raise_on_error` / `ThrowOnError`, `onError` /
+`on_error` / `OnError` (always a callback), `topK` / `top_k` / `TopK`, `awaitPersist` /
+`await_persist` / `AwaitPersist`, `scopeRecallToSession` / `scope_recall_to_session` /
+`ScopeRecallToSession`, the tool names `search_memory` / `add_memories`
+(`snake_case` in every language — the model reads them), and an app name defaulting to the package's
+own published name. One vocabulary, one casing per language — and on the first row one *verb* per
+language too, because TypeScript and C# throw where Python raises. The table and its rules live in
 [`integrations/README.md`](integrations/README.md#canonical-option-names) — a package may deviate on
 a *default* when its framework forces one, provided its README says why in a sentence, but never on
 a *name*. A PR that introduces a synonym will be asked to rename it.
@@ -211,9 +233,15 @@ containers and no repository secrets (target: under two minutes):
 
 ### Path-filtered: the per-SDK/area workflows
 
-`dotnet.yml`, `typescript.yml`, `python.yml`, `docs.yml`, `cortadel-plugin.yml`, and
-`plugin-packaging.yml` each run only when a PR touches the paths they own (see each file's own
-`on.pull_request.paths`). Most also run a `conformance-base` job that starts a real Memgraph
+`dotnet.yml`, `typescript.yml`, `python.yml`, `docs.yml`, `cortadel-plugin.yml`,
+`plugin-packaging.yml`, and `integrations.yml` each run only when a PR touches the paths they own
+(see each file's own `on.pull_request.paths`). `integrations.yml` is the three-toolchain one — a
+pnpm/tsc/vitest matrix over the eight TypeScript packages, a uv/pytest matrix over the three Python
+ones, and a dotnet build/test/pack leg for the .NET one, plus a `matrix-coverage` job that re-derives
+every package's toolchain and runtime floor from the manifest on disk, so moving a package between
+languages without updating that workflow fails the PR instead of quietly testing the old toolchain.
+It has no conformance tier (every integration suite is offline) and no publish job (nothing is
+released yet). Most of the others also run a `conformance-base` job that starts a real Memgraph
 container plus a real `ghcr.io/cortadel/cortadel:latest` server and exercises the SDK against it —
 heavier than the always-on gate (containers, a health-gate wait loop), so it's scoped to PRs that
 actually touch that SDK rather than running for everyone.
