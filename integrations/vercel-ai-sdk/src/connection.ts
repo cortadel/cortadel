@@ -31,7 +31,7 @@ export class ClientResolver {
     if (options.client == null && options.baseUrl == null) {
       throw new Error(
         "Cortadel: provide either `client` or `baseUrl`. " +
-          'Example: cortadelMemory({ baseUrl: "http://localhost:3001", userId: "alice" }).',
+          'Example: cortadelMemory({ baseUrl: "http://localhost:3001", userId: "e2e-alice" }).',
       );
     }
     if (options.client != null && options.baseUrl != null) {

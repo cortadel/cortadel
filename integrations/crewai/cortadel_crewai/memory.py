@@ -56,7 +56,9 @@ class CortadelMemory(Memory):
 
     Pass it wherever CrewAI accepts a memory instance::
 
-        crew = Crew(agents=[...], tasks=[...], memory=CortadelMemory(user_id="alice"))
+        crew = Crew(
+            agents=[...], tasks=[...], memory=CortadelMemory(user_id="e2e-crewai-demo")
+        )
 
     A Cortadel client is bound to **one user id at construction**, so one
     ``CortadelMemory`` serves exactly one user. Build a fresh instance per user

@@ -21,7 +21,7 @@ Quickstart::
     crew = Crew(
         agents=[...],
         tasks=[...],
-        memory=CortadelMemory(base_url="http://localhost:3001", user_id="alice"),
+        memory=CortadelMemory(base_url="http://localhost:3001", user_id="e2e-crewai-demo"),
     )
 """
 

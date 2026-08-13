@@ -185,7 +185,7 @@ interface CachedRecall {
  * ```ts
  * const model = wrapLanguageModel({
  *   model: openai("gpt-5"),
- *   middleware: cortadelMemory({ baseUrl: "http://localhost:3001", userId: "alice" }),
+ *   middleware: cortadelMemory({ baseUrl: "http://localhost:3001", userId: "e2e-alice" }),
  * });
  * ```
  */

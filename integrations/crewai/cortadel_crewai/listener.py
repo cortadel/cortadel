@@ -33,7 +33,7 @@ class CortadelConversationListener(BaseEventListener):
     Registering it is enough — ``BaseEventListener.__init__`` subscribes to the
     global bus::
 
-        listener = CortadelConversationListener(user_id="alice")
+        listener = CortadelConversationListener(user_id="e2e-crewai-demo")
         Crew(agents=[...], tasks=[...]).kickoff()
 
     Keep a reference to the instance for as long as you want it active; the bus

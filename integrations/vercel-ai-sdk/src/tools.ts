@@ -156,7 +156,7 @@ function messageOf(error: unknown): string {
  * ```ts
  * const result = await generateText({
  *   model: openai("gpt-5"),
- *   tools: { ...cortadelTools({ baseUrl: "http://localhost:3001", userId: "alice" }) },
+ *   tools: { ...cortadelTools({ baseUrl: "http://localhost:3001", userId: "e2e-alice" }) },
  *   prompt: "What do you remember about my deployment setup?",
  * });
  * ```

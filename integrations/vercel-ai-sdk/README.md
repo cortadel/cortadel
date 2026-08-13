@@ -29,7 +29,7 @@ const model = wrapLanguageModel({
   model: openai("gpt-4.1-mini"),
   middleware: cortadelMemory({
     baseUrl: "http://localhost:3001",
-    userId: "alice",
+    userId: "e2e-alice",
     // apiKey: "<token>",   // omit when the server runs with auth disabled
   }),
 });
@@ -85,7 +85,7 @@ import { cortadelTools } from "@cortadel/vercel-ai-provider";
 
 const result = await generateText({
   model: openai("gpt-4.1-mini"),
-  tools: cortadelTools({ baseUrl: "http://localhost:3001", userId: "alice" }),
+  tools: cortadelTools({ baseUrl: "http://localhost:3001", userId: "e2e-alice" }),
   stopWhen: stepCountIs(5),
   prompt: "What do you remember about my deployment habits?",
 });
@@ -114,7 +114,7 @@ per-user scoping means one client per user, and this package handles that for yo
 await generateText({
   model,
   prompt: "What do you remember about me?",
-  providerOptions: { cortadel: { userId: "bob", sessionId: "thread-42" } },
+  providerOptions: { cortadel: { userId: "e2e-bob", sessionId: "thread-42" } },
 });
 ```
 

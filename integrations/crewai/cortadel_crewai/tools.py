@@ -179,7 +179,7 @@ def cortadel_tools(
     Mirrors CrewAI's own ``create_memory_tools`` helper::
 
         agent = Agent(role=..., goal=..., backstory=...,
-                      tools=cortadel_tools(user_id="alice"))
+                      tools=cortadel_tools(user_id="e2e-crewai-demo"))
 
     Args:
         raise_on_error: When True, Cortadel failures propagate to the agent loop

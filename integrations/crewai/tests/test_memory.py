@@ -233,11 +233,15 @@ def test_remember_forwards_crewai_bookkeeping_as_metadata(
     fake_client: FakeCortadelClient,
 ) -> None:
     build(fake_client).remember(
-        "A fact.", scope="/team", categories=["ops"], importance=0.9, source="alice"
+        "A fact.",
+        scope="/team",
+        categories=["ops"],
+        importance=0.9,
+        source="e2e-crewai-analyst",
     )
     _, options = fake_client.added[0]
     assert options.metadata["crewai_scope"] == "/team"
-    assert options.metadata["crewai_source"] == "alice"
+    assert options.metadata["crewai_source"] == "e2e-crewai-analyst"
     assert options.metadata["crewai_integration"] == "cortadel-crewai"
 
 
