@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cortadel-google-adk"
+version = "0.1.0"
+description = "Cortadel long-term memory for Google ADK — a BaseMemoryService, an auto-persist plugin, and memory tools."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "Cortadel" }]
+keywords = ["ai", "memory", "agents", "google-adk", "adk", "knowledge-graph", "llm", "rag"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+# google-adk is a real (not peer/optional) dependency: this package subclasses
+# google.adk.memory.BaseMemoryService and google.adk.plugins.BasePlugin, so it
+# cannot be imported without it. Floor is 2.0.0 — `Runner(memory_service=...)`,
+# `App(plugins=[...])` and `BasePlugin.after_run_callback` all predate 2.x, but
+# `BaseMemoryService.add_events_to_memory` / `add_memory` (which this package
+# overrides) and the `ToolContext = Context` unification are 2.x-era surface.
+# Verified against google-adk 2.6.3 (PyPI, 2026-08-07).
+dependencies = [
+    "cortadel>=1.0.0,<2.0.0",
+    "google-adk>=2.0.0,<3.0.0",
+]
+
+[project.urls]
+Homepage = "https://cortadel.ai"
+Repository = "https://github.com/cortadel/cortadel"
+# PEP 621 has no `directory` key (that is npm's), so the package sub-directory
+# is carried as an explicit Source URL instead.
+Source = "https://github.com/cortadel/cortadel/tree/main/integrations/google-adk"
+Issues = "https://github.com/cortadel/cortadel/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cortadel_google_adk"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "cortadel_google_adk/**/*.py",
+    "cortadel_google_adk/py.typed",
+    "examples/**/*.py",
+    "README.md",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
