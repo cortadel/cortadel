@@ -1,0 +1,23 @@
+{
+  // Typecheck-only pass over the tests. The build tsconfig deliberately excludes
+  // `test`, so `tsc --noEmit` never looked at it and a test-only type error could
+  // slip past both scripts. `pnpm typecheck` runs this config too.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false,
+    // Vitest loads the tests as ES modules through Vite, so they are checked the way
+    // they actually run rather than the way `dist/` is emitted: `message-compat.test.ts`
+    // uses top-level `await import()`, which is an error in a CommonJS-mode file.
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    // `node:fs`, `node:path` and `__dirname` in the tests need the Node globals the
+    // shipped surface deliberately does without.
+    "types": ["node"]
+  },
+  // `exclude` is inherited, not merged: the build config excludes `test`, which would
+  // silently filter it back out of `include` and leave this pass checking nothing.
+  "exclude": ["dist", "node_modules", "examples"],
+  "include": ["credentials", "nodes", "shared", "test"]
+}

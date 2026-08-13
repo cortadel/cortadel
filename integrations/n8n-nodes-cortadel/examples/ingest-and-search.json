@@ -1,0 +1,97 @@
+{
+  "name": "Cortadel — ingest a transcript, then search it",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "name": "When clicking Test workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-280, 0]
+    },
+    {
+      "parameters": {
+        "resource": "memory",
+        "operation": "addConversation",
+        "userId": "e2e-n8n-quickstart",
+        "inputMode": "fields",
+        "messages": {
+          "message": [
+            {
+              "role": "user",
+              "content": "We ship on Fridays and I always want the changelog in the release PR."
+            },
+            {
+              "role": "assistant",
+              "content": "Understood — Friday releases, changelog in the PR body."
+            }
+          ]
+        },
+        "conversationFields": {
+          "sessionId": "e2e-n8n-quickstart-session",
+          "project": "acme-api",
+          "tags": "release,process"
+        }
+      },
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "name": "Store the conversation",
+      "type": "n8n-nodes-cortadel.cortadel",
+      "typeVersion": 1,
+      "position": [-40, 0],
+      "credentials": {
+        "cortadelApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Cortadel account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "name": "Wait for extraction",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [180, 0],
+      "webhookId": "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+    },
+    {
+      "parameters": {
+        "resource": "memory",
+        "operation": "search",
+        "userId": "e2e-n8n-quickstart",
+        "query": "when do we release and what goes in the PR?",
+        "simplify": true,
+        "searchOptions": {
+          "topK": 5,
+          "mode": "hybrid"
+        }
+      },
+      "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "name": "Search what was learned",
+      "type": "n8n-nodes-cortadel.cortadel",
+      "typeVersion": 1,
+      "position": [400, 0],
+      "credentials": {
+        "cortadelApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Cortadel account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking Test workflow": {
+      "main": [[{ "node": "Store the conversation", "type": "main", "index": 0 }]]
+    },
+    "Store the conversation": {
+      "main": [[{ "node": "Wait for extraction", "type": "main", "index": 0 }]]
+    },
+    "Wait for extraction": {
+      "main": [[{ "node": "Search what was learned", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" }
+}
