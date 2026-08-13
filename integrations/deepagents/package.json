@@ -1,0 +1,43 @@
+{
+  "name": "@cortadel/deepagents",
+  "version": "0.1.0",
+  "description": "Cortadel long-term memory for DeepAgents — an AgentMiddleware that recalls before the turn and persists after it, plus search_memory / add_memories tools.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "homepage": "https://cortadel.ai",
+  "bugs": { "url": "https://github.com/cortadel/cortadel/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cortadel/cortadel.git",
+    "directory": "integrations/deepagents"
+  },
+  "keywords": ["deepagents", "langchain", "langgraph", "cortadel", "ai", "memory", "agents", "knowledge-graph", "llm"],
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cortadel/sdk": "^1.0.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1.2.0",
+    "deepagents": "^1.12.0",
+    "langchain": "^1.5.0"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.7",
+    "@langchain/langgraph": "^1.4.8",
+    "@types/node": "^22.20.1",
+    "deepagents": "^1.12.3",
+    "langchain": "^1.5.8",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
