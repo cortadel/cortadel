@@ -1,0 +1,64 @@
+{
+  "name": "@cortadel/vercel-ai-provider",
+  "version": "0.1.0",
+  "description": "Cortadel long-term memory for the Vercel AI SDK — memory tools plus a language-model middleware that recalls and persists automatically.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "homepage": "https://cortadel.ai",
+  "bugs": {
+    "url": "https://github.com/cortadel/cortadel/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cortadel/cortadel.git",
+    "directory": "integrations/vercel-ai-sdk"
+  },
+  "keywords": [
+    "ai",
+    "ai-sdk",
+    "vercel",
+    "memory",
+    "agents",
+    "middleware",
+    "tools",
+    "llm",
+    "rag"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cortadel/sdk": "^1.0.0"
+  },
+  "peerDependencies": {
+    "ai": "^7.0.0",
+    "zod": "^3.25.76 || ^4.1.8"
+  },
+  "devDependencies": {
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^22.20.1",
+    "ai": "^7.0.64",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "zod": "^4.4.3"
+  }
+}
