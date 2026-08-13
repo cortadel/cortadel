@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cortadel-pydantic-ai"
+version = "0.1.0"
+description = "Cortadel long-term graph memory as a native Pydantic AI capability — memory tools plus automatic recall and persistence."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "Cortadel" }]
+keywords = ["ai", "memory", "agents", "pydantic-ai", "knowledge-graph", "llm", "rag"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+# `pydantic-ai-slim` rather than `pydantic-ai`: this is a library, so the application picks its own
+# model-provider extras (`pydantic-ai-slim[openai]`, `[anthropic]`, …) instead of inheriting the
+# full meta-package's provider set. Installing `pydantic-ai` also satisfies this floor, because
+# `pydantic-ai==X` depends on `pydantic-ai-slim==X`.
+#
+# Floor is 2.29.0: the capability system this package is built on
+# (`pydantic_ai.capabilities.AbstractCapability`, and `Agent(capabilities=[...])`) is what the
+# integration plugs into, and `AbstractCapability.get_instructions()` / `for_run()` / `after_run()`
+# are the exact hooks used. `<3.0.0` because pydantic-ai follows semver for its public surface.
+dependencies = [
+    "cortadel>=1.0.0,<2.0.0",
+    "pydantic-ai-slim>=2.29.0,<3.0.0",
+]
+
+[project.urls]
+Homepage = "https://cortadel.ai"
+Repository = "https://github.com/cortadel/cortadel"
+Source = "https://github.com/cortadel/cortadel/tree/main/integrations/pydantic-ai"
+Issues = "https://github.com/cortadel/cortadel/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cortadel_pydantic_ai"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "cortadel_pydantic_ai/**/*.py",
+    "cortadel_pydantic_ai/py.typed",
+    "README.md",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+]
