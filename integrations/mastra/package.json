@@ -1,0 +1,62 @@
+{
+  "name": "@cortadel/mastra",
+  "version": "0.1.0",
+  "description": "Cortadel memory for Mastra agents — long-term temporal graph memory as Mastra tools plus an automatic recall/persist processor.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "homepage": "https://cortadel.ai",
+  "bugs": {
+    "url": "https://github.com/cortadel/cortadel/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cortadel/cortadel.git",
+    "directory": "integrations/mastra"
+  },
+  "keywords": [
+    "ai",
+    "memory",
+    "agents",
+    "mastra",
+    "knowledge-graph",
+    "llm",
+    "rag",
+    "cortadel"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@cortadel/sdk": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@mastra/core": ">=1.0.0 <2.0.0",
+    "zod": "^3.25.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@mastra/core": "^1.58.0",
+    "@types/node": "^22.20.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "zod": "^4.1.5"
+  }
+}
