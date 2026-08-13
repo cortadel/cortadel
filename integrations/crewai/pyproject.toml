@@ -1,0 +1,78 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cortadel-crewai"
+version = "0.1.0"
+description = "Cortadel memory for CrewAI — self-hosted long-term temporal graph memory as a drop-in crewai.Memory, plus native tools."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11,<3.14"
+authors = [{ name = "Cortadel" }]
+keywords = ["ai", "memory", "agents", "crewai", "knowledge-graph", "llm", "rag"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+# crewai >=1.10.0 is the floor because this package implements the *unified*
+# memory surface (crewai.Memory with remember/recall, plus crewai.memory.types),
+# and 1.10.0 is the first release that ships it. Verified by listing the
+# published wheels on PyPI: crewai/memory/unified_memory.py, memory/types.py,
+# memory/storage/backend.py and tools/memory_tools.py are all absent from every
+# wheel in 1.0.0–1.9.3 and first appear in 1.10.0. The seam this replaced —
+# ExternalMemory plus crewai.memory.storage.interface.Storage — shipped through
+# 1.9.3 and was removed in that same 1.10.0 release; this package deliberately
+# does not support it. Only 1.15.15 has actually been tested, so 1.10.0 is the
+# true minimum rather than a verified-working floor.
+# requires-python takes the upper bound from crewai's own "<3.14,>=3.10" so a
+# 3.14 interpreter fails at install time instead of after a successful-looking
+# resolve. The lower bound is deliberately 3.11, one above crewai's, because
+# 3.10 is not actually installable: crewai pulls chromadb, whose <3.11 fork
+# resolves to onnxruntime 1.24.3, and that release publishes no cp310 wheel and
+# no sdist at all (cp311/cp312 x5, cp313/cp314 x7 — nothing for 3.10). A 3.10
+# install therefore has no artifact to fetch and nothing to build from. Claiming
+# 3.10 support would be advertising an install that cannot succeed.
+dependencies = [
+    "cortadel>=1.0.0,<2.0.0",
+    "crewai>=1.10.0",
+]
+
+[project.urls]
+Homepage = "https://cortadel.ai"
+Repository = "https://github.com/cortadel/cortadel"
+Source = "https://github.com/cortadel/cortadel/tree/main/integrations/crewai"
+Issues = "https://github.com/cortadel/cortadel/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cortadel_crewai"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "cortadel_crewai/**/*.py",
+    "cortadel_crewai/py.typed",
+    "README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+    # crewai 1.x emits these from its own lazy-module machinery and its
+    # dependency tree at import time. This package neither causes them nor can
+    # fix them; keeping "error" above means our own warnings still fail the run.
+    "default::DeprecationWarning",
+    "default::PendingDeprecationWarning",
+    "default::ImportWarning",
+]
