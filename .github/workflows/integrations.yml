@@ -1,0 +1,424 @@
+name: Integrations
+
+# Gates the twelve framework integration packages under integrations/ — eight Python packages
+# (uv + pytest) and four TypeScript packages (pnpm + tsc + vitest). Structure, comment style,
+# permissions and job naming mirror .github/workflows/python.yml and
+# .github/workflows/typescript.yml; the provisioning below is reused from those two files verbatim
+# rather than re-derived (setup-uv's two-step --no-build install split, pnpm/action-setup before
+# actions/setup-node so the pnpm store cache resolves, the per-job literal concurrency groups).
+#
+# What this file deliberately does NOT do, and why:
+#
+#   * No conformance tier. Every one of the twelve suites is fully offline — each stubs at the
+#     Cortadel client boundary and drives the *real* framework in-process (a real compiled
+#     LangGraph StateGraph, a real Runner.run(), a real @mastra/core Agent, OpenClaw's own shipped
+#     manifest validators, and so on). None of them touch the network, an LLM key, or a Cortadel
+#     server, so there is nothing here for the Memgraph + Cortadel container stack that
+#     python.yml/typescript.yml's conformance-base and conformance-full jobs provision. If a
+#     live-server tier is ever added to these packages (several of their reports call it out as a
+#     gap), it belongs in new jobs modelled on those, not bolted onto the matrix legs below.
+#
+#   * No publish job. All twelve are at version 0.1.0 and none is published yet — the openclaw
+#     package's own manifest still carries an unpinned npmSpec with no expectedIntegrity precisely
+#     because nothing has been released. There is therefore no release tag pattern to gate on, so
+#     this workflow has no `tags:` trigger and no counterpart to python.yml's publish-pypi /
+#     typescript.yml's publish-npm. Those get added with the first release, together with their
+#     own per-package tag prefix.
+#
+#   * No lint step. Checked, not assumed: no ruff/mypy/flake8 configuration exists in any of the
+#     eight Python pyprojects, and no eslint configuration in any of the four TypeScript packages.
+#     Same ruling python.yml's header records for sdk/python — nothing to run until one is added.
+#
+# Every leg's exact command chain below was executed locally against the committed lockfiles, on
+# the same interpreter/runtime the matrix pins. That is what the per-leg version choices are based
+# on. As of the round-2 consistency pass there are no exceptions left: every leg runs at the floor
+# its own manifest declares. crewai was the single exception and stopped being one when that
+# package narrowed requires-python to >=3.11 (see that leg's comment). The floor-drift check in
+# the matrix-coverage job below now enforces that agreement, so a manifest whose floor moves
+# without this file following it fails the PR instead of silently testing the wrong runtime.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/**'
+      - '.github/workflows/integrations.yml'
+  pull_request:
+    paths:
+      - 'integrations/**'
+      - '.github/workflows/integrations.yml'
+  workflow_dispatch:
+
+# Least privilege: nothing in this file reads or writes repository state, comments on a PR, or
+# publishes an artifact — it only checks out the tree and runs each package's own test suite. No
+# `secrets.*` reference appears anywhere in this file, and the trigger is plain `pull_request`,
+# never `pull_request_target` (banned repo-wide and enforced by
+# .github/scripts/check-diff-supply-chain.sh).
+permissions:
+  contents: read
+
+# No workflow-level concurrency block, matching python.yml/typescript.yml: a single group covering
+# the whole file would let a new push cancel the entire in-flight run, so one broken leg's
+# supersession would take the other eleven down with it. Each job gets its own group instead,
+# keyed by a literal per-job name plus the matrix leg's slug — the group literal can NOT be keyed
+# by github.job (that context is only populated within a job's `steps` and is null everywhere else,
+# including a job-level `concurrency:` block; this repo's dotnet.yml header documents hitting that
+# the hard way). Without matrix.slug in the literal, all legs of a matrixed job would share one
+# group and cancel each other instead of running in parallel.
+
+jobs:
+  python:
+    name: ${{ matrix.slug }} (py ${{ matrix.python-version }})
+    strategy:
+      # One broken integration must not hide the other eleven — every leg runs to completion.
+      fail-fast: false
+      matrix:
+        include:
+          # python-version is each package's own declared requires-python floor, not whatever is
+          # newest: CI runs the oldest interpreter the package promises to support, so a
+          # 3.12-only construct fails here instead of at a consumer's install. Same ruling
+          # python.yml's matrix comment records for sdk/python. Each value below was verified by
+          # running this job's exact command chain locally on that interpreter.
+          - slug: claude-agent-sdk
+            python-version: '3.10'
+          - slug: crewai
+            # 3.11 is this package's own declared floor — no longer an exception. Round 2 narrowed
+            # integrations/crewai/pyproject.toml to `requires-python = ">=3.11,<3.14"` because a
+            # 3.10 install cannot succeed: crewai pulls chromadb, whose <3.11 resolution fork
+            # reached onnxruntime 1.24.3, and that release publishes no cp310 wheel and no sdist,
+            # so there was nothing to fetch and nothing to build from. Re-locking dropped the fork
+            # entirely (uv.lock's own requires-python is now ">=3.11, <3.14" and onnxruntime
+            # resolves to a single 1.28.0). Manifest and leg agree; the floor-drift check below
+            # keeps them that way.
+            python-version: '3.11'
+          - slug: deepagents
+            # deepagents itself declares requires-python >=3.11, so 3.11 IS this package's floor.
+            python-version: '3.11'
+          - slug: google-adk
+            python-version: '3.10'
+          - slug: langgraph
+            python-version: '3.10'
+          - slug: microsoft-agent-framework
+            python-version: '3.10'
+          - slug: openai-agents
+            python-version: '3.10'
+          - slug: pydantic-ai
+            python-version: '3.10'
+    concurrency:
+      group: integrations-python-${{ matrix.slug }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    # Generous enough for the heaviest leg (crewai resolves 154 packages, including a large
+    # onnxruntime wheel) without letting a hung leg burn a full hour of runner time. The count
+    # dropped from 164 when round 2's re-lock pruned the whole <3.11 resolution fork.
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: integrations/${{ matrix.slug }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          # Repo-root-relative, like python.yml's own — this path is NOT resolved against the
+          # job's working-directory.
+          cache-dependency-glob: integrations/${{ matrix.slug }}/uv.lock
+
+      # The same two-step split python.yml's build job uses, for the same reasons.
+      # --no-install-project defers installing the local package to the step below; --no-build
+      # forces pre-built wheels for every *third-party* dependency, so a compromised transitive
+      # dependency can't run arbitrary code from a setup.py/build-backend hook during install;
+      # --locked asserts uv.lock is already consistent with pyproject.toml instead of silently
+      # re-resolving. Verified across all eight locks before writing this: every locked
+      # third-party distribution publishes a wheel, so --no-build costs nothing today. If a future
+      # lock update introduces an sdist-only dependency this step fails loudly — that is the
+      # flag working as intended, and the fix is to look at the new dependency, not to drop it.
+      - run: uv sync --extra test --no-install-project --no-build --locked
+      # The local project still needs a source build to install editable (hatchling packaging our
+      # own tree) — that is not the third-party supply-chain risk --no-build guards against, so it
+      # is installed separately with --no-deps (every dependency is already in place above; this
+      # step resolves nothing external).
+      - run: uv pip install --no-deps -e .
+
+      # tests/ explicitly, even though every one of the eight already sets
+      # `testpaths = ["tests"]` — the path is passed so this step documents its own scope rather
+      # than relying on config a reader of this file might not have open. Six of the eight also
+      # set `filterwarnings = ["error"]`, so a new DeprecationWarning out of the framework fails
+      # the leg; that is deliberate on the packages' part and is left alone here.
+      # --no-sync: the venv is already fully synced by the two steps above, so uv never
+      # re-resolves or re-installs; this step only ever runs pytest.
+      - run: uv run --no-sync --no-build --locked pytest tests -q
+
+      # `uv build`, not python.yml's `uv run --with build python -m build`: that file uses the
+      # literal `build` tool because its own task specified it, and pays for an ephemeral overlay
+      # plus an isolated build environment to get it. Nothing here specifies a frontend, and
+      # multiplying two extra PyPI round-trips across eight legs to reach the identical artifact
+      # is not worth it. uv's own build frontend produces the same sdist+wheel from the same
+      # hatchling backend. This builds our own trusted source, which is the point of the step —
+      # it is not the third-party sdist execution --no-build blocks above.
+      - name: Build sdist and wheel
+        run: uv build --sdist --wheel .
+
+      # PEP 561: py.typed is what makes a type checker treat the installed package as typed rather
+      # than falling back to Any. All eight declare it in their hatch include lists, but a target
+      # misconfiguration would silently drop it while everything else still builds cleanly — so
+      # this is checked inside the built archives, not inferred from pyproject.toml. Matched by
+      # suffix rather than by an exact module path so this one step serves all eight legs
+      # (cortadel_langgraph/, cortadel_crewai/, cortadel_agent_framework/, ...).
+      #
+      # A heredoc, not `python -c "..."`: a multi-line -c string indented for this file's own
+      # readability hands Python a script whose first statement is indented with no preceding
+      # block (IndentationError on line 1). YAML's `|` block scalar strips the block's common
+      # leading indentation, so every heredoc line lands flush at column 0 for Python regardless
+      # of how deeply this step is nested — same fix python.yml's equivalent step carries.
+      - name: Confirm py.typed ships in both the sdist and the wheel
+        run: |
+          uv run --no-sync --no-build --locked python - <<'PY'
+          import glob
+          import sys
+          import tarfile
+          import zipfile
+
+          wheel = glob.glob("dist/*.whl")[0]
+          sdist = glob.glob("dist/*.tar.gz")[0]
+
+          with zipfile.ZipFile(wheel) as z:
+              wheel_names = z.namelist()
+          if not any(n.endswith("/py.typed") for n in wheel_names):
+              sys.exit(f"py.typed missing from wheel {wheel}: {wheel_names}")
+
+          with tarfile.open(sdist) as t:
+              sdist_names = t.getnames()
+          if not any(n.endswith("/py.typed") for n in sdist_names):
+              sys.exit(f"py.typed missing from sdist {sdist}: {sdist_names}")
+
+          print(f"py.typed present in {wheel} and {sdist}")
+          PY
+
+  typescript:
+    name: ${{ matrix.slug }} (node ${{ matrix.node-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # node-version is each package's own `engines.node` floor, for the same reason the
+          # Python matrix pins requires-python floors and typescript.yml pins '20.x' — CI runs the
+          # oldest supported runtime, not the newest. Three of the four declare a >= 22 floor;
+          # `22.x` resolves to the newest 22 release, which satisfies mastra's >=22.13.0 and
+          # openclaw's >=22.22.3 without hard-coding a patch version that would silently stop
+          # resolving. None of these packages ships an .npmrc, so pnpm's engine check is a warning
+          # rather than a failure either way.
+          #
+          # There is no per-leg `typecheck` column any more, and its removal is the point. It
+          # existed because the packages diverged: three declared a `typecheck` script and
+          # vercel-ai-sdk declared none, so that one leg had to spell `pnpm exec tsc --noEmit`
+          # inline — which quietly type-checked only src/, since the build tsconfig excludes the
+          # tests. Round 2 gave mastra, vercel-ai-sdk and n8n-nodes-cortadel the
+          # tsconfig.test.json openclaw already had, so all four now declare the identical
+          # script: `tsc --noEmit && tsc -p tsconfig.test.json`, one pass over src via
+          # tsconfig.json and a second over src + test. The single `pnpm run typecheck` step below
+          # therefore invokes BOTH passes on every leg, which the old inline command could not do.
+          # It is also self-guarding: pnpm exits non-zero on a missing script, so a fifth package
+          # that ships without one fails its leg loudly instead of silently skipping type checking.
+          # This job still adds no script to any package — integrations/<slug>/ is owned elsewhere.
+          - slug: mastra
+            node-version: '22.x'
+          - slug: n8n-nodes-cortadel
+            node-version: '20.x'
+          - slug: openclaw
+            node-version: '22.x'
+          - slug: vercel-ai-sdk
+            node-version: '22.x'
+    concurrency:
+      group: integrations-typescript-${{ matrix.slug }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: integrations/${{ matrix.slug }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # pnpm/action-setup before actions/setup-node: setup-node's `cache: pnpm` shells out to
+      # `pnpm store path`, so pnpm has to exist first. Same order typescript.yml uses.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          # Repo-root-relative, like typescript.yml's own — not resolved against the job's
+          # working-directory.
+          cache-dependency-path: integrations/${{ matrix.slug }}/pnpm-lock.yaml
+
+      # Each of the four is a standalone package with its own lockfile (there is no root
+      # package.json and no pnpm-workspace.yaml anywhere above integrations/), so a plain
+      # `pnpm install` in the package directory is the whole install — no workspace flags needed.
+      #
+      # --ignore-scripts blocks dependency lifecycle scripts from running arbitrary code during
+      # install. Verified this changes nothing here: none of the four declares an install-time
+      # lifecycle script of its own, and pnpm 10 already refuses to run dependency build scripts
+      # unless they are allow-listed in `onlyBuiltDependencies` — which none of these package.json
+      # files declares. The one borderline transitive package, esbuild, appears in all four
+      # lockfiles only as vite's *optional peer* (`esbuild: ^0.27.0 || ^0.28.0`) and never
+      # resolves as an installed package. Confirmed empirically: a clean
+      # `pnpm install --frozen-lockfile --ignore-scripts` followed by typecheck, vitest and build
+      # passes in all four. It does not affect explicitly-invoked scripts, so
+      # n8n-nodes-cortadel's `build` (tsc + node scripts/copy-assets.mjs) still runs normally.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Typecheck before tests, matching typescript.yml's build job order: vitest transpiles
+      # without type-checking, so tsc is the only thing here that would catch a type error — in
+      # either pass, src/ or test/.
+      - run: pnpm run typecheck
+      - run: pnpm run test
+      - run: pnpm run build
+
+  # Two invisible failure modes, both closed by reading this workflow's own matrices back out of
+  # the YAML and comparing them against what is actually on disk. Same instinct as the
+  # generated-content-drift and docs-mirror jobs in pr.yml: a check that passes for the wrong
+  # reason is worse than no check, so each convention this file relies on gets enforced.
+  #
+  #   1. Coverage. A thirteenth package added under integrations/ would otherwise get no CI at
+  #      all — the `paths:` filter above would fire, both matrices would run, and every leg would
+  #      pass without ever having looked at the new package.
+  #
+  #   2. Floor drift. Every leg pins the package's own declared floor rather than the newest
+  #      runtime, so CI exercises the oldest interpreter/Node the package promises. That is a
+  #      convention held together by comments, and the round-2 pass proved it can desync: crewai
+  #      moved its requires-python floor from >=3.10 to >=3.11 in the package, and nothing but a
+  #      human reading this file would have noticed if the matrix had not followed. Now a floor
+  #      that moves without this file following it fails the PR.
+  matrix-coverage:
+    name: every integrations/ package has a matrix leg on its declared floor
+    concurrency:
+      group: integrations-matrix-coverage-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # python3 ships on every GitHub-hosted ubuntu-latest runner; PyYAML does not, so it is
+      # installed on demand rather than assumed present — the same best-effort line pr.yml's
+      # workflow-integrity job uses for its own YAML parse check.
+      - name: Compare the matrix legs against integrations/ on disk
+        run: |
+          python3 -c "import yaml" 2>/dev/null || pip install --quiet --disable-pip-version-check pyyaml
+          python3 - <<'PY'
+          import pathlib
+          import sys
+
+          import yaml
+
+          # Only jobs["..."] is read, never wf["on"] — YAML 1.1 parses a bare `on:` key as the
+          # boolean True, which is a trap for anything that tries to look the trigger up by name.
+          wf = yaml.safe_load(open(".github/workflows/integrations.yml", encoding="utf-8"))
+          legs = {
+              leg["slug"]
+              for job in ("python", "typescript")
+              for leg in wf["jobs"][job]["strategy"]["matrix"]["include"]
+          }
+
+          # Directories only: integrations/README.md and any future loose file are not packages.
+          on_disk = {
+              p.name
+              for p in pathlib.Path("integrations").iterdir()
+              if p.is_dir() and not p.name.startswith(".")
+          }
+
+          missing = sorted(on_disk - legs)
+          stale = sorted(legs - on_disk)
+
+          if missing:
+              print(
+                  "::error::These integrations/ packages have no matrix leg in "
+                  ".github/workflows/integrations.yml, so nothing is testing them: "
+                  + ", ".join(missing)
+              )
+          if stale:
+              print(
+                  "::error::These matrix legs name an integrations/ directory that does not "
+                  "exist (renamed or removed?): " + ", ".join(stale)
+              )
+          if missing or stale:
+              sys.exit(1)
+
+          print(f"All {len(on_disk)} integrations/ package(s) are covered: {', '.join(sorted(legs))}")
+          PY
+
+      # The second check: each leg's runtime against the floor its package actually declares.
+      # tomllib is stdlib from 3.11 and ubuntu-latest runners ship 3.12, so pyproject.toml is
+      # parsed rather than regex-scraped; package.json is plain JSON. PyYAML is already installed
+      # by the step above, whose `pip install` is a no-op on the second call if it ran.
+      - name: Compare each matrix leg's runtime against the package's declared floor
+        run: |
+          python3 -c "import yaml" 2>/dev/null || pip install --quiet --disable-pip-version-check pyyaml
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          import yaml
+
+          wf = yaml.safe_load(open(".github/workflows/integrations.yml", encoding="utf-8"))
+          problems = []
+
+          # Python: the single `>=X.Y` clause of requires-python. An upper bound is allowed and
+          # ignored (crewai carries '<3.14' from crewai's own cap); what must match the leg is the
+          # lower bound, because that is the interpreter a consumer can legally install on.
+          for leg in wf["jobs"]["python"]["strategy"]["matrix"]["include"]:
+              slug = leg["slug"]
+              pinned = str(leg["python-version"])
+              spec = tomllib.loads(
+                  pathlib.Path(f"integrations/{slug}/pyproject.toml").read_text(encoding="utf-8")
+              )["project"]["requires-python"]
+              floors = re.findall(r">=\s*(\d+\.\d+)", spec)
+              if len(floors) != 1:
+                  problems.append(
+                      f"{slug}: cannot read a single '>=' lower bound out of "
+                      f"requires-python = {spec!r}; this check needs one to compare against"
+                  )
+              elif floors[0] != pinned:
+                  problems.append(
+                      f"{slug}: matrix runs Python {pinned}, but pyproject.toml declares "
+                      f"requires-python = {spec!r} (floor {floors[0]}). CI runs the oldest "
+                      f"interpreter the package promises — move the leg to {floors[0]}, or fix "
+                      f"the floor if {floors[0]} is not really installable."
+                  )
+
+          # Node: majors only. The matrix pins '22.x' (newest 22) rather than a patch, precisely so
+          # a floor like '>=22.22.3' keeps resolving as new patches land; comparing patches here
+          # would demand a pin that goes stale on its own.
+          for leg in wf["jobs"]["typescript"]["strategy"]["matrix"]["include"]:
+              slug = leg["slug"]
+              pinned = str(leg["node-version"])
+              declared = json.loads(
+                  pathlib.Path(f"integrations/{slug}/package.json").read_text(encoding="utf-8")
+              ).get("engines", {}).get("node")
+              pinned_major = re.fullmatch(r"(\d+)\.x", pinned)
+              declared_major = re.search(r">=\s*(\d+)", declared or "")
+              if not pinned_major:
+                  problems.append(f"{slug}: matrix node-version {pinned!r} is not the expected '<major>.x' form")
+              elif not declared_major:
+                  problems.append(
+                      f"{slug}: package.json declares engines.node = {declared!r}; this check "
+                      f"needs a '>=' floor to compare the matrix leg against"
+                  )
+              elif pinned_major.group(1) != declared_major.group(1):
+                  problems.append(
+                      f"{slug}: matrix runs Node {pinned}, but package.json declares "
+                      f"engines.node = {declared!r}. CI runs the oldest major the package "
+                      f"promises — move the leg to {declared_major.group(1)}.x."
+                  )
+
+          for problem in problems:
+              print(f"::error::{problem}")
+          if problems:
+              sys.exit(1)
+
+          print("Every matrix leg runs at the floor its own manifest declares.")
+          PY
