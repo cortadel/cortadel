@@ -240,11 +240,13 @@ jobs:
       # introduces an sdist-only dependency this step fails loudly — that is the flag working as
       # intended, and the fix is to look at the new dependency, not to drop it.
       - run: uv sync --extra test --no-install-project --no-build --locked
-      # The local project still needs a source build to install editable (hatchling packaging our
-      # own tree) — that is not the third-party supply-chain risk --no-build guards against, so it
-      # is installed separately with --no-deps (every dependency is already in place above; this
-      # step resolves nothing external).
-      - run: uv pip install --no-deps -e .
+      # The local package, installed on its own with --no-deps: every dependency is already in
+      # place from the step above, so this resolves nothing external. --no-build is carried over
+      # too — an earlier revision of this file assumed an editable install of our own hatchling
+      # tree needed a source build and would break under the flag; it does not (verified against
+      # all three legs), so the stricter flag is kept rather than making this the one install in
+      # the job that allows a build hook to run.
+      - run: uv pip install --no-deps --no-build -e .
 
       # tests/ explicitly, even though all three already set `testpaths = ["tests"]` — the path is
       # passed so this step documents its own scope rather than relying on config a reader of this
