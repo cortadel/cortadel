@@ -20,9 +20,10 @@ describing the observed behavior so it can be routed to the maintainers.
 
 See [`AGENTS.md`](AGENTS.md#repository-layout) for the full table. The short version: one
 directory per published package under `sdk/` (`dotnet`, `typescript`, `python`), the plugin under
-`cortadel-plugin/` (which also carries the `cortadel` skill), docs in `docs/` mirrored
-into `website/`, the shared REST contract at `spec/openapi.json`, and the plugin/marketplace
-manifest generator under `packaging/`.
+`cortadel-plugin/` (which also carries the `cortadel` skill), one standalone publishable framework
+integration package per directory under `integrations/`, docs in `docs/` mirrored into `website/`,
+the shared REST contract at `spec/openapi.json`, and the plugin/marketplace manifest generator
+under `packaging/`.
 
 ## Generated code — read this before touching anything under `Generated/`, `generated/`, or `_generated/`
 
@@ -73,6 +74,51 @@ cd sdk/python
 uv sync --extra test
 uv run pytest tests -q
 ```
+
+### Framework integrations (`integrations/`)
+
+Each directory under `integrations/` is a standalone, publishable package — its own manifest,
+lockfile and tests — built on the published `cortadel` / `@cortadel/sdk` package the way any third
+party would. There is no workspace root, so `cd` into the one you're changing.
+
+```bash
+# Python integrations (uv-managed, like sdk/python/)
+cd integrations/langgraph
+uv sync --extra test
+uv run pytest -q
+
+# TypeScript integrations (pnpm, like sdk/typescript/)
+cd integrations/mastra
+pnpm install
+pnpm exec vitest run
+pnpm run typecheck   # not a bare `tsc --noEmit` — see below
+```
+
+Use `pnpm run typecheck`, not `pnpm exec tsc --noEmit`, for these four packages. Each one's
+`typecheck` script chains a second pass over `tsconfig.test.json` so the `test/` tree is
+type-checked too. CI runs the full script; a bare `tsc --noEmit` covers only `src/`, so it can pass
+locally while the gate that judges your PR fails on a type error in a test file.
+
+Every integration suite is offline — no Cortadel server, no network, no API keys, no `CORTADEL_*`
+env vars. Runtime floors differ per package, legitimately: each one is whatever its host framework
+and lockfile can actually resolve (`cortadel-deepagents` needs Python ≥ 3.11, `cortadel-crewai`
+declares ≥ 3.11 and < 3.14, the n8n nodes run on Node ≥ 20 while the other three TypeScript packages
+want ≥ 22). Let `uv` and `pnpm` fetch what the manifest declares rather than lowering a floor to
+match your machine.
+
+**Public option names are canonical across all twelve.** `raise_on_error` / `throwOnError`,
+`on_error` / `onError` (always a callback), `top_k` / `topK`, `await_persist` / `awaitPersist`,
+`scope_recall_to_session`, the tool names `search_memory` / `add_memories`, and an `app_name`
+defaulting to the package's own published name. The table and its rules live in
+[`integrations/README.md`](integrations/README.md#canonical-option-names) — a package may deviate on
+a *default* when its framework forces one, provided its README says why in a sentence, but never on
+a *name*. A PR that introduces a synonym will be asked to rename it.
+
+Adding a new one? [`integrations/README.md`](integrations/README.md) is the contract — the two
+capabilities every package ships, the required file set, the manifest/naming conventions, the
+canonical options, and the README sections. Its user-facing counterpart is
+[`docs/integrations.md`](docs/integrations.md), which like every docs page needs its `website/`
+mirror updated in the same commit.
 
 ### Plugin & packaging (`cortadel-plugin/`, `packaging/`)
 

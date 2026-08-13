@@ -28,10 +28,11 @@ Two ways to get a running server to point the SDKs/plugin at: the hosted service
 | `spec/openapi.json` | The REST contract every SDK generates from. **Synced from a private repo — do not edit.** |
 | `packaging/` | `plugin.metadata.json` (hand-written source of truth for the plugin's identity + config) and `generate.mjs` (the only writer of the plugin/marketplace manifests). See "Never hand-edit these". |
 | `cortadel-plugin/` | The packaged `cortadel-memory` plugin — Claude Code hooks + inline MCP server + the `cortadel` skill (`skills/cortadel/`); Codex gets the skill only. |
+| `integrations/` | Twelve framework integration packages (`langgraph`, `crewai`, `pydantic-ai`, `openai-agents`, `google-adk`, `claude-agent-sdk`, `microsoft-agent-framework`, `deepagents`, `vercel-ai-sdk`, `mastra`, `n8n-nodes-cortadel`, `openclaw`) — **one standalone publishable package per directory**, each depending on the published `cortadel`/`@cortadel/sdk` package like any third party would. No workspace root; own manifest, lockfile and tests each. Contributor contract: `integrations/README.md`. |
 | `docs/` | Hand-written docs; **every page here has a mirror** under `website/` — see below. |
 | `website/` | Astro/Starlight docs site built from `website/src/content/docs/`, one file per `docs/*.md` page plus its own frontmatter and root-relative links. |
 | `examples/` | Runnable sample projects (currently `dotnet-quickstart/`). |
-| `.github/workflows/` | `dotnet.yml`, `typescript.yml`, `python.yml` (build + generation-drift + tiered conformance + publish, one per SDK), `docs.yml` (website build/deploy), `plugin-packaging.yml` (packaging generator drift + `claude plugin validate`), `cortadel-plugin.yml` (plugin's own test suite). |
+| `.github/workflows/` | `dotnet.yml`, `typescript.yml`, `python.yml` (build + generation-drift + tiered conformance + publish, one per SDK), `docs.yml` (website build/deploy), `plugin-packaging.yml` (packaging generator drift + `claude plugin validate`), `cortadel-plugin.yml` (plugin's own test suite), `integrations.yml` (the twelve `integrations/` packages — a matrix of offline uv/pytest and pnpm/tsc/vitest legs; no conformance tier and no publish job, since none is released yet), `pr.yml` (the always-runs PR gate — the other seven are all `paths:`-filtered, so this one runs the cheap checks on *every* pull request regardless of what it touched). |
 
 ## Never hand-edit these — regenerate instead
 
@@ -74,11 +75,14 @@ the website copy adds Starlight frontmatter and root-relative links, e.g. `mcp.m
 other has shipped before** and left the live site teaching a removed or changed API — update both
 in the same commit.
 
-This is **not enforced by CI**. `.github/workflows/docs.yml` triggers on changes to either `docs/**`
-or `website/**`, but only runs the Starlight build — its own header comment says plainly that the
-two trees are "a separate, already-diverged copy" and the build step "does not actually read or
-validate root docs/**/README.md content." Treat the mirror rule as a manual discipline, not a gate
-that will catch you.
+This **is** enforced by CI: `pr.yml`'s `docs-website-mirror` job runs
+`.github/scripts/check-docs-mirror.mjs` on every PR. That script normalizes away the three
+intentional differences (the `# H1` folded into frontmatter `title:`, `> ` blockquotes rewritten as
+`:::note` / `:::tip[…]` asides, relative `foo.md` links rewritten to root-relative `/foo/`) and
+fails if the remaining text still diverges, naming the file pair and the first divergent line. Run
+it locally before pushing: `node .github/scripts/check-docs-mirror.mjs`. Note that
+`.github/workflows/docs.yml` does **not** do this — it only builds the Starlight site, and its own
+header comment says the build "does not actually read or validate root docs/**/README.md content."
 
 ## Build, test, lint (per SDK)
 
@@ -96,7 +100,19 @@ pnpm run build
 # Python (sdk/python/, uv-managed)
 uv sync --extra test
 uv run pytest tests -q
+
+# Framework integrations (integrations/<slug>/ — self-contained, cd into the one you changed)
+cd integrations/langgraph && uv sync --extra test && uv run pytest -q   # any Python integration
+cd integrations/mastra && pnpm install && pnpm exec vitest run && pnpm run typecheck   # any TS integration
+# `pnpm run typecheck`, never a bare `tsc --noEmit`: the script chains a second pass over
+# tsconfig.test.json so test/ is type-checked too. CI runs the script; the bare command misses test/.
 ```
+
+Every integration suite is offline — no server, no network, no keys, no `CORTADEL_*` env. Runtime
+floors differ per package (`deepagents` needs Python ≥ 3.11, `crewai` caps at < 3.14); let `uv`
+fetch the interpreter the manifest asks for rather than lowering a floor. What a new integration
+must contain is in `integrations/README.md`; the user-facing page it lands on is
+`docs/integrations.md` (which has a website mirror — see above).
 
 Windows note (Node test runner): a bare `node --test packaging/test/` or
 `node --test cortadel-plugin/test/` doesn't expand the directory on some Node builds — use

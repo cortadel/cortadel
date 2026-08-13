@@ -29,6 +29,7 @@
   <a href="docs/getting-started.md"><b>Quickstart</b></a> &nbsp;·&nbsp;
   <a href="docs/self-hosting.md"><b>Self-hosting</b></a> &nbsp;·&nbsp;
   <a href="docs/mcp.md"><b>MCP</b></a> &nbsp;·&nbsp;
+  <a href="docs/integrations.md"><b>Integrations</b></a> &nbsp;·&nbsp;
   <a href="docs/sdk-dotnet.md"><b>.NET SDK</b></a> &nbsp;·&nbsp;
   <a href="docs/sdk-python.md"><b>Python SDK</b></a> &nbsp;·&nbsp;
   <a href="docs/sdk-typescript.md"><b>TypeScript SDK</b></a> &nbsp;·&nbsp;
@@ -101,7 +102,7 @@ A capability view of the self-hostable OSS memory systems, from a code-grounded 
 | Lossless backup / export / import | ✅ | 🟡 platform | 🟡 | 🟡 | 🟡 |
 | **.NET / C# native** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Published SDKs | ✅ .NET (NuGet) + Python (PyPI) + TypeScript (npm) | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
-| Framework integrations & connectors | 🟡 MCP + Claude Code | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
+| Framework integrations & connectors | 🟡 MCP, plus 12 first-party packages in-repo but unpublished | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
 | Managed cloud | 🟡 Cloud (coming) | ✅ | ❌ | ✅ | ✅ |
 
 <sub>✅ first-class · 🟡 partial / optional / managed-only · ❌ not available. Competitors genuinely lead on **reach** — SDK breadth, framework integrations, connectors, and managed cloud — which Cortadel is actively closing. mem0 moved its graph store, temporal reasoning, and decay to its managed platform in OSS v2/v3; Supermemory's engine ships as a closed binary, so its engine cells reflect its public API contract, not inspectable code.</sub>
@@ -270,6 +271,27 @@ either the hosted service (`https://app.cortadel.ai`) or your own self-hosted or
 
 Works with **Claude Desktop · Cursor · Windsurf · VS Code · Claude Code** and any MCP-aware client. See [MCP integration](docs/mcp.md).
 
+## Framework integrations
+
+Already using an agent framework? Twelve first-party packages wire Cortadel into that framework's **own** memory interface — a store, a session, a middleware, a context provider — so recall before the model call and persistence after the turn happen without your agent asking. Each also exposes `search_memory` and `add_memories` as native tools for when it should ask.
+
+| Framework | Package | Language | What you get |
+|---|---|---|---|
+| **Claude Agent SDK** | [`cortadel-claude-agent-sdk`](integrations/claude-agent-sdk) | Python | In-process MCP tools + `UserPromptSubmit` / `Stop` hooks |
+| **CrewAI** | [`cortadel-crewai`](integrations/crewai) | Python | Drop-in `crewai.Memory`, crew tools, task listener |
+| **DeepAgents** | [`cortadel-deepagents`](integrations/deepagents) | Python | `AgentMiddleware` recall/persist + native tools |
+| **Google ADK** | [`cortadel-google-adk`](integrations/google-adk) | Python | `BaseMemoryService`, auto-persist plugin, tools |
+| **LangGraph** | [`cortadel-langgraph`](integrations/langgraph) | Python | `BaseStore`, memory tools, recall/persist nodes |
+| **Microsoft Agent Framework** | [`cortadel-agent-framework`](integrations/microsoft-agent-framework) | Python | `ContextProvider` + native `FunctionTool`s |
+| **OpenAI Agents SDK** | [`cortadel-openai-agents`](integrations/openai-agents) | Python | `Session`, recall input filter, function tools |
+| **Pydantic AI** | [`cortadel-pydantic-ai`](integrations/pydantic-ai) | Python | `AbstractCapability` — recall, persist, toolset |
+| **Mastra** | [`@cortadel/mastra`](integrations/mastra) | TypeScript | `Processor` recall/persist + `createTool` tools |
+| **n8n** | [`n8n-nodes-cortadel`](integrations/n8n-nodes-cortadel) | TypeScript | `ai_memory` sub-node + six-operation action node |
+| **OpenClaw** | [`@cortadel/openclaw`](integrations/openclaw) | TypeScript | Memory corpus supplement, tools, recall/capture hooks |
+| **Vercel AI SDK** | [`@cortadel/vercel-ai-provider`](integrations/vercel-ai-sdk) | TypeScript | `LanguageModelMiddleware` recall/persist + tools |
+
+All twelve are at `0.1.0` in [`integrations/`](integrations) and **not yet published** to PyPI/npm. Install commands, quickstarts, and each package's known limits: [Integrations](docs/integrations.md).
+
 ## How it *works*
 
 Expensive work happens once, at write time. Reads stay fast and LLM-free.
@@ -303,7 +325,8 @@ flowchart LR
 | [`sdk/python`](sdk/python) | Official **Python SDK** (`cortadel`) — a thin, typed client over the REST API. [Published on PyPI](https://pypi.org/project/cortadel/). |
 | [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API. [Published on npm](https://www.npmjs.com/package/@cortadel/sdk). |
 | [`cortadel-plugin`](cortadel-plugin) | Zero-dependency **Claude Code & Codex plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, async capture on stop (Claude Code), skill only (Codex). |
-| [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
+| [`integrations`](integrations) | Twelve **framework integration packages** (LangGraph, CrewAI, Pydantic AI, Vercel AI SDK, n8n, …) — one standalone publishable package per directory. |
+| [`docs`](docs) | Getting started · authentication · self-hosting · MCP · integrations · SDK reference |
 | [`examples`](examples) | Runnable samples |
 
 *Coming:* a connector API and a community-integrations registry.
@@ -314,6 +337,7 @@ flowchart LR
 - [Authentication](docs/authentication.md)
 - [Self-hosting the server](docs/self-hosting.md)
 - [MCP integration](docs/mcp.md)
+- [Integrations](docs/integrations.md) — LangGraph, CrewAI, Pydantic AI, OpenAI Agents, Google ADK, Mastra, n8n, and six more
 - [.NET SDK reference](docs/sdk-dotnet.md)
 - [Python SDK reference](docs/sdk-python.md)
 - [TypeScript SDK reference](docs/sdk-typescript.md)
