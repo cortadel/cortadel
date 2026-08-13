@@ -1,0 +1,25 @@
+{
+  "plugins": {
+    "entries": {
+      "cortadel": {
+        "enabled": true,
+        "config": {
+          "baseUrl": "http://localhost:3001",
+          "apiKey": "${CORTADEL_API_KEY}",
+          "userId": "e2e-openclaw-example",
+          "recallScope": "fixed",
+          "autoRecall": true,
+          "autoCapture": true,
+          "corpusSupplement": true,
+          "topK": 5,
+          "minScore": 0,
+          "rerank": false,
+          "timeoutMs": 5000,
+          "dedupeWindow": 200,
+          "circuitBreaker": { "maxFailures": 3, "cooldownMs": 60000 },
+          "tags": ["openclaw"]
+        }
+      }
+    }
+  }
+}

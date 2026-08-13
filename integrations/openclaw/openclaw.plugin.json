@@ -1,0 +1,208 @@
+{
+  "id": "cortadel",
+  "name": "Cortadel Memory",
+  "description": "Self-hosted long-term temporal graph memory for OpenClaw. Adds Cortadel as an additive memory corpus, two agent tools, and optional automatic recall/capture around every turn.",
+  "activation": {
+    "onStartup": true,
+    "onCapabilities": ["tool", "hook"]
+  },
+  "contracts": {
+    "tools": ["cortadel_search_memory", "cortadel_add_memories"]
+  },
+  "uiHints": {
+    "baseUrl": {
+      "label": "Cortadel Base URL",
+      "placeholder": "http://localhost:3001",
+      "help": "Hosted Cortadel is https://app.cortadel.ai. A self-hosted `docker compose up` listens on http://localhost:3001. Falls back to the CORTADEL_BASE_URL env var."
+    },
+    "apiKey": {
+      "label": "Cortadel API Key",
+      "sensitive": true,
+      "help": "Sent as `Authorization: Bearer`. Self-hosted Cortadel defaults to auth disabled, so this may be omitted. Prefer a SecretRef ({\"source\":\"env\",\"provider\":\"default\",\"id\":\"CORTADEL_API_KEY\"}) or ${CORTADEL_API_KEY} over storing the key here."
+    },
+    "userId": {
+      "label": "User ID",
+      "placeholder": "default",
+      "help": "The Cortadel namespace that owns these memories. Every memory is anchored to it. Falls back to the CORTADEL_USER_ID env var."
+    },
+    "recallScope": {
+      "label": "Recall Scope",
+      "help": "How wide a memory namespace a turn recalls from, and writes to. `fixed` keeps one shared namespace (best for a personal assistant). `agent`, `session`, and `sender` suffix the user id so multiple agents, conversations, or people each get an isolated memory namespace."
+    },
+    "autoRecall": {
+      "label": "Auto-Recall",
+      "help": "Search Cortadel before each model call and prepend the matching memories to the turn context."
+    },
+    "autoCapture": {
+      "label": "Auto-Capture",
+      "help": "Send each completed user/assistant turn to Cortadel so it can distil durable facts from it."
+    },
+    "corpusSupplement": {
+      "label": "Expose as Memory Corpus",
+      "help": "Register Cortadel as an additive corpus behind OpenClaw's own memory_search / memory_get tools. Additive: it does not replace the built-in memory backend."
+    },
+    "promptSupplement": {
+      "label": "Prompt Section",
+      "help": "Add a short cached system-prompt section telling the model that Cortadel long-term memory is available."
+    },
+    "topK": {
+      "label": "Top K Results",
+      "placeholder": "5",
+      "help": "Maximum memories retrieved per recall (1-50). Also the fallback when the cortadel_search_memory tool omits its own topK."
+    },
+    "minScore": {
+      "label": "Minimum Score",
+      "help": "Drop recalled memories whose fused RRF score is below this value. 0 keeps everything."
+    },
+    "rerank": {
+      "label": "Cross-Encoder Rerank",
+      "help": "Rerank search results with Cortadel's local cross-encoder. More accurate, slower."
+    },
+    "timeoutMs": {
+      "label": "Request Timeout (ms)",
+      "help": "Per-call budget for every Cortadel request. On timeout the turn continues without memory."
+    },
+    "dedupeWindow": {
+      "label": "Recall Dedupe Window",
+      "advanced": true,
+      "help": "Remembers this many recently injected memory ids per session and skips re-injecting them on later turns. 0 disables deduplication."
+    },
+    "minPromptChars": {
+      "label": "Minimum Prompt Length",
+      "advanced": true,
+      "help": "Skip auto-recall for prompts shorter than this, so trivial turns do not spend a search."
+    },
+    "circuitBreaker": {
+      "label": "Circuit Breaker",
+      "advanced": true,
+      "help": "After maxFailures consecutive Cortadel errors, memory is skipped for cooldownMs before being retried. Keeps an unreachable memory server from slowing every turn."
+    },
+    "tags": {
+      "label": "Capture Tags",
+      "advanced": true,
+      "help": "Tags applied to every fact captured from a turn, for scoped retrieval later."
+    },
+    "project": {
+      "label": "Project Scope",
+      "advanced": true,
+      "help": "Project scope recorded on captured facts, for example a repository name."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "description": "Cortadel server base URL. Defaults to http://localhost:3001 or the CORTADEL_BASE_URL env var."
+      },
+      "apiKey": {
+        "type": "string",
+        "sensitive": true,
+        "description": "Bearer token. Prefer a SecretRef or ${CORTADEL_API_KEY} over a plaintext value."
+      },
+      "userId": {
+        "type": "string",
+        "description": "Cortadel user id that owns these memories. Defaults to \"default\" or the CORTADEL_USER_ID env var."
+      },
+      "appName": {
+        "type": "string",
+        "description": "App name recorded on Cortadel searches for access logging. Defaults to cortadel-openclaw."
+      },
+      "recallScope": {
+        "type": "string",
+        "enum": ["fixed", "agent", "session", "sender"],
+        "description": "How wide a memory namespace a turn recalls from and writes to: fixed (one shared namespace), agent, session, or sender. Defaults to fixed."
+      },
+      "autoRecall": {
+        "type": "boolean",
+        "default": true,
+        "description": "Inject relevant memories before each model call."
+      },
+      "autoCapture": {
+        "type": "boolean",
+        "default": true,
+        "description": "Persist each completed turn to Cortadel."
+      },
+      "corpusSupplement": {
+        "type": "boolean",
+        "default": true,
+        "description": "Expose Cortadel behind OpenClaw's built-in memory_search / memory_get tools."
+      },
+      "promptSupplement": {
+        "type": "boolean",
+        "default": true,
+        "description": "Add a cached system-prompt section advertising Cortadel memory."
+      },
+      "topK": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "description": "Maximum memories retrieved per recall, and the fallback when the cortadel_search_memory tool omits its own topK. Defaults to 5."
+      },
+      "minScore": {
+        "type": "number",
+        "minimum": 0,
+        "description": "Minimum fused RRF score for a recalled memory. Defaults to 0."
+      },
+      "rerank": {
+        "type": "boolean",
+        "default": false,
+        "description": "Use Cortadel's cross-encoder reranker on search."
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 250,
+        "maximum": 120000,
+        "description": "Per-request timeout in milliseconds. Defaults to 5000."
+      },
+      "dedupeWindow": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 5000,
+        "description": "Per-session count of recently injected memory ids to suppress. Defaults to 200. 0 disables."
+      },
+      "minPromptChars": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4000,
+        "description": "Skip auto-recall for prompts shorter than this. Defaults to 8."
+      },
+      "circuitBreaker": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxFailures": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Consecutive failures before memory is skipped. Defaults to 3."
+          },
+          "cooldownMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 600000,
+            "description": "How long to skip memory after the breaker opens. Defaults to 60000."
+          }
+        }
+      },
+      "tags": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Tags applied to every captured fact."
+      },
+      "project": {
+        "type": "string",
+        "description": "Project scope recorded on captured facts."
+      }
+    }
+  },
+  "toolMetadata": {
+    "cortadel_search_memory": {
+      "optional": false
+    },
+    "cortadel_add_memories": {
+      "optional": false
+    }
+  }
+}
