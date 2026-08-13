@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cortadel-deepagents"
+version = "0.1.0"
+description = "Cortadel long-term memory for LangChain DeepAgents — an AgentMiddleware that recalls before the model call and persists after the turn, plus native search_memory/add_memories tools."
+readme = "README.md"
+license = "Apache-2.0"
+# deepagents 0.7.5 declares `requires-python = "<4.0,>=3.11"`; we cannot go lower than the
+# framework we wrap.
+requires-python = ">=3.11"
+authors = [{ name = "Cortadel" }]
+keywords = ["ai", "memory", "agents", "deepagents", "langchain", "langgraph", "knowledge-graph", "llm", "rag"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+# `deepagents` re-exports nothing we need from langchain directly, but this package imports
+# `langchain.agents.middleware.types` (AgentMiddleware, ModelRequest, PrivateStateAttr),
+# `langchain.tools.ToolRuntime` and `langgraph.runtime.Runtime`, so both are declared explicitly
+# rather than leaned on as transitive deps of deepagents. The floors are the ones deepagents 0.7.5
+# itself declares (`langchain>=1.3.14`), plus the langgraph major that ships `Runtime`/`ToolRuntime`.
+dependencies = [
+    "cortadel>=1.0.0,<2.0.0",
+    "deepagents>=0.7.0,<1.0.0",
+    "langchain>=1.3.14,<2.0.0",
+    "langgraph>=1.0.0,<2.0.0",
+]
+
+[project.urls]
+Homepage = "https://cortadel.ai"
+Repository = "https://github.com/cortadel/cortadel"
+# Python packaging has no npm-style `repository.directory` field; the sub-path is carried as its
+# own URL entry instead.
+Source = "https://github.com/cortadel/cortadel/tree/main/integrations/deepagents"
+Issues = "https://github.com/cortadel/cortadel/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cortadel_deepagents"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "cortadel_deepagents/**/*.py",
+    "cortadel_deepagents/py.typed",
+    "README.md",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Matches `sdk/python`: a warning is a failure. This is what caught the integration calling the
+# deprecated `BaseMessage.text()` method instead of the `.text` property.
+filterwarnings = [
+    "error",
+    # One exemption, as narrow as the message allows. `google-genai` -- pulled in transitively by
+    # `deepagents.middleware.filesystem`, not by us -- evaluates `typing._UnionGenericAlias` at
+    # import time, which CPython 3.14 deprecates. It fires during collection, before any test
+    # runs, and nothing in this package can reach it; without this the suite cannot be collected
+    # at all on 3.14.
+    "ignore:'_UnionGenericAlias' is deprecated:DeprecationWarning",
+]
