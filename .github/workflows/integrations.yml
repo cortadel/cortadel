@@ -241,11 +241,17 @@ jobs:
       # intended, and the fix is to look at the new dependency, not to drop it.
       - run: uv sync --extra test --no-install-project --no-build --locked
       # The local package, installed on its own with --no-deps: every dependency is already in
-      # place from the step above, so this resolves nothing external. --no-build is carried over
-      # too — an earlier revision of this file assumed an editable install of our own hatchling
-      # tree needed a source build and would break under the flag; it does not (verified against
-      # all three legs), so the stricter flag is kept rather than making this the one install in
-      # the job that allows a build hook to run.
+      # place from the step above, so this resolves nothing external.
+      #
+      # The two-step split really is necessary, and the two halves behave differently under
+      # --no-build — worth recording, because the flag reads like it should break both:
+      #   * `uv sync --no-build` (i.e. dropping --no-install-project above) FAILS with
+      #     "`cortadel-crewai==0.1.0 @ editable+.` can't be installed because it is marked as
+      #     `--no-build` but has no binary distribution". So the local package cannot be folded
+      #     back into the sync step.
+      #   * `uv pip install --no-deps --no-build -e .` SUCCEEDS on all three legs.
+      # So the stricter flag is carried here too, rather than leaving this as the one install in
+      # the job where a build hook could still run.
       - run: uv pip install --no-deps --no-build -e .
 
       # tests/ explicitly, even though all three already set `testpaths = ["tests"]` — the path is

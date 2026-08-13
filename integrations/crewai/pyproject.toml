@@ -75,4 +75,11 @@ filterwarnings = [
     "default::DeprecationWarning",
     "default::PendingDeprecationWarning",
     "default::ImportWarning",
+    # On Python 3.13, crewai's own storage leaves a sqlite3.Connection unclosed; the
+    # interpreter finalizes it later and pytest surfaces that as an unraisable exception
+    # attributed to whichever test happens to be running at the time. It is a genuine flake
+    # — three consecutive runs blamed three different tests — and it is crewai's connection,
+    # not one this package opens (nothing here imports sqlite3). Not reproducible on 3.11.
+    # Scoped to the one warning class rather than widening the "error" default.
+    "default::pytest.PytestUnraisableExceptionWarning",
 ]
