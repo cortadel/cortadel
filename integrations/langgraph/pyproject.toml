@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cortadel-langgraph"
+version = "0.1.0"
+description = "Cortadel long-term memory for LangGraph — a BaseStore implementation, memory tools, and automatic recall/persist graph nodes."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "Cortadel" }]
+keywords = ["ai", "memory", "agents", "langgraph", "langchain", "knowledge-graph", "llm", "rag"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+# langgraph is the host framework, declared as a real dependency (not a peer — Python has no such
+# concept and this package is useless without it). The floor is 1.0.0: `langgraph.store.base` has
+# been stable since 0.2, but `create_react_agent` only grew its `@deprecated` marker and the
+# `langchain.agents` migration path in 1.0, and this package's README documents the 1.x world.
+#
+# `BaseStore` itself actually ships in `langgraph-checkpoint` (langgraph 1.2.11 depends on
+# `langgraph-checkpoint>=4.1.0,<5.0.0`), and `StructuredTool` ships in `langchain-core`
+# (langgraph 1.2.11 depends on `langchain-core>=1.4.7,<2`). Both arrive transitively via langgraph;
+# they are NOT pinned separately here, because the whole point is to track whatever langgraph
+# itself considers compatible.
+dependencies = [
+    "langgraph>=1.0.0,<2.0.0",
+    "cortadel>=1.0.0,<2.0.0",
+]
+
+[project.urls]
+Homepage = "https://cortadel.ai"
+Repository = "https://github.com/cortadel/cortadel"
+Issues = "https://github.com/cortadel/cortadel/issues"
+# PEP 621 has no `repository.directory` equivalent, so `Source` is how a PyPI visitor finds the
+# folder this package is built from.
+Source = "https://github.com/cortadel/cortadel/tree/main/integrations/langgraph"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cortadel_langgraph"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "cortadel_langgraph/**/*.py",
+    "cortadel_langgraph/py.typed",
+    "README.md",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+]
