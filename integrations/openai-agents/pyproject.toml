@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cortadel-openai-agents"
+version = "0.1.0"
+description = "Cortadel long-term memory for the OpenAI Agents SDK — a Session implementation, an automatic retrieve-and-inject model-input filter, and memory function tools."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "Cortadel" }]
+keywords = ["ai", "memory", "agents", "openai-agents", "knowledge-graph", "llm", "rag"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+# openai-agents floor is 0.10.0, the first release where every seam this package builds on is
+# present together:
+#   * `agents.run.__all__` exports `ModelInputData` / `CallModelData` / `CallModelInputFilter`
+#     (verified in the v0.10.0 tag; `RunConfig.call_model_input_filter` itself moved from
+#     `run.py` to `run_config.py` in that release),
+#   * `agents.__init__.__all__` exports `SessionSettings` (absent at v0.5.0),
+#   * the `Session` protocol's four history methods, unchanged since v0.0.x.
+# Upper bound is the 1.0 major, per the project's pre-1.0 cadence of breaking minors.
+dependencies = [
+    "cortadel>=1.0.0,<2.0.0",
+    "openai-agents>=0.10.0,<1.0.0",
+]
+
+[project.urls]
+Homepage = "https://cortadel.ai"
+Repository = "https://github.com/cortadel/cortadel"
+Issues = "https://github.com/cortadel/cortadel/issues"
+# PEP 621 has no `repository.directory` equivalent, so `Source` is how a PyPI visitor finds the
+# folder this package actually lives in.
+Source = "https://github.com/cortadel/cortadel/tree/main/integrations/openai-agents"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cortadel_openai_agents"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "cortadel_openai_agents/**/*.py",
+    "cortadel_openai_agents/py.typed",
+    "README.md",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+]
