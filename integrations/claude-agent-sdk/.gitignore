@@ -1,17 +1,19 @@
-# Virtual environments
-.venv/
-venv/
-
-# Python bytecode / cache
-__pycache__/
-*.pyc
-
-# Packaging build output
-build/
+# build output
 dist/
-*.egg-info/
 
-# Test / tool caches
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# environment variables
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
