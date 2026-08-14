@@ -240,11 +240,12 @@ pnpm/tsc/vitest matrix over the eight TypeScript packages, a uv/pytest matrix ov
 ones, and a dotnet build/test/pack leg for the .NET one, plus a `matrix-coverage` job that re-derives
 every package's toolchain and runtime floor from the manifest on disk, so moving a package between
 languages without updating that workflow fails the PR instead of quietly testing the old toolchain.
-It has no conformance tier (every integration suite is offline) and no publish job (nothing is
-released yet). Most of the others also run a `conformance-base` job that starts a real Memgraph
-container plus a real `ghcr.io/cortadel/cortadel:latest` server and exercises the SDK against it —
-heavier than the always-on gate (containers, a health-gate wait loop), so it's scoped to PRs that
-actually touch that SDK rather than running for everyone.
+It has no conformance tier (every integration suite is offline). It *does* have a release path —
+`release-plan` plus one publish job per registry — but that path only exists on tag pushes and is
+invisible to a PR (see [Releasing](#releasing)). Most of the others also run a `conformance-base`
+job that starts a real Memgraph container plus a real `ghcr.io/cortadel/cortadel:latest` server and
+exercises the SDK against it — heavier than the always-on gate (containers, a health-gate wait
+loop), so it's scoped to PRs that actually touch that SDK rather than running for everyone.
 
 ### What a fork PR can and can't trigger
 
@@ -258,7 +259,9 @@ fork. Concretely:
   secret.
 - The one thing a fork PR can never trigger is a `publish-*` job (npm/PyPI/NuGet) — those need
   either a repository secret or trusted-publishing OIDC, gated behind a tag push, which a
-  `pull_request` event can't produce.
+  `pull_request` event can't produce. In `integrations.yml` there is a second, independent barrier:
+  every publish job depends on `release-plan`, which itself only runs on a `refs/tags/integration-*`
+  ref, and a skipped dependency skips its dependents.
 - The weekly `conformance-full` tier (LLM + embeddings via Ollama, ~9.6 GB of models) never runs on
   any PR, fork or not — see each SDK workflow's own header comment for why.
 
@@ -267,9 +270,53 @@ would otherwise give them, they can `workflow_dispatch` the relevant file agains
 
 ## Releasing
 
-Each SDK publishes independently, triggered by pushing a tag with its own prefix:
-`sdk-dotnet-v*` → NuGet, `sdk-ts-v*` → npm, `sdk-py-v*` → PyPI. See the `publish-*` job in the
-matching workflow file for the exact mechanism (NuGet/npm use OIDC trusted publishing; PyPI uses a
-stored API token).
+Nothing publishes on a merge to `main`. Every release is a tag push, and each publishable unit has its
+own tag prefix so a bare `v1.0.0` can never leave you guessing what it released.
+
+### The three SDKs (`sdk/`)
+
+| Tag | Publishes | Registry | Auth |
+| --- | --- | --- | --- |
+| `sdk-dotnet-v*` | `Cortadel.Sdk` | NuGet | OIDC trusted publishing (`NuGet/login`) — no stored secret |
+| `sdk-ts-v*` | `@cortadel/sdk` | npm | the `NPM_TOKEN` repository secret. `id-token: write` on that job is for **provenance** (the Sigstore attestation `--provenance` produces), *not* for authentication |
+| `sdk-py-v*` | `cortadel` | PyPI | the `PYPI_TOKEN` repository secret |
+
+### The twelve integrations (`integrations/`)
+
+One tag per package, because the twelve version independently:
+
+```
+integration-<directory-slug>-v<version>      e.g.  integration-langgraph-v0.1.0
+```
+
+The slug is the **directory** under `integrations/`, not the registry package name — the two are not
+always the same (`integrations/vercel-ai-sdk` publishes as `@cortadel/vercel-ai-provider`). The
+workflow reads the package name out of the manifest rather than deriving it from the tag.
+
+Three things the `integrations.yml` release path guarantees, all of which fail the run *before* any
+registry is contacted:
+
+- **The tag resolves to exactly one package.** `release-plan` enumerates every possible `-v` split of
+  the tag and keeps only splits whose left half is a real `integrations/` directory that also has a
+  matrix leg, then requires exactly one survivor — so a slug that shadows another slug's tag fails
+  loudly instead of releasing the wrong thing.
+- **The tag cannot publish a version other than the manifest's.** The version segment must equal
+  `package.json`'s `version` / `pyproject.toml`'s `project.version` / the csproj's `<Version>`
+  exactly. Worth internalising: the .NET package's version is hard-coded in the csproj and is *not*
+  derived from the tag, so without this gate the two could silently disagree.
+- **That package's own tests passed on that exact commit.** Each publish job depends on its
+  toolchain's whole test matrix plus `matrix-coverage`. Releasing an npm package needs all eight
+  TypeScript legs green; it does not need the Python or .NET legs.
+
+Auth differs per registry, deliberately: PyPI and NuGet use OIDC trusted publishing and store no
+secret, while npm uses the `NPM_TOKEN_INTEGRATIONS` secret **temporarily** — npm trusted publishing
+cannot bootstrap a package that does not yet exist, so the first publish of each package has to be
+token-authenticated. `publish-npm` carries the exact edit that removes the token afterwards.
+
+**Maintainers: the registry-side setup is not in this repo and must be done by a human before the
+first tag.** It is written out step by step, split into one-time-per-registry and one-time-per-package
+work, in **[`.github/RELEASING.md`](.github/RELEASING.md)** — which also covers what to do when a
+release goes wrong (short version: all three registries are append-only and none lets a version be
+reused, so you fix forward).
 
 Thank you for contributing to Cortadel!

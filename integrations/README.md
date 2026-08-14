@@ -242,6 +242,40 @@ Test and example ids are `e2e-`-prefixed everywhere, including throwaway ids ins
 no source file may contain a literal NUL byte (write the six characters `\u0000` instead — a real NUL
 makes the file binary to git: no diff in the PR, invisible to `git grep`).
 
+## Releasing
+
+Each of the twelve releases independently — that is what "one standalone publishable package per
+directory" means at the registry, not just on disk. One tag per package:
+
+```
+integration-<directory-slug>-v<version>       e.g.  integration-langgraph-v0.1.0
+```
+
+**The slug is this directory's name, not the package's name on the registry.** They usually match;
+`vercel-ai-sdk` is the one that doesn't — it publishes as `@cortadel/vercel-ai-provider`, so its tag
+is `integration-vercel-ai-sdk-v<version>`. Anything that derives a path from a package name breaks on
+exactly that package, which is why the tag keys on the directory and
+[`.github/workflows/integrations.yml`](../.github/workflows/integrations.yml) reads the registry name
+out of the manifest instead.
+
+The version in the tag must equal the version in this package's own manifest — `package.json`'s
+`version`, `pyproject.toml`'s `project.version`, or the csproj's `<Version>`. The workflow's
+`release-plan` job fails the run on any mismatch, before a registry is contacted. Bump the manifest in
+a normal PR first; a tag never sets a version, it only asserts one.
+
+A release also requires that package's whole toolchain matrix green on that exact commit, so a broken
+sibling in the same language blocks it. That is deliberate — see the release-path comment block in
+`integrations.yml`.
+
+Adding a thirteenth package needs no change to the release wiring: the trigger is a single glob and
+the publish jobs resolve everything from the manifest on disk. It does need a matrix leg — without one
+its tag is rejected, and `matrix-coverage` would have failed the PR long before that.
+
+Maintainers: the one-time registry-side setup (the npm bootstrap token and trusted publishers, the
+PyPI pending publishers, the nuget.org policy) is in
+[`.github/RELEASING.md`](../.github/RELEASING.md). None of it can be done from a workflow file, and
+nothing publishes until it is.
+
 ## Traps
 
 - **The Cortadel SDK surface is fixed and small**: `add`, `addConversation` / `add_conversation`,
@@ -271,6 +305,9 @@ makes the file binary to git: no diff in the PR, invisible to `git grep`).
 
 - [`docs/integrations.md`](../docs/integrations.md) — the user-facing page these packages appear on.
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — PR workflow, commit conventions, CI.
+- [`.github/RELEASING.md`](../.github/RELEASING.md) — the maintainer runbook for releasing these
+  twelve packages: the one-time registry setup, the tag → package → registry table, and what is not
+  recoverable after a bad release.
 - [`AGENTS.md`](../AGENTS.md) — repository layout and the rules for AI coding agents working here.
 - [`sdk/typescript/`](../sdk/typescript), [`sdk/python/`](../sdk/python),
   [`sdk/dotnet/`](../sdk/dotnet) — the clients every package here is built on, and the style to
