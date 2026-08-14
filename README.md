@@ -102,7 +102,7 @@ A capability view of the self-hostable OSS memory systems, from a code-grounded 
 | Lossless backup / export / import | ✅ | 🟡 platform | 🟡 | 🟡 | 🟡 |
 | **.NET / C# native** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Published SDKs | ✅ .NET (NuGet) + Python (PyPI) + TypeScript (npm) | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
-| Framework integrations & connectors | 🟡 MCP, plus 12 first-party packages (8 TS · 3 Py · 1 .NET) in-repo but unpublished | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
+| Framework integrations & connectors | ✅ MCP, plus 12 published first-party packages (8 npm · 3 PyPI · 1 NuGet) | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
 | Managed cloud | 🟡 Cloud (coming) | ✅ | ❌ | ✅ | ✅ |
 
 <sub>✅ first-class · 🟡 partial / optional / managed-only · ❌ not available. Competitors genuinely lead on **reach** — SDK breadth, framework integrations, connectors, and managed cloud — which Cortadel is actively closing. mem0 moved its graph store, temporal reasoning, and decay to its managed platform in OSS v2/v3; Supermemory's engine ships as a closed binary, so its engine cells reflect its public API contract, not inspectable code.</sub>
@@ -292,7 +292,7 @@ Already using an agent framework? Twelve first-party packages wire Cortadel into
 | **Pydantic AI** | [`cortadel-pydantic-ai`](integrations/pydantic-ai) | Python | `AbstractCapability` — recall, persist, toolset |
 | **Microsoft Agent Framework** | [`Cortadel.AgentFramework`](integrations/microsoft-agent-framework) | .NET | `AIContextProvider` + native `AIFunction` tools |
 
-All twelve are at `0.1.0` in [`integrations/`](integrations) and **not yet published** to npm/PyPI/NuGet. Install commands, quickstarts, and each package's known limits: [Integrations](docs/integrations.md).
+All twelve are **published at `0.1.0`** — eight on npm, three on PyPI, one on NuGet — and every npm package carries a Sigstore provenance attestation. Install commands, quickstarts, and each package's known limits: [Integrations](docs/integrations.md).
 
 ## How it *works*
 

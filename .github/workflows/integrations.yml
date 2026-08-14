@@ -39,10 +39,17 @@ name: Integrations
 # RELEASING. The publish jobs an earlier revision of this header promised ("those get added with the
 # first release, together with their own per-package tag prefix") are at the bottom of this file:
 # release-plan, publish-npm and publish-pypi. The maintainer-side setup they depend on — none of
-# which can be done from a workflow file — is in .github/RELEASING.md; until it is done, a release
-# tag runs the gates and then fails at the registry call. It is not uniform across the two: npm needs
-# a repository secret that does not exist yet, and PyPI needs NOTHING — its credential, the
-# account-scoped PYPI_TOKEN secret, is already configured (see the auth-styles note below).
+# which can be done from a workflow file — is in .github/RELEASING.md. All of it is DONE: every
+# package published 0.1.0 on 2026-08-14, so both secrets (NPM_TOKEN_INTEGRATIONS, and the
+# account-scoped PYPI_TOKEN that python.yml already used) exist and are proven working.
+#
+# One follow-up is outstanding and has a DEADLINE. NPM_TOKEN_INTEGRATIONS is a bypass-2FA granular
+# token, and npm is withdrawing direct publishing from that token class in January 2027 (the notice
+# appears in this job's own publish output). It was only ever needed to bootstrap: npm cannot attach
+# a trusted publisher to a package that does not exist. All eight now exist, so RELEASING.md §1.4
+# attaches per-package trusted publishers and deletes the secret — after which this job publishes
+# with no stored credential at all. Until that is done, the token is an All-Packages read-write
+# credential reachable by anyone who can push an integration-*-v* tag.
 #
 # ⚠ THE .NET PACKAGE DOES NOT PUBLISH FROM THIS FILE. `Cortadel.AgentFramework`
 # (integrations/microsoft-agent-framework) is still TESTED here — the `dotnet` matrix leg below is
