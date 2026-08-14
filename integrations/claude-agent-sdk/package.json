@@ -1,0 +1,40 @@
+{
+  "name": "@cortadel/claude-agent-sdk",
+  "version": "0.1.0",
+  "description": "Cortadel long-term memory for the Claude Agent SDK — in-process MCP memory tools plus automatic recall/capture hooks.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "homepage": "https://cortadel.ai",
+  "bugs": { "url": "https://github.com/cortadel/cortadel/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cortadel/cortadel.git",
+    "directory": "integrations/claude-agent-sdk"
+  },
+  "keywords": ["claude", "claude-agent-sdk", "anthropic", "cortadel", "ai", "memory", "agents", "mcp", "knowledge-graph", "llm", "rag"],
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cortadel/sdk": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": ">=0.3.0 <0.4.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.231",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^22.20.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "zod": "^4.0.0"
+  }
+}

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Cortadel.AgentFramework/Cortadel.AgentFramework.csproj" />
+  <Project Path="Cortadel.AgentFramework.Tests/Cortadel.AgentFramework.Tests.csproj" />
+  <Project Path="examples/BasicMemoryAgent/BasicMemoryAgent.csproj" />
+</Solution>

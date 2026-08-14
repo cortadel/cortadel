@@ -1,0 +1,31 @@
+{
+  // Typecheck-only pass over the tests and examples. The build tsconfig deliberately
+  // keeps `include: ["src"]` so `dist/` holds the shipped surface and nothing else —
+  // which also meant `pnpm typecheck` never looked at `test/` or `examples/`, so a
+  // type error in either could slip past both scripts. `pnpm typecheck` runs this too.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    // The build config pins `rootDir` to `src` so `dist/` stays flat. Nothing is
+    // emitted here, so widen it to the package root to admit `test/` and `examples/`.
+    "rootDir": ".",
+    // The examples import the package by its published name, because that is what a
+    // reader would write. Node resolves that by self-reference through `exports` to
+    // `dist/`, which would make this pass depend on a prior build; point the name at
+    // the sources instead so `pnpm typecheck` works on a fresh clone and checks the
+    // examples against the code in this folder rather than a stale `dist/`.
+    // (No `baseUrl` — TypeScript 7 removed it; paths resolve relative to this file.)
+    "paths": { "@cortadel/openclaw": ["./src/index.ts"] },
+    // `node examples/local-turn.ts` runs on Node's own type stripping, which erases
+    // only what is *marked* as a type: a type imported without the `type` modifier
+    // survives into the running import and throws SyntaxError at load, because the
+    // built `dist/index.js` exports no such binding. `tsc` alone never notices — it
+    // elides the import when it emits, and examples are not emitted. This makes the
+    // typecheck the guard. Set here rather than in the build config so it stays a
+    // check, not a change to what `dist/` contains.
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src", "test", "examples"]
+}

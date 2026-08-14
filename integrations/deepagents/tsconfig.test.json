@@ -1,0 +1,21 @@
+{
+  // Typecheck-only pass over the tests and examples. The build tsconfig deliberately
+  // keeps `include: ["src"]` so `dist/` holds the shipped surface and nothing else —
+  // which also meant `pnpm typecheck` never looked at `test/`, so a test-only type
+  // error could slip past both scripts. `pnpm typecheck` runs this too.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    // The build config pins `rootDir` to `src` so `dist/` stays flat. Nothing is
+    // emitted here, so widen it to the package root to admit `test/` and `examples/`.
+    "rootDir": ".",
+    // The examples import `@cortadel/deepagents` because that is what a user writes.
+    // Node's self-reference would resolve that through `exports` to `dist/`, making
+    // this pass depend on a prior build; point it at the sources instead.
+    // (TypeScript 7 removed `baseUrl`, so these are resolved relative to this file.)
+    "paths": { "@cortadel/deepagents": ["./src/index.ts"] }
+  },
+  "include": ["src", "test", "examples"]
+}

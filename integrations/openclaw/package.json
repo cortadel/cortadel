@@ -1,0 +1,54 @@
+{
+  "name": "@cortadel/openclaw",
+  "version": "0.1.0",
+  "description": "Cortadel memory plugin for OpenClaw — self-hosted long-term temporal graph memory as an OpenClaw memory corpus, agent tools, and automatic recall/capture hooks.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "openclaw.plugin.json"],
+  "engines": { "node": ">=22.22.3" },
+  "homepage": "https://cortadel.ai",
+  "bugs": { "url": "https://github.com/cortadel/cortadel/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cortadel/cortadel.git",
+    "directory": "integrations/openclaw"
+  },
+  "keywords": ["openclaw", "openclaw-plugin", "cortadel", "ai", "memory", "agents", "knowledge-graph", "llm"],
+  "publishConfig": { "access": "public", "provenance": true },
+  "openclaw": {
+    "extensions": ["./dist/index.js"],
+    "compat": {
+      "pluginApi": ">=2026.7.1-0",
+      "minGatewayVersion": "2026.7.1-0"
+    },
+    "install": {
+      "clawhubSpec": "clawhub:cortadel/openclaw",
+      "npmSpec": "@cortadel/openclaw",
+      "defaultChoice": "clawhub"
+    },
+    "build": {
+      "openclawVersion": "2026.7.1-2",
+      "pluginSdkVersion": "2026.7.1-2"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cortadel/sdk": "^1.0.0",
+    "typebox": "^1.3.3"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.7.1-0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "openclaw": "2026.7.1-2",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

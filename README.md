@@ -29,6 +29,7 @@
   <a href="docs/getting-started.md"><b>Quickstart</b></a> &nbsp;·&nbsp;
   <a href="docs/self-hosting.md"><b>Self-hosting</b></a> &nbsp;·&nbsp;
   <a href="docs/mcp.md"><b>MCP</b></a> &nbsp;·&nbsp;
+  <a href="docs/integrations.md"><b>Integrations</b></a> &nbsp;·&nbsp;
   <a href="docs/sdk-dotnet.md"><b>.NET SDK</b></a> &nbsp;·&nbsp;
   <a href="docs/sdk-python.md"><b>Python SDK</b></a> &nbsp;·&nbsp;
   <a href="docs/sdk-typescript.md"><b>TypeScript SDK</b></a> &nbsp;·&nbsp;
@@ -101,7 +102,7 @@ A capability view of the self-hostable OSS memory systems, from a code-grounded 
 | Lossless backup / export / import | ✅ | 🟡 platform | 🟡 | 🟡 | 🟡 |
 | **.NET / C# native** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Published SDKs | ✅ .NET (NuGet) + Python (PyPI) + TypeScript (npm) | ✅ Py + TS | 🟡 Py | 🟡 Py | ✅ TS + Py |
-| Framework integrations & connectors | 🟡 MCP + Claude Code | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
+| Framework integrations & connectors | 🟡 MCP, plus 12 first-party packages (8 TS · 3 Py · 1 .NET) in-repo but unpublished | ✅ | 🟡 | 🟡 Slack | ✅ Drive/Notion/… |
 | Managed cloud | 🟡 Cloud (coming) | ✅ | ❌ | ✅ | ✅ |
 
 <sub>✅ first-class · 🟡 partial / optional / managed-only · ❌ not available. Competitors genuinely lead on **reach** — SDK breadth, framework integrations, connectors, and managed cloud — which Cortadel is actively closing. mem0 moved its graph store, temporal reasoning, and decay to its managed platform in OSS v2/v3; Supermemory's engine ships as a closed binary, so its engine cells reflect its public API contract, not inspectable code.</sub>
@@ -270,6 +271,29 @@ either the hosted service (`https://app.cortadel.ai`) or your own self-hosted or
 
 Works with **Claude Desktop · Cursor · Windsurf · VS Code · Claude Code** and any MCP-aware client. See [MCP integration](docs/mcp.md).
 
+## Framework integrations
+
+Already using an agent framework? Twelve first-party packages wire Cortadel into that framework's **own** memory interface — a store, a session, a middleware, a context provider — so recall before the model call and persistence after the turn happen without your agent asking. Each also exposes `search_memory` and `add_memories` as native tools for when it should ask.
+
+**Eight TypeScript, three Python, one .NET** — the language follows the host framework, not our preference: TypeScript wherever the framework publishes a first-party TypeScript package (LangGraph, DeepAgents, the OpenAI Agents SDK and the Claude Agent SDK ship both TS and Python), Python for the three that publish nothing else, and .NET for the .NET-first Microsoft Agent Framework.
+
+| Framework | Package | Language | What you get |
+|---|---|---|---|
+| **Claude Agent SDK** | [`@cortadel/claude-agent-sdk`](integrations/claude-agent-sdk) | TypeScript | In-process MCP tools + `UserPromptSubmit` / `Stop` hooks |
+| **DeepAgents** | [`@cortadel/deepagents`](integrations/deepagents) | TypeScript | `AgentMiddleware` recall/persist + native tools |
+| **LangGraph** | [`@cortadel/langgraph`](integrations/langgraph) | TypeScript | `BaseStore`, memory tools, recall/persist nodes |
+| **Mastra** | [`@cortadel/mastra`](integrations/mastra) | TypeScript | `Processor` recall/persist + `createTool` tools |
+| **n8n** | [`n8n-nodes-cortadel`](integrations/n8n-nodes-cortadel) | TypeScript | `ai_memory` sub-node + six-operation action node |
+| **OpenAI Agents SDK** | [`@cortadel/openai-agents`](integrations/openai-agents) | TypeScript | `Session`, recall input filter, function tools |
+| **OpenClaw** | [`@cortadel/openclaw`](integrations/openclaw) | TypeScript | Memory corpus supplement, tools, recall/capture hooks |
+| **Vercel AI SDK** | [`@cortadel/vercel-ai-provider`](integrations/vercel-ai-sdk) | TypeScript | `LanguageModelMiddleware` recall/persist + tools |
+| **CrewAI** | [`cortadel-crewai`](integrations/crewai) | Python | Drop-in `crewai.Memory`, crew tools, task listener |
+| **Google ADK** | [`cortadel-google-adk`](integrations/google-adk) | Python | `BaseMemoryService`, auto-persist plugin, tools |
+| **Pydantic AI** | [`cortadel-pydantic-ai`](integrations/pydantic-ai) | Python | `AbstractCapability` — recall, persist, toolset |
+| **Microsoft Agent Framework** | [`Cortadel.AgentFramework`](integrations/microsoft-agent-framework) | .NET | `AIContextProvider` + native `AIFunction` tools |
+
+All twelve are at `0.1.0` in [`integrations/`](integrations) and **not yet published** to npm/PyPI/NuGet. Install commands, quickstarts, and each package's known limits: [Integrations](docs/integrations.md).
+
 ## How it *works*
 
 Expensive work happens once, at write time. Reads stay fast and LLM-free.
@@ -303,7 +327,8 @@ flowchart LR
 | [`sdk/python`](sdk/python) | Official **Python SDK** (`cortadel`) — a thin, typed client over the REST API. [Published on PyPI](https://pypi.org/project/cortadel/). |
 | [`sdk/typescript`](sdk/typescript) | Official **TypeScript SDK** (`@cortadel/sdk`) — a thin, typed client over the REST API. [Published on npm](https://www.npmjs.com/package/@cortadel/sdk). |
 | [`cortadel-plugin`](cortadel-plugin) | Zero-dependency **Claude Code & Codex plugin** (`cortadel-memory`) — push-recall on every prompt, session bootstrap, async capture on stop (Claude Code), skill only (Codex). |
-| [`docs`](docs) | Getting started · authentication · self-hosting · MCP · SDK reference |
+| [`integrations`](integrations) | Twelve **framework integration packages** — eight TypeScript (LangGraph, DeepAgents, Claude Agent SDK, OpenAI Agents SDK, Vercel AI SDK, Mastra, n8n, OpenClaw), three Python (CrewAI, Google ADK, Pydantic AI) and one .NET (Microsoft Agent Framework) — one standalone publishable package per directory. |
+| [`docs`](docs) | Getting started · authentication · self-hosting · MCP · integrations · SDK reference |
 | [`examples`](examples) | Runnable samples |
 
 *Coming:* a connector API and a community-integrations registry.
@@ -314,6 +339,7 @@ flowchart LR
 - [Authentication](docs/authentication.md)
 - [Self-hosting the server](docs/self-hosting.md)
 - [MCP integration](docs/mcp.md)
+- [Integrations](docs/integrations.md) — twelve packages in three languages: LangGraph, DeepAgents, OpenAI Agents, Claude Agent SDK, Vercel AI SDK, Mastra, n8n and OpenClaw (TypeScript), CrewAI, Google ADK and Pydantic AI (Python), Microsoft Agent Framework (.NET)
 - [.NET SDK reference](docs/sdk-dotnet.md)
 - [Python SDK reference](docs/sdk-python.md)
 - [TypeScript SDK reference](docs/sdk-typescript.md)

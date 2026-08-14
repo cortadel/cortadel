@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+
+# IDE / tooling
+.vs/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Test output
+TestResults/
+*.trx
+coverage*.xml
+coverage*.json
+
+# Local env / secrets — never commit
+.env
+.env.*
+!.env.example

@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "es2022",
+    "lib": ["ES2022", "DOM"],
+    // `process.env` is read for the CORTADEL_* fallbacks, behind a `typeof process` guard so the
+    // package still loads in DeepAgents' browser build.
+    "types": ["node"],
+    "declaration": true,
+    "declarationMap": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}

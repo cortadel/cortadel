@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <PackageId>Cortadel.AgentFramework</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Cortadel</Authors>
+    <Company>Cortadel</Company>
+    <Title>Cortadel for the Microsoft Agent Framework</Title>
+    <Copyright>Copyright © Cortadel</Copyright>
+    <Description>Cortadel long-term memory for the Microsoft Agent Framework: an AIContextProvider that recalls before the model call and persists after the turn, plus search_memory / add_memories tools an agent can call itself.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://cortadel.ai</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cortadel/cortadel</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageTags>ai;memory;agents;agent-framework;microsoft-agent-framework;knowledge-graph;llm;rag</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Same reasoning as sdk/dotnet/Cortadel.Sdk: deterministic source paths are what SourceLink
+       needs on nuget.org, but they break local "Go to Definition" against the built DLL. CI only. -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Two small pure helpers (top_k clamping, hit rendering) are internal because they are not
+         part of the supported surface, but they carry real edge cases worth testing directly. -->
+    <InternalsVisibleTo Include="Cortadel.AgentFramework.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Cortadel.Sdk" Version="1.0.0" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.17.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
+  </ItemGroup>
+
+</Project>

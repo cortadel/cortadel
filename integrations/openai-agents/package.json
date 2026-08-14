@@ -1,0 +1,39 @@
+{
+  "name": "@cortadel/openai-agents",
+  "version": "0.1.0",
+  "description": "Cortadel long-term memory for the OpenAI Agents SDK (TypeScript) — a Session implementation, an automatic recall-and-inject model-input filter, and memory tools.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "homepage": "https://cortadel.ai",
+  "bugs": { "url": "https://github.com/cortadel/cortadel/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cortadel/cortadel.git",
+    "directory": "integrations/openai-agents"
+  },
+  "keywords": ["openai-agents", "cortadel", "ai", "memory", "agents", "knowledge-graph", "llm", "rag"],
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cortadel/sdk": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@openai/agents": ">=0.15.0 <1.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@openai/agents": "^0.15.0",
+    "@types/node": "^22.20.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "zod": "^4.0.0"
+  }
+}

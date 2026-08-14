@@ -1,0 +1,25 @@
+{
+  // Typecheck-only pass over the tests. The build tsconfig deliberately keeps
+  // `include: ["src"]` so `dist/` holds the shipped surface and nothing else —
+  // which also meant `pnpm typecheck` never looked at `test/`, so a test-only
+  // type error could slip past both scripts. `pnpm typecheck` runs this too.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    // The build config pins `rootDir` to `src` so `dist/` stays flat. Nothing is
+    // emitted here, so widen it to the package root to admit `test/` and `examples/`.
+    "rootDir": ".",
+    // The examples import the package by its published name, so they stay
+    // copy-pasteable. Node's self-reference would resolve that name through
+    // `exports` to `dist/`, which makes this pass depend on a prior build — it
+    // passes locally after `pnpm build` and fails in CI, where `typecheck` runs
+    // first. Point the name at the sources instead.
+    // (TypeScript 7 removed `baseUrl`, so these resolve relative to this file.)
+    "paths": { "@cortadel/openai-agents": ["./src/index.ts"] }
+  },
+  // `examples` is in here too: the examples are the one surface with no runtime
+  // guard, and an unchecked example is exactly how a renamed option goes stale.
+  "include": ["src", "test", "examples"]
+}

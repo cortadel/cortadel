@@ -1,0 +1,65 @@
+{
+  "name": "n8n-nodes-cortadel",
+  "version": "0.1.0",
+  "description": "n8n community node for Cortadel — self-hosted long-term temporal graph memory for AI agents. Ships a Cortadel action node (usable as an AI Agent tool) and a Cortadel Memory sub-node for the ai_memory slot.",
+  "license": "Apache-2.0",
+  "homepage": "https://cortadel.ai",
+  "bugs": {
+    "url": "https://github.com/cortadel/cortadel/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cortadel/cortadel.git",
+    "directory": "integrations/n8n-nodes-cortadel"
+  },
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "cortadel",
+    "memory",
+    "long-term-memory",
+    "ai",
+    "agents",
+    "knowledge-graph",
+    "llm",
+    "rag"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc && node scripts/copy-assets.mjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "strict": true,
+    "credentials": [
+      "dist/credentials/CortadelApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Cortadel/Cortadel.node.js",
+      "dist/nodes/CortadelMemory/CortadelMemory.node.js"
+    ]
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  },
+  "devDependencies": {
+    "@langchain/anthropic": "^1.5.5",
+    "@langchain/core": "^1.2.6",
+    "@langchain/openai": "^1.5.7",
+    "@types/node": "^22.20.1",
+    "n8n-workflow": "^2.16.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

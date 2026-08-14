@@ -1,0 +1,818 @@
+name: Integrations
+
+# Gates the twelve framework integration packages under integrations/ — eight TypeScript packages
+# (pnpm + tsc + vitest), three Python packages (uv + pytest) and one .NET package
+# (dotnet build/test/pack). Structure, comment style, permissions and job naming mirror
+# .github/workflows/python.yml, .github/workflows/typescript.yml and .github/workflows/dotnet.yml;
+# the provisioning below is reused from those three files verbatim rather than re-derived
+# (setup-uv's two-step --no-build install split, pnpm/action-setup before actions/setup-node so the
+# pnpm store cache resolves, dotnet.yml's 10.0.x-SDK + DOTNET_ROLL_FORWARD pairing, the per-job
+# literal concurrency groups).
+#
+# The split is the packages' own, not a CI preference: where a framework ships a first-party
+# TypeScript package as well as a Python one, the integration is TypeScript, and the Microsoft Agent
+# Framework integration is .NET. That is why langgraph, deepagents, claude-agent-sdk and
+# openai-agents moved from the Python matrix to the TypeScript one and microsoft-agent-framework
+# moved to its own .NET job. crewai, pydantic-ai and google-adk stay Python because none of those
+# three has a first-party TypeScript package (@iqai/adk is third-party, not Google). Nothing here
+# infers a toolchain from that history — the matrix-coverage job below re-derives every package's
+# toolchain from the manifest actually on disk and fails if a leg disagrees with it, so a future
+# language move that forgets this file is caught rather than silently testing the wrong thing.
+#
+# What this file deliberately does NOT do, and why:
+#
+#   * No conformance tier. Every one of the twelve suites is fully offline — each stubs at the
+#     Cortadel client boundary and drives the *real* framework in-process (a real compiled
+#     LangGraph StateGraph, a real Runner.run(), a real @mastra/core Agent, a real
+#     AIContextProvider lifecycle, OpenClaw's own shipped manifest validators, and so on). None of
+#     them touch the network, an LLM key, or a Cortadel server, so there is nothing here for the
+#     Memgraph + Cortadel container stack that python.yml/typescript.yml/dotnet.yml's
+#     conformance-base and conformance-full jobs provision. If a live-server tier is ever added to
+#     these packages (several of their reports call it out as a gap), it belongs in new jobs
+#     modelled on those, not bolted onto the matrix legs below.
+#
+#   * No publish job. All twelve are at version 0.1.0 and none is published yet — the openclaw
+#     package's own manifest still carries an unpinned npmSpec with no expectedIntegrity precisely
+#     because nothing has been released. There is therefore no release tag pattern to gate on, so
+#     this workflow has no `tags:` trigger and no counterpart to python.yml's publish-pypi /
+#     typescript.yml's publish-npm / dotnet.yml's publish-nuget. The .NET leg below still runs
+#     `dotnet pack`, for the same reason the Python legs run `uv build`: to prove the packable
+#     artifact is producible and correctly populated, not to publish it. Those get added with the
+#     first release, together with their own per-package tag prefix.
+#
+#   * No lint step. Checked, not assumed: no ruff/mypy/flake8 configuration exists in any of the
+#     three Python pyprojects, no eslint configuration in any of the eight TypeScript packages, and
+#     no .editorconfig/analyzer ruleset or `dotnet format` gate in the .NET package. Same ruling
+#     python.yml's header records for sdk/python — nothing to run until one is added.
+#
+# Every leg's exact command chain below was executed locally against the committed lockfiles, on
+# the same interpreter/runtime the matrix pins. That is what the per-leg version choices are based
+# on. Every leg runs at the floor its own manifest declares; crewai was the single historical
+# exception and stopped being one when that package narrowed requires-python to >=3.11 (see that
+# leg's comment). The floor-drift check in the matrix-coverage job below enforces that agreement,
+# so a manifest whose floor moves without this file following it fails the PR instead of silently
+# testing the wrong runtime.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/**'
+      - '.github/workflows/integrations.yml'
+  pull_request:
+    paths:
+      - 'integrations/**'
+      - '.github/workflows/integrations.yml'
+  workflow_dispatch:
+
+# Least privilege: nothing in this file reads or writes repository state, comments on a PR, or
+# publishes an artifact — it only checks out the tree and runs each package's own test suite. No
+# `secrets.*` reference appears anywhere in this file, and the trigger is plain `pull_request`,
+# never `pull_request_target` (banned repo-wide and enforced by
+# .github/scripts/check-diff-supply-chain.sh).
+permissions:
+  contents: read
+
+# No workflow-level concurrency block, matching python.yml/typescript.yml/dotnet.yml: a single group
+# covering the whole file would let a new push cancel the entire in-flight run, so one broken leg's
+# supersession would take the other eleven down with it. Each job gets its own group instead,
+# keyed by a literal per-job name plus the matrix leg's slug — the group literal can NOT be keyed
+# by github.job (that context is only populated within a job's `steps` and is null everywhere else,
+# including a job-level `concurrency:` block; this repo's dotnet.yml header documents hitting that
+# the hard way). Without matrix.slug in the literal, all legs of a matrixed job would share one
+# group and cancel each other instead of running in parallel.
+
+jobs:
+  typescript:
+    name: ${{ matrix.slug }} (node ${{ matrix.node-version }})
+    strategy:
+      # One broken integration must not hide the other eleven — every leg runs to completion.
+      fail-fast: false
+      matrix:
+        include:
+          # node-version is each package's own `engines.node` floor, for the same reason the
+          # Python matrix pins requires-python floors and typescript.yml pins '20.x' — CI runs the
+          # oldest supported runtime, not the newest. Three of the eight (mastra, openclaw,
+          # vercel-ai-sdk) declare a >= 22 floor; `22.x` resolves to the newest 22 release, which
+          # satisfies mastra's >=22.13.0 and openclaw's >=22.22.3 without hard-coding a patch
+          # version that would silently stop resolving. The other five declare `>=20`. None of
+          # these packages ships an .npmrc, so pnpm's engine check is a warning rather than a
+          # failure either way.
+          #
+          # There is no per-leg `typecheck` column: all eight declare the identical script,
+          # `tsc --noEmit && tsc -p tsconfig.test.json` — one pass over src via tsconfig.json and a
+          # second over src + test via tsconfig.test.json. The single `pnpm run typecheck` step
+          # below therefore invokes BOTH passes on every leg. It is also self-guarding: pnpm exits
+          # non-zero on a missing script, so a ninth package that ships without one fails its leg
+          # loudly instead of silently skipping type checking. This job still adds no script to any
+          # package — integrations/<slug>/ is owned elsewhere.
+          #
+          # The four legs that moved here from the Python matrix (claude-agent-sdk, deepagents,
+          # langgraph, openai-agents) were each run through this job's exact command chain locally
+          # against their committed pnpm-lock.yaml before being added: install, typecheck, test,
+          # build — 99, 97, 132 and 100 tests respectively, all green.
+          - slug: claude-agent-sdk
+            node-version: '20.x'
+          - slug: deepagents
+            node-version: '20.x'
+          - slug: langgraph
+            node-version: '20.x'
+          - slug: mastra
+            node-version: '22.x'
+          - slug: n8n-nodes-cortadel
+            node-version: '20.x'
+          - slug: openai-agents
+            node-version: '20.x'
+          - slug: openclaw
+            node-version: '22.x'
+          - slug: vercel-ai-sdk
+            node-version: '22.x'
+    concurrency:
+      group: integrations-typescript-${{ matrix.slug }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: integrations/${{ matrix.slug }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # pnpm/action-setup before actions/setup-node: setup-node's `cache: pnpm` shells out to
+      # `pnpm store path`, so pnpm has to exist first. Same order typescript.yml uses.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          # Repo-root-relative, like typescript.yml's own — not resolved against the job's
+          # working-directory.
+          cache-dependency-path: integrations/${{ matrix.slug }}/pnpm-lock.yaml
+
+      # Each of the eight is a standalone package with its own lockfile (there is no root
+      # package.json and no pnpm-workspace.yaml anywhere above integrations/), so a plain
+      # `pnpm install` in the package directory is the whole install — no workspace flags needed.
+      #
+      # No extra flag is needed for peer dependencies either, and that was checked rather than
+      # assumed: all eight declare peerDependencies (langgraph's four — @langchain/core,
+      # @langchain/langgraph, @langchain/langgraph-checkpoint, zod — are the widest set), and every
+      # one of those peers is also present in the same package's devDependencies, so pnpm satisfies
+      # them from the lockfile with no `--no-strict-peer-dependencies`, no `auto-install-peers`
+      # override and no `--force`. Verified on a wiped node_modules for each of the four new legs:
+      # `pnpm install --frozen-lockfile --ignore-scripts` completed with the lockfile untouched
+      # ("Lockfile is up to date, resolution step is skipped") and zero peer warnings.
+      #
+      # --ignore-scripts is about lifecycle scripts, not peers: it blocks dependency install hooks
+      # from running arbitrary code. Verified this changes nothing here: none of the eight declares
+      # an install-time lifecycle script of its own (checked every package.json for preinstall/
+      # install/postinstall/prepare/prepublish — all eight declare exactly build, typecheck, test),
+      # and pnpm 10 already refuses to run dependency build scripts unless they are allow-listed in
+      # `onlyBuiltDependencies` — which no package.json here declares. The one borderline
+      # transitive package, esbuild, appears in all eight lockfiles only as vite's *optional peer*
+      # (`esbuild: ^0.27.0 || ^0.28.0`) and never resolves as an installed package; confirmed on
+      # disk after a clean install of each of the four new legs (no esbuild@* directory in
+      # node_modules/.pnpm). It does not affect explicitly-invoked scripts, so
+      # n8n-nodes-cortadel's `build` (tsc + node scripts/copy-assets.mjs) still runs normally.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Typecheck before tests, matching typescript.yml's build job order: vitest transpiles
+      # without type-checking, so tsc is the only thing here that would catch a type error — in
+      # either pass, src/ or test/.
+      - run: pnpm run typecheck
+      - run: pnpm run test
+      - run: pnpm run build
+
+  python:
+    name: ${{ matrix.slug }} (py ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # python-version is each package's own declared requires-python floor, not whatever is
+          # newest: CI runs the oldest interpreter the package promises to support, so a
+          # 3.12-only construct fails here instead of at a consumer's install. Same ruling
+          # python.yml's matrix comment records for sdk/python. Each value below was verified
+          # against that package's pyproject.toml on disk in this pass, and is re-verified on every
+          # run by the floor-drift check in matrix-coverage.
+          - slug: crewai
+            # 3.11 is this package's own declared floor — `requires-python = ">=3.11,<3.14"`, not
+            # an exception to the floor rule. A 3.10 install cannot succeed: crewai pulls chromadb,
+            # whose <3.11 resolution fork reached onnxruntime 1.24.3, and that release publishes no
+            # cp310 wheel and no sdist, so there was nothing to fetch and nothing to build from.
+            # Re-locking dropped the fork entirely (uv.lock's own requires-python is ">=3.11,
+            # <3.14" and onnxruntime resolves to a single 1.28.0). Manifest and leg agree; the
+            # floor-drift check below keeps them that way.
+            python-version: '3.11'
+          - slug: google-adk
+            # requires-python = ">=3.10".
+            python-version: '3.10'
+          - slug: pydantic-ai
+            # requires-python = ">=3.10".
+            python-version: '3.10'
+    concurrency:
+      group: integrations-python-${{ matrix.slug }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    # Generous enough for the heaviest leg (crewai resolves 159 packages, including a large
+    # onnxruntime wheel) without letting a hung leg burn a full hour of runner time.
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: integrations/${{ matrix.slug }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          # Repo-root-relative, like python.yml's own — this path is NOT resolved against the
+          # job's working-directory.
+          cache-dependency-glob: integrations/${{ matrix.slug }}/uv.lock
+
+      # The same two-step split python.yml's build job uses, for the same reasons.
+      # --no-install-project defers installing the local package to the step below; --no-build
+      # forces pre-built wheels for every *third-party* dependency, so a compromised transitive
+      # dependency can't run arbitrary code from a setup.py/build-backend hook during install;
+      # --locked asserts uv.lock is already consistent with pyproject.toml instead of silently
+      # re-resolving. Verified across all three remaining locks: every locked third-party
+      # distribution publishes a wheel, so --no-build costs nothing today. If a future lock update
+      # introduces an sdist-only dependency this step fails loudly — that is the flag working as
+      # intended, and the fix is to look at the new dependency, not to drop it.
+      #
+      # --group build adds the PEP 735 dependency group each of the three pyprojects declares,
+      # holding the hatchling build backend and editables. It is what makes the --no-build-isolation
+      # install below possible: that flag runs whatever backend is already in the environment, so
+      # the backend has to arrive here, from the lock, instead of being resolved live at build time.
+      # A dependency group rather than a second extra deliberately — groups are local development
+      # metadata and never reach a built wheel, so nothing about the published packages or their
+      # `test` extra changes. --no-install-project does not suppress the group: verified per leg
+      # that hatchling and editables land in the venv while the project itself stays uninstalled.
+      - run: uv sync --extra test --group build --no-install-project --no-build --locked
+      # The local package, installed on its own with --no-deps: every dependency is already in
+      # place from the step above, so this resolves nothing external.
+      #
+      # The two-step split really is necessary, and the two halves behave differently under
+      # --no-build — worth recording, because the flag reads like it should break both:
+      #   * `uv sync --no-build` (i.e. dropping --no-install-project above) FAILS with
+      #     "`cortadel-crewai==0.1.0 @ editable+.` can't be installed because it is marked as
+      #     `--no-build` but has no binary distribution". So the local package cannot be folded
+      #     back into the sync step.
+      #   * `uv pip install --no-deps --no-build ... -e .` SUCCEEDS on all three legs.
+      # So the stricter flag is carried here too, rather than leaving this as the one install in
+      # the job where a build hook could still run.
+      #
+      # --no-build-isolation is what closes SonarCloud githubactions:S8544 ("Python dependencies
+      # should be locked to verified versions") on this line. An earlier revision of this comment
+      # argued the finding was a false positive because "no index is queried and no remote artifact
+      # is fetched". That claim was measured and it is FALSE — do not restore it. --no-deps only
+      # disables resolution of the package's *runtime* dependencies; building the editable wheel is
+      # a separate PEP 517 step, and under build isolation uv spins up a throwaway environment and
+      # resolves `[build-system] requires` from PyPI on every run:
+      #
+      #     DEBUG Adding direct dependency: hatchling*
+      #     DEBUG Sending revalidation request for: https://pypi.org/simple/hatchling/
+      #     DEBUG Selecting: hatchling==1.32.0 [compatible]
+      #     DEBUG Calling `hatchling.build.get_requires_for_build_editable()`
+      #     DEBUG Adding direct dependency: editables>=0.3, <1.dev0
+      #
+      # Eight packages in all (hatchling, editables, packaging, pathspec, pluggy, tomli, tomlkit,
+      # trove-classifiers), unpinned, unhashed and whatever is newest that day. That is exactly the
+      # class of unlocked dependency the rule exists to catch, and the one install in this job
+      # --no-build could never have covered: --no-build governs third-party *sdists*, not our own
+      # build backend.
+      #
+      # With --no-build-isolation uv runs the backend already present in the synced venv, which
+      # `--group build` above installs from uv.lock. Verified on each of the three legs by
+      # re-running this exact command with `-v --refresh`: zero pypi.org/simple requests (down from
+      # eight packages' worth), and hatchling now loading from
+      # .venv/lib/site-packages/hatchling/build.py rather than a temporary build environment.
+      # editables has to be in that group even though `[build-system] requires` never mentions it —
+      # hatchling requests it through the dynamic get_requires_for_build_editable() hook above, and
+      # without it this step fails with "ModuleNotFoundError: No module named 'editables'".
+      #
+      # There is deliberately NO `uv pip install -e .` step here. The local package reaches the
+      # tests through PYTHONPATH instead (below), which is equivalent: an editable install's entire
+      # effect on sys.path is a .pth file holding this one directory, so either way the import
+      # resolves to the tree under review rather than to a copy in site-packages. Installing the
+      # built wheel by path would NOT be equivalent: pytest puts only tests/ on sys.path here, so
+      # the import would come from site-packages and the tests would stop exercising the tree.
+      #
+      # Two details that both have to be right, and were each found by running the legs rather than
+      # by reasoning about them:
+      #   * It must be the PYTHONPATH *environment variable*, not pytest's `-o pythonpath=.` ini
+      #     option. That option only populates the pytest process's own sys.path, and
+      #     crewai's tests/test_public_api.py spawns a subprocess
+      #     (`subprocess.run([sys.executable, "-c", ...])`) which does not inherit it —
+      #     ModuleNotFoundError: No module named 'cortadel_crewai'.
+      #   * It must be ABSOLUTE. A relative `.` is resolved against each process's own cwd at
+      #     interpreter start, and that same subprocess runs with `cwd=tmp_path`, so a relative
+      #     entry points at the temp directory and the import fails there too.
+      #
+      # Dropping the step is what finally clears SonarCloud githubactions:S8544. The substance was
+      # already fixed by --no-build-isolation above, but the rule matches the shape of a
+      # `uv pip install <target>` line rather than measuring what it resolves, so the finding
+      # survived the fix. Removing the command removes the surface, and costs nothing.
+      #
+      # `--group build` above is still required: `uv build` at the end of this job runs the same
+      # PEP 517 backend and needs hatchling + editables present rather than resolved from the index.
+
+      # tests/ explicitly, even though all three already set `testpaths = ["tests"]` — the path is
+      # passed so this step documents its own scope rather than relying on config a reader of this
+      # file might not have open. Two of the three (crewai, pydantic-ai) also set
+      # `filterwarnings = ["error"]`, so a new DeprecationWarning out of the framework fails the
+      # leg; that is deliberate on the packages' part and is left alone here.
+      # --no-sync: the venv is already fully synced by the step above, so uv never re-resolves or
+      # re-installs; this step only ever runs pytest.
+      # PYTHONPATH replaces the editable install — see the block above for why it is an env var and
+      # why it is absolute. Set on the step rather than the job so it applies to exactly the process
+      # that needs it.
+      - run: uv run --no-sync --no-build --locked pytest tests -q
+        env:
+          PYTHONPATH: ${{ github.workspace }}/integrations/${{ matrix.slug }}
+
+      # `uv build`, not python.yml's `uv run --with build python -m build`: that file uses the
+      # literal `build` tool because its own task specified it, and pays for an ephemeral overlay
+      # plus an isolated build environment to get it. Nothing here specifies a frontend, and
+      # multiplying two extra PyPI round-trips across the legs to reach the identical artifact is
+      # not worth it. uv's own build frontend produces the same sdist+wheel from the same
+      # hatchling backend. This builds our own trusted source, which is the point of the step —
+      # it is not the third-party sdist execution --no-build blocks above.
+      #
+      # --no-build-isolation for the same reason as the install step, and it is not redundant with
+      # it: `uv build` provisions its own build environments and was resolving hatchling from the
+      # index twice more per leg (once for the sdist, once for the wheel). The flag changes only
+      # where the backend comes from, not what is produced — checked by diffing the verbose logs
+      # with and without it, both of which call `build_sdist` then `build_wheel` against the source
+      # tree — and both artifacts still satisfy the py.typed check below.
+      - name: Build sdist and wheel
+        run: uv build --sdist --wheel --no-build-isolation .
+
+      # PEP 561: py.typed is what makes a type checker treat the installed package as typed rather
+      # than falling back to Any. All three declare it in their hatch include lists, but a target
+      # misconfiguration would silently drop it while everything else still builds cleanly — so
+      # this is checked inside the built archives, not inferred from pyproject.toml. Matched by
+      # suffix rather than by an exact module path so this one step serves every leg
+      # (cortadel_crewai/, cortadel_google_adk/, cortadel_pydantic_ai/).
+      #
+      # A heredoc, not `python -c "..."`: a multi-line -c string indented for this file's own
+      # readability hands Python a script whose first statement is indented with no preceding
+      # block (IndentationError on line 1). YAML's `|` block scalar strips the block's common
+      # leading indentation, so every heredoc line lands flush at column 0 for Python regardless
+      # of how deeply this step is nested — same fix python.yml's equivalent step carries.
+      - name: Confirm py.typed ships in both the sdist and the wheel
+        run: |
+          uv run --no-sync --no-build --locked python - <<'PY'
+          import glob
+          import sys
+          import tarfile
+          import zipfile
+
+          wheel = glob.glob("dist/*.whl")[0]
+          sdist = glob.glob("dist/*.tar.gz")[0]
+
+          with zipfile.ZipFile(wheel) as z:
+              wheel_names = z.namelist()
+          if not any(n.endswith("/py.typed") for n in wheel_names):
+              sys.exit(f"py.typed missing from wheel {wheel}: {wheel_names}")
+
+          with tarfile.open(sdist) as t:
+              sdist_names = t.getnames()
+          if not any(n.endswith("/py.typed") for n in sdist_names):
+              sys.exit(f"py.typed missing from sdist {sdist}: {sdist_names}")
+
+          print(f"py.typed present in {wheel} and {sdist}")
+          PY
+
+  dotnet:
+    name: ${{ matrix.slug }} (.NET SDK ${{ matrix.dotnet-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One leg today, but still a matrix — so matrix-coverage below can read all three
+          # toolchains out of this file the same way, and so a second .NET integration is one
+          # entry rather than a second job.
+          #
+          # `solution` is a column, not a hard-coded path, for the same reason. This package
+          # carries its own Cortadel.AgentFramework.slnx *inside its folder* and is deliberately
+          # absent from the repo-root Cortadel.slnx: the root solution is dotnet.yml's build
+          # surface (sdk/dotnet/* plus examples/dotnet-quickstart), and adding an integration to it
+          # would drag this package into that workflow's gate and double-build it here. The
+          # floor-drift check below asserts that separation on every run — if the package is ever
+          # added to Cortadel.slnx, this workflow fails and says why.
+          - slug: microsoft-agent-framework
+            # 10.0.x, not the package's own net8.0 target framework — the same pin, for the same
+            # reason, that dotnet.yml's header documents at length: the .slnx solution format needs
+            # a >=9.0.200-class SDK/MSBuild to parse at all (an isolated .NET 8.0.423 SDK fails
+            # `dotnet restore` on a .slnx outright with "MSB4068: The element <Solution> is
+            # unrecognized"). The projects still target net8.0; only the CLI/MSBuild doing the
+            # building needs to be newer, so exactly one SDK is installed here rather than an
+            # 8.0.x/10.0.x pair. Verified locally against this package's own solution on SDK
+            # 10.0.400: restore, build -c Release, test (81/81) and pack all succeed.
+            dotnet-version: '10.0.x'
+            solution: Cortadel.AgentFramework.slnx
+            # The single packable project. The solution also holds the test project
+            # (IsPackable=false) and examples/BasicMemoryAgent (an Exe, IsPackable=false), so
+            # `dotnet pack` is aimed at the library rather than the solution.
+            package-project: Cortadel.AgentFramework/Cortadel.AgentFramework.csproj
+    concurrency:
+      group: integrations-dotnet-${{ matrix.slug }}-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The second-order consequence of pinning the SDK newer than the target framework, lifted from
+    # dotnet.yml's header along with its reproduction: a runner with only the 10.0.x SDK installed
+    # has no net8.0 *shared runtime* either, and `dotnet test` executes the compiled test binary
+    # (not just restores/compiles it), so it needs that runtime — not just the reference assemblies
+    # restore uses. Without this, the test step fails with "You must install or update .NET...
+    # Framework: Microsoft.NETCore.App, version 8.0.0. The following frameworks were found:
+    # 10.0.x." DOTNET_ROLL_FORWARD=LatestMajor runs the net8.0 test binary on the net10 runtime and
+    # is the technique this repo already uses on every dotnet.yml job that runs `dotnet test`;
+    # reused here for consistency rather than installing a second SDK side by side. This could not
+    # be reproduced on the local machine (it has the net8.0 runtime installed, which masks it), so
+    # it rests on dotnet.yml's documented isolated reproduction rather than a fresh one — the
+    # floor-drift check below asserts the pairing stays in place, since dropping it is silent until
+    # CI runs.
+    env:
+      DOTNET_ROLL_FORWARD: LatestMajor
+    defaults:
+      run:
+        working-directory: integrations/${{ matrix.slug }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Same pinned action and same version as dotnet.yml's four jobs.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+
+      # Explicit restore, then build --no-restore, then test --no-build: the same three-step chain
+      # dotnet.yml's build job uses, so each stage fails on its own step instead of a bare
+      # `dotnet test` implicitly restoring and building using whatever NuGet feed state is live at
+      # that moment. Both third-party PackageReferences resolve from nuget.org (checked: Cortadel.
+      # Sdk 1.0.0 and Microsoft.Agents.AI 1.17.0 are both published), so this needs no local feed
+      # and no NuGet.config.
+      - run: dotnet restore ${{ matrix.solution }}
+      - run: dotnet build ${{ matrix.solution }} --no-restore -c Release
+      # The solution, not the test project directly: `dotnet test` on a .slnx runs only the
+      # projects marked IsTestProject and ignores the library and the example Exe. Verified — it
+      # reports "A total of 1 test files matched the specified pattern" and runs the 81 tests.
+      - run: dotnet test ${{ matrix.solution }} --no-build -c Release --nologo
+
+      # The .NET counterpart of the Python legs' `uv build`: prove the publishable artifact is
+      # producible. --no-build reuses the Release output the step above already produced.
+      - name: Pack the .nupkg
+        run: dotnet pack ${{ matrix.package-project }} --no-build -c Release -o ./nupkg
+
+      # The .NET counterpart of the py.typed check above, and it guards the same class of silent
+      # regression. The project sets GenerateDocumentationFile=true; that XML file is what gives a
+      # consumer IntelliSense and parameter docs off the published package, and a packaging change
+      # can drop it while the .nupkg still builds and restores perfectly. So it is checked inside
+      # the built archive rather than inferred from the csproj — as is the lib/ assembly itself and
+      # the PackageReadmeFile, both of which nuget.org requires to be genuinely present.
+      # A heredoc for the same indentation reason as the Python step above.
+      - name: Confirm the assembly, its XML docs and the README ship in the .nupkg
+        run: |
+          python3 - <<'PY'
+          import glob
+          import sys
+          import zipfile
+
+          packages = sorted(glob.glob("nupkg/*.nupkg"))
+          if not packages:
+              sys.exit("dotnet pack produced no .nupkg under nupkg/")
+
+          for package in packages:
+              with zipfile.ZipFile(package) as z:
+                  names = z.namelist()
+              missing = []
+              if not any(n.startswith("lib/") and n.endswith(".dll") for n in names):
+                  missing.append("a lib/<tfm>/*.dll assembly")
+              if not any(n.startswith("lib/") and n.endswith(".xml") for n in names):
+                  missing.append(
+                      "the XML documentation file (GenerateDocumentationFile is set — a consumer "
+                      "gets no IntelliSense without it)"
+                  )
+              if not any(n.lower().endswith("readme.md") for n in names):
+                  missing.append("the PackageReadmeFile (README.md)")
+              if missing:
+                  sys.exit(f"{package} is missing {', '.join(missing)}. Contents: {names}")
+              print(f"{package} ships its assembly, XML docs and README")
+          PY
+
+  # Three invisible failure modes, all closed by reading this workflow's own matrices back out of
+  # the YAML and comparing them against what is actually on disk. Same instinct as the
+  # generated-content-drift and docs-mirror jobs in pr.yml: a check that passes for the wrong
+  # reason is worse than no check, so each convention this file relies on gets enforced.
+  #
+  #   1. Coverage. A thirteenth package added under integrations/ would otherwise get no CI at
+  #      all — the `paths:` filter above would fire, all three matrices would run, and every leg
+  #      would pass without ever having looked at the new package.
+  #
+  #   2. Toolchain placement. This is the new one, and this pass is exactly why it exists: five of
+  #      the twelve packages changed implementation language at once. A leg left behind in the old
+  #      matrix is *worse* than a missing leg — the old job would still run, still be green (uv
+  #      would fail on a missing pyproject.toml, but a half-migrated package with both manifests
+  #      would not), and a plain set-difference coverage check would report full coverage the whole
+  #      time. So each package's toolchain is re-derived from the manifest on disk (package.json /
+  #      pyproject.toml / *.slnx) and compared against the matrix that claims it. A package listed
+  #      under the wrong toolchain, listed twice, carrying two manifests at once, or carrying none
+  #      all fail here with a message naming what disk actually says.
+  #
+  #   3. Floor drift. Every leg pins the package's own declared floor rather than the newest
+  #      runtime, so CI exercises the oldest interpreter/Node the package promises. That is a
+  #      convention held together by comments, and it has already desynced once: crewai moved its
+  #      requires-python floor from >=3.10 to >=3.11 in the package, and nothing but a human
+  #      reading this file would have noticed if the matrix had not followed. Now a floor that
+  #      moves without this file following it fails the PR. The .NET arm checks the inverse
+  #      invariant, because .NET's is inverted by design (see that arm's own comment).
+  matrix-coverage:
+    name: every integrations/ package has a matrix leg, in the right toolchain, on its declared floor
+    concurrency:
+      group: integrations-matrix-coverage-${{ github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # python3 ships on every GitHub-hosted ubuntu-latest runner; PyYAML does not, so it is
+      # installed on demand rather than assumed present — the same best-effort line pr.yml's
+      # workflow-integrity job uses for its own YAML parse check.
+      - name: Compare the matrix legs against integrations/ on disk
+        run: |
+          python3 -c "import yaml" 2>/dev/null || pip install --quiet --disable-pip-version-check --only-binary :all: "pyyaml==6.0.3"
+          python3 - <<'PY'
+          import pathlib
+          import sys
+
+          import yaml
+
+          TOOLCHAINS = ("typescript", "python", "dotnet")
+
+          # Only jobs["..."] is read, never wf["on"] — YAML 1.1 parses a bare `on:` key as the
+          # boolean True, which is a trap for anything that tries to look the trigger up by name.
+          wf = yaml.safe_load(open(".github/workflows/integrations.yml", encoding="utf-8"))
+
+          # slug -> the toolchain matrix that claims it. A slug claimed by two matrices is its own
+          # error: both jobs would run, and a naive set-difference coverage check would net out to
+          # "covered" while one of the two ran the wrong toolchain against the package.
+          claimed = {}
+          duplicated = []
+          for job in TOOLCHAINS:
+              for leg in wf["jobs"][job]["strategy"]["matrix"]["include"]:
+                  slug = leg["slug"]
+                  if slug in claimed:
+                      duplicated.append(f"{slug} (claimed by both the {claimed[slug]} and {job} matrices)")
+                  else:
+                      claimed[slug] = job
+
+          # The toolchain is derived from the manifest that is actually on disk, never from the
+          # matrix — that is the whole point of this check. A .slnx rather than a *.csproj glob:
+          # the .NET convention here is a per-package solution file at the package root, and
+          # globbing csproj would also match a TypeScript package that happened to vendor one.
+          def toolchains_on_disk(directory):
+              found = []
+              if (directory / "package.json").is_file():
+                  found.append("typescript")
+              if (directory / "pyproject.toml").is_file():
+                  found.append("python")
+              if any(directory.glob("*.slnx")):
+                  found.append("dotnet")
+              return found
+
+          # Directories only: integrations/README.md and any future loose file are not packages.
+          on_disk = {}
+          undecidable = set()
+          unrecognised = []
+          ambiguous = []
+          for p in sorted(pathlib.Path("integrations").iterdir()):
+              if not p.is_dir() or p.name.startswith("."):
+                  continue
+              found = toolchains_on_disk(p)
+              if len(found) == 1:
+                  on_disk[p.name] = found[0]
+              elif not found:
+                  undecidable.add(p.name)
+                  unrecognised.append(p.name)
+              else:
+                  undecidable.add(p.name)
+                  ambiguous.append(f"{p.name} (carries both a {' and a '.join(sorted(found))} manifest)")
+
+          missing = sorted(set(on_disk) - set(claimed))
+          # `undecidable` is subtracted so a half-migrated package is reported once, by the
+          # ambiguous/unrecognised error that actually explains it — not also as "stale: names a
+          # directory that does not exist", which would be plainly false of a directory sitting
+          # right there.
+          stale = sorted(set(claimed) - set(on_disk) - undecidable)
+          misplaced = sorted(
+              f"{slug} is a {on_disk[slug]} package on disk but is listed in the {claimed[slug]} matrix"
+              for slug in set(on_disk) & set(claimed)
+              if on_disk[slug] != claimed[slug]
+          )
+
+          if missing:
+              print(
+                  "::error::These integrations/ packages have no matrix leg in "
+                  ".github/workflows/integrations.yml, so nothing is testing them: "
+                  + ", ".join(missing)
+              )
+          if stale:
+              print(
+                  "::error::These matrix legs name an integrations/ directory that does not "
+                  "exist (renamed or removed?): " + ", ".join(stale)
+              )
+          if misplaced:
+              print(
+                  "::error::These packages are in the wrong matrix — the leg runs, and passes, "
+                  "without ever exercising the package's real toolchain: " + "; ".join(misplaced)
+              )
+          if duplicated:
+              print(
+                  "::error::These slugs appear in more than one matrix; exactly one toolchain "
+                  "must own each package: " + "; ".join(duplicated)
+              )
+          if ambiguous:
+              print(
+                  "::error::These integrations/ packages carry more than one toolchain manifest, "
+                  "so which job should own them is undecidable — finish the migration by deleting "
+                  "the retired manifest: " + "; ".join(ambiguous)
+              )
+          if unrecognised:
+              print(
+                  "::error::These integrations/ directories carry no package.json, pyproject.toml "
+                  "or *.slnx, so this check cannot tell which toolchain should own them: "
+                  + ", ".join(unrecognised)
+              )
+
+          if missing or stale or misplaced or duplicated or ambiguous or unrecognised:
+              sys.exit(1)
+
+          for toolchain in TOOLCHAINS:
+              slugs = sorted(s for s, t in on_disk.items() if t == toolchain)
+              print(f"{toolchain} ({len(slugs)}): {', '.join(slugs)}")
+          print(f"All {len(on_disk)} integrations/ package(s) are covered by the matching toolchain.")
+          PY
+
+      # The second check: each leg's runtime against the floor its package actually declares.
+      # tomllib is stdlib from 3.11 and ubuntu-latest runners ship 3.12, so pyproject.toml is
+      # parsed rather than regex-scraped; package.json is plain JSON. PyYAML is already installed
+      # by the step above, whose `pip install` is a no-op on the second call if it ran.
+      - name: Compare each matrix leg's runtime against the package's declared floor
+        run: |
+          python3 -c "import yaml" 2>/dev/null || pip install --quiet --disable-pip-version-check --only-binary :all: "pyyaml==6.0.3"
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          import yaml
+
+          wf = yaml.safe_load(open(".github/workflows/integrations.yml", encoding="utf-8"))
+          problems = []
+
+          # Node: majors only. The matrix pins '22.x' (newest 22) rather than a patch, precisely so
+          # a floor like '>=22.22.3' keeps resolving as new patches land; comparing patches here
+          # would demand a pin that goes stale on its own.
+          for leg in wf["jobs"]["typescript"]["strategy"]["matrix"]["include"]:
+              slug = leg["slug"]
+              pinned = str(leg["node-version"])
+              declared = json.loads(
+                  pathlib.Path(f"integrations/{slug}/package.json").read_text(encoding="utf-8")
+              ).get("engines", {}).get("node")
+              pinned_major = re.fullmatch(r"(\d+)\.x", pinned)
+              declared_major = re.search(r">=\s*(\d+)", declared or "")
+              if not pinned_major:
+                  problems.append(f"{slug}: matrix node-version {pinned!r} is not the expected '<major>.x' form")
+              elif not declared_major:
+                  problems.append(
+                      f"{slug}: package.json declares engines.node = {declared!r}; this check "
+                      f"needs a '>=' floor to compare the matrix leg against"
+                  )
+              elif pinned_major.group(1) != declared_major.group(1):
+                  problems.append(
+                      f"{slug}: matrix runs Node {pinned}, but package.json declares "
+                      f"engines.node = {declared!r}. CI runs the oldest major the package "
+                      f"promises — move the leg to {declared_major.group(1)}.x."
+                  )
+
+          # Python: the single `>=X.Y` clause of requires-python. An upper bound is allowed and
+          # ignored (crewai carries '<3.14' from crewai's own cap); what must match the leg is the
+          # lower bound, because that is the interpreter a consumer can legally install on.
+          for leg in wf["jobs"]["python"]["strategy"]["matrix"]["include"]:
+              slug = leg["slug"]
+              pinned = str(leg["python-version"])
+              spec = tomllib.loads(
+                  pathlib.Path(f"integrations/{slug}/pyproject.toml").read_text(encoding="utf-8")
+              )["project"]["requires-python"]
+              floors = re.findall(r">=\s*(\d+\.\d+)", spec)
+              if len(floors) != 1:
+                  problems.append(
+                      f"{slug}: cannot read a single '>=' lower bound out of "
+                      f"requires-python = {spec!r}; this check needs one to compare against"
+                  )
+              elif floors[0] != pinned:
+                  problems.append(
+                      f"{slug}: matrix runs Python {pinned}, but pyproject.toml declares "
+                      f"requires-python = {spec!r} (floor {floors[0]}). CI runs the oldest "
+                      f"interpreter the package promises — move the leg to {floors[0]}, or fix "
+                      f"the floor if {floors[0]} is not really installable."
+                  )
+
+          # .NET, and the invariant here is deliberately the *inverse* of the two above. The
+          # Python/Node legs pin the oldest runtime the package supports; the .NET leg pins an SDK
+          # NEWER than the package's target framework on purpose, because the .slnx solution format
+          # needs a >=9.0.200-class MSBuild to parse at all while the projects still target net8.0.
+          # So instead of "leg == floor" this asserts the three things that pairing depends on, each
+          # of which fails silently or confusingly if it drifts:
+          #   * the SDK can build the target framework (SDK major >= TFM major), and is new enough
+          #     for .slnx at all;
+          #   * whenever the SDK is newer than the TFM, DOTNET_ROLL_FORWARD is set on the job —
+          #     without it `dotnet test` compiles fine and then fails at launch with a missing
+          #     Microsoft.NETCore.App, which reads like a broken test rather than a missing runtime;
+          #   * the package stays out of the repo-root Cortadel.slnx, which is dotnet.yml's build
+          #     surface. Adding it there would pull an integration into that workflow's gate and
+          #     build it twice, and nothing else in either file would notice.
+          dotnet_job = wf["jobs"]["dotnet"]
+          roll_forward = (dotnet_job.get("env") or {}).get("DOTNET_ROLL_FORWARD")
+          root_solution = pathlib.Path("Cortadel.slnx").read_text(encoding="utf-8").replace("\\", "/")
+
+          for leg in dotnet_job["strategy"]["matrix"]["include"]:
+              slug = leg["slug"]
+              package = pathlib.Path("integrations") / slug
+
+              for column in ("solution", "package-project"):
+                  named = package / str(leg[column])
+                  if not named.is_file():
+                      problems.append(
+                          f"{slug}: matrix {column} is {leg[column]!r}, which does not exist at {named}"
+                      )
+
+              sdk = re.fullmatch(r"(\d+)\.\d+\.x", str(leg["dotnet-version"]))
+              if not sdk:
+                  problems.append(
+                      f"{slug}: matrix dotnet-version {leg['dotnet-version']!r} is not the "
+                      f"expected '<major>.<minor>.x' form"
+                  )
+                  continue
+              sdk_major = int(sdk.group(1))
+
+              # bin/ and obj/ are gitignored, so they never exist on a CI checkout; skipped anyway
+              # so this behaves identically when run locally in a tree that has been built.
+              targets = set()
+              for csproj in sorted(package.rglob("*.csproj")):
+                  if {"bin", "obj"} & set(csproj.parts):
+                      continue
+                  targets |= {
+                      int(m)
+                      for m in re.findall(
+                          r"<TargetFramework>net(\d+)\.\d+</TargetFramework>",
+                          csproj.read_text(encoding="utf-8"),
+                      )
+                  }
+              if not targets:
+                  problems.append(
+                      f"{slug}: no <TargetFramework>netN.M</TargetFramework> found in any .csproj "
+                      f"under {package}; this check needs one to compare the SDK against"
+                  )
+                  continue
+              newest_target = max(targets)
+
+              if sdk_major < newest_target:
+                  problems.append(
+                      f"{slug}: matrix installs the .NET {sdk_major}.x SDK, but the package "
+                      f"targets net{newest_target}.0 — that SDK cannot build it. Raise "
+                      f"dotnet-version."
+                  )
+              if sdk_major < 9:
+                  problems.append(
+                      f"{slug}: matrix installs the .NET {sdk_major}.x SDK, but {leg['solution']} "
+                      f"is a .slnx and that format needs a >=9.0.200-class SDK/MSBuild to parse "
+                      f"(an 8.x SDK fails restore with 'MSB4068: The element <Solution> is "
+                      f"unrecognized')."
+                  )
+              if sdk_major > newest_target and not roll_forward:
+                  problems.append(
+                      f"{slug}: matrix installs the .NET {sdk_major}.x SDK for a net{newest_target}.0 "
+                      f"package, but the dotnet job sets no DOTNET_ROLL_FORWARD. A runner with only "
+                      f"the {sdk_major}.x SDK has no net{newest_target}.0 shared runtime, so "
+                      f"`dotnet test` builds and then fails at launch on a missing "
+                      f"Microsoft.NETCore.App. Set env.DOTNET_ROLL_FORWARD: LatestMajor on the job."
+                  )
+              if f"integrations/{slug}/" in root_solution:
+                  problems.append(
+                      f"{slug}: the repo-root Cortadel.slnx now references this package. It is "
+                      f"deliberately excluded — the root solution is dotnet.yml's build surface, "
+                      f"and including an integration there pulls it into that workflow's gate and "
+                      f"builds it twice. Remove it from Cortadel.slnx; this workflow builds "
+                      f"{leg['solution']} from the package's own folder."
+                  )
+
+          for problem in problems:
+              print(f"::error::{problem}")
+          if problems:
+              sys.exit(1)
+
+          print("Every matrix leg runs at the floor (or, for .NET, the pairing) its own manifest declares.")
+          PY

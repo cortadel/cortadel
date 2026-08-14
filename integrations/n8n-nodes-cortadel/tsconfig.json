@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    // `node16`, not `commonjs`/`node`: TypeScript 7 removed the `node10` resolution
+    // mode outright. The emit is unchanged for n8n — this package declares no
+    // `"type"`, so every file is still emitted as CommonJS, which is what n8n's node
+    // loader requires — with one improvement: `node16` leaves the optional
+    // `import('@langchain/core/messages')` in shared/memory.ts as a real dynamic
+    // import instead of downleveling it to `require()`.
+    "module": "node16",
+    "moduleResolution": "node16",
+    "target": "es2022",
+    "lib": ["es2022"],
+    "useUnknownInCatchVariables": false,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "strictNullChecks": true,
+    "preserveConstEnums": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "outDir": "./dist/"
+  },
+  "include": ["credentials/**/*", "nodes/**/*", "shared/**/*"],
+  "exclude": ["dist", "node_modules", "test", "examples"]
+}

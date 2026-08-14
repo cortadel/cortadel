@@ -1,0 +1,43 @@
+{
+  "name": "@cortadel/langgraph",
+  "version": "0.1.0",
+  "description": "Cortadel long-term memory for LangGraph — a BaseStore implementation, memory tools, and automatic recall/persist graph nodes.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "homepage": "https://cortadel.ai",
+  "bugs": { "url": "https://github.com/cortadel/cortadel/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cortadel/cortadel.git",
+    "directory": "integrations/langgraph"
+  },
+  "keywords": ["langgraph", "langchain", "cortadel", "ai", "memory", "agents", "knowledge-graph", "llm", "rag"],
+  "publishConfig": { "access": "public", "provenance": true },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cortadel/sdk": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@langchain/core": "^1.1.48",
+    "@langchain/langgraph": "^1.4.9",
+    "@langchain/langgraph-checkpoint": "^1.1.3",
+    "zod": "^3.25.32 || ^4.2.0"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.7",
+    "@langchain/langgraph": "^1.4.9",
+    "@langchain/langgraph-checkpoint": "^1.1.3",
+    "@types/node": "^22.20.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "zod": "^4.2.0"
+  }
+}
