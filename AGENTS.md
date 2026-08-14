@@ -32,7 +32,7 @@ Two ways to get a running server to point the SDKs/plugin at: the hosted service
 | `docs/` | Hand-written docs; **every page here has a mirror** under `website/` — see below. |
 | `website/` | Astro/Starlight docs site built from `website/src/content/docs/`, one file per `docs/*.md` page plus its own frontmatter and root-relative links. |
 | `examples/` | Runnable sample projects (currently `dotnet-quickstart/`). |
-| `.github/workflows/` | `dotnet.yml`, `typescript.yml`, `python.yml` (build + generation-drift + tiered conformance + publish, one per SDK), `docs.yml` (website build/deploy), `plugin-packaging.yml` (packaging generator drift + `claude plugin validate`), `cortadel-plugin.yml` (plugin's own test suite), `integrations.yml` (the twelve `integrations/` packages — three offline matrices, pnpm/tsc/vitest × 8, uv/pytest × 3 and dotnet build/test/pack × 1, plus a `matrix-coverage` job that re-derives each package's toolchain and floor from the manifest on disk so a language move can't silently keep testing the old one; no conformance tier and no publish job, since none is released yet), `pr.yml` (the always-runs PR gate — the other seven are all `paths:`-filtered, so this one runs the cheap checks on *every* pull request regardless of what it touched). |
+| `.github/workflows/` | `dotnet.yml`, `typescript.yml`, `python.yml` (build + generation-drift + tiered conformance + publish, one per SDK), `docs.yml` (website build/deploy), `plugin-packaging.yml` (packaging generator drift + `claude plugin validate`), `cortadel-plugin.yml` (plugin's own test suite), `integrations.yml` (the twelve `integrations/` packages — three offline matrices, pnpm/tsc/vitest × 8, uv/pytest × 3 and dotnet build/test/pack × 1, plus a `matrix-coverage` job that re-derives each package's toolchain and floor from the manifest on disk so a language move can't silently keep testing the old one; no conformance tier, but it *does* carry the integrations release path — `release-plan` plus `publish-npm`/`publish-pypi`/`publish-nuget`, reachable only from an `integration-*-v*` tag), `pr.yml` (the always-runs PR gate — the other seven are all `paths:`-filtered, so this one runs the cheap checks on *every* pull request regardless of what it touched). |
 
 ## Never hand-edit these — regenerate instead
 
@@ -144,6 +144,28 @@ weekly schedule or manual dispatch — it pulls ~9.6 GB of models, too slow/expe
 data as disposable test/E2E data. **Never use `serhii` or any other real identity** in test data;
 these suites write real data to whatever server `CORTADEL_CONFORMANCE_URL` points at.
 
+## Releasing — tag prefixes, and what each registry actually uses
+
+Nothing publishes on a merge to `main`; every release is a tag push, one prefix per publishable unit.
+**Never create or push a release tag on the user's behalf** — a release is irreversible on all three
+registries (npm, PyPI and nuget.org are append-only, and none of them lets a version be reused).
+
+| Tag | Publishes | Registry | Auth mechanism |
+| --- | --- | --- | --- |
+| `sdk-dotnet-v*` | `Cortadel.Sdk` | NuGet | OIDC trusted publishing (`NuGet/login`) |
+| `sdk-ts-v*` | `@cortadel/sdk` | npm | the `NPM_TOKEN` secret — **not** OIDC. `id-token: write` on that job exists for provenance (the Sigstore attestation) only |
+| `sdk-py-v*` | `cortadel` | PyPI | the `PYPI_TOKEN` secret |
+| `integration-<dir-slug>-v*` | one of the twelve `integrations/` packages | npm / PyPI / NuGet | PyPI and NuGet: OIDC trusted publishing. npm: the `NPM_TOKEN_INTEGRATIONS` secret, temporarily — npm trusted publishing cannot bootstrap a package that does not yet exist |
+
+Do not restate this as "NuGet and npm use OIDC" — an earlier revision of `CONTRIBUTING.md` did, and it
+was wrong about npm.
+
+For the integrations the slug is the **directory** under `integrations/`, never the registry package
+name (`integrations/vercel-ai-sdk` publishes as `@cortadel/vercel-ai-provider`), and the tag's version
+must equal the version in that package's own manifest — `integrations.yml`'s `release-plan` job fails
+the run on any mismatch, before contacting a registry. The maintainer-side registry configuration,
+which no workflow can perform, is in [`.github/RELEASING.md`](.github/RELEASING.md).
+
 ## Commits
 
 This repo uses [Conventional Commits](https://www.conventionalcommits.org/) —
@@ -154,6 +176,9 @@ inventing a new one.
 ## Also read
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — full contributor workflow, one section per SDK.
+- [`.github/RELEASING.md`](.github/RELEASING.md) — the maintainer runbook for the twelve
+  `integrations/` packages: the one-time registry setup a human must do per registry and per package,
+  the tag → package → registry table, and what is and isn't recoverable after a bad release.
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting; note the engine/repo scope split.
 - [`LLM.md`](LLM.md) — a self-contained orientation for any LLM integrating *with* Cortadel (not
   contributing to this repo) — what it is, both deployment paths, the REST/MCP surface, and real

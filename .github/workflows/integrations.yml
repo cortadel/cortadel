@@ -31,19 +31,52 @@ name: Integrations
 #     these packages (several of their reports call it out as a gap), it belongs in new jobs
 #     modelled on those, not bolted onto the matrix legs below.
 #
-#   * No publish job. All twelve are at version 0.1.0 and none is published yet — the openclaw
-#     package's own manifest still carries an unpinned npmSpec with no expectedIntegrity precisely
-#     because nothing has been released. There is therefore no release tag pattern to gate on, so
-#     this workflow has no `tags:` trigger and no counterpart to python.yml's publish-pypi /
-#     typescript.yml's publish-npm / dotnet.yml's publish-nuget. The .NET leg below still runs
-#     `dotnet pack`, for the same reason the Python legs run `uv build`: to prove the packable
-#     artifact is producible and correctly populated, not to publish it. Those get added with the
-#     first release, together with their own per-package tag prefix.
-#
 #   * No lint step. Checked, not assumed: no ruff/mypy/flake8 configuration exists in any of the
 #     three Python pyprojects, no eslint configuration in any of the eight TypeScript packages, and
 #     no .editorconfig/analyzer ruleset or `dotnet format` gate in the .NET package. Same ruling
 #     python.yml's header records for sdk/python — nothing to run until one is added.
+#
+# RELEASING. The publish jobs an earlier revision of this header promised ("those get added with the
+# first release, together with their own per-package tag prefix") are now at the bottom of this file:
+# release-plan, publish-npm, publish-pypi and publish-nuget. The maintainer-side registry
+# configuration they depend on — none of which can be done from a workflow file — is in
+# .github/RELEASING.md; until that is done, a release tag runs the gates and then fails at the
+# registry call.
+#
+# Tag grammar: `integration-<directory-slug>-v<version>`, e.g. integration-langgraph-v0.1.0. The slug
+# is the directory under integrations/, never the registry package name — integrations/vercel-ai-sdk
+# publishes as @cortadel/vercel-ai-provider, so anything deriving a path from a package name breaks
+# on exactly that one. The trigger below is a single permissive glob; all routing happens in
+# release-plan, which re-derives the package, its toolchain and its version from the manifest on
+# disk. See .github/RELEASING.md and CONTRIBUTING.md#releasing for the full scheme and its rationale.
+#
+# SECURITY NOTE, because it is not obvious from reading any single job: this file now holds
+# release credentials for three registries. In particular a nuget.org trusted-publishing policy is
+# scoped to (package owner, repo, WORKFLOW FILE) and never to a package — per-package scoping does
+# not exist (NuGetGallery issue #10587, open) — so the policy naming this file grants it push rights
+# over *every* package owned by the `cortadel` nuget.org account, Cortadel.Sdk included. Anyone who
+# can land a change to this file on a release tag can publish those. Review changes here with that in
+# mind, and keep the publish jobs inline: NuGet/login issue #6 reports a 401 "No matching trust
+# policy" when the publishing job lives in a called/reusable workflow, so this file deliberately
+# contains no `uses: ./`, no `workflow_call` and no `secrets: inherit`.
+#
+# The npm bootstrap token has the same blast radius, for an equally structural reason, and it is
+# stated here rather than left implicit in the phrase "bounded by the short expiry":
+# NPM_TOKEN_INTEGRATIONS has to be minted *All Packages / Read and write* — npm's package picker
+# enumerates only packages that already exist and none of the eight does yet, and a @cortadel-scoped
+# token cannot reach the unscoped n8n-nodes-cortadel at all — so while it exists it can also publish
+# @cortadel/sdk, which typescript.yml releases under a different and narrower secret. Anyone with
+# write access to this repository can reach it by pushing any `integration-*-v*` tag, or by
+# dispatching this workflow against one. That is why the phase-4 removal in .github/RELEASING.md
+# §1.5 is a deadline and not housekeeping: this token's scope is bounded only by how long it exists.
+#
+# The three publish jobs deliberately use two different auth styles, which reads like an oversight
+# unless stated: PyPI and NuGet authenticate with OIDC trusted publishing and hold no secret, while
+# npm authenticates with a stored token. That is not a preference — npm trusted publishing cannot
+# bootstrap a package that does not exist ("Package must exist" is a documented prerequisite;
+# npm/cli#8544 is open), so the *first* publish of all eight npm packages must be token-authenticated
+# and OIDC can only take over from the second release onward. publish-npm carries the exact two-line
+# edit that completes that migration.
 #
 # Every leg's exact command chain below was executed locally against the committed lockfiles, on
 # the same interpreter/runtime the matrix pins. That is what the per-leg version choices are based
@@ -56,6 +89,29 @@ name: Integrations
 on:
   push:
     branches: [main]
+    # One permissive glob for all twelve packages, deliberately — NOT twelve per-package patterns.
+    #
+    # `*` in a GitHub ref filter matches `-`, so twelve overlapping globs would be genuinely unsafe
+    # the moment one slug became a prefix of another followed by `-v` (a future `mastra-v2/` package
+    # would make `integration-mastra-v*` match `integration-mastra-v2-v1.0.0` and release the wrong
+    # thing). None of today's twelve slugs shadows another — checked pairwise; the closest pair,
+    # openai-agents/openclaw, diverges at the fifth character — but that is a property of today's
+    # names, not an invariant. So this pattern only answers "is this a release tag at all", and every
+    # routing decision is made by the release-plan job below, which enumerates every possible `-v`
+    # split of the tag, keeps only splits whose left half is a real integrations/ directory WITH a
+    # matrix leg, and requires exactly one survivor. Prefix shadowing therefore fails loudly instead
+    # of publishing the wrong package, and a thirteenth package needs no edit here.
+    #
+    # No collision with the SDK tag prefixes: sdk-dotnet-v* (dotnet.yml), sdk-ts-v* (typescript.yml)
+    # and sdk-py-v* (python.yml) are the only other tag triggers in this repository, and neither
+    # pattern can match the other's namespace.
+    #
+    # GitHub does NOT evaluate `paths` for tag pushes — path filters only gate branch pushes, as the
+    # headers of dotnet.yml/typescript.yml/python.yml each record. So the pattern below is the *only*
+    # gate on the tag half of this trigger: pushing a matching tag always runs this workflow (all
+    # three matrices, matrix-coverage and release-plan) regardless of which paths the tagged commit
+    # touched. That is intentional — a release tag is a deliberate act, unlike an ordinary commit.
+    tags: ['integration-*-v*']
     paths:
       - 'integrations/**'
       - '.github/workflows/integrations.yml'
@@ -65,11 +121,18 @@ on:
       - '.github/workflows/integrations.yml'
   workflow_dispatch:
 
-# Least privilege: nothing in this file reads or writes repository state, comments on a PR, or
-# publishes an artifact — it only checks out the tree and runs each package's own test suite. No
-# `secrets.*` reference appears anywhere in this file, and the trigger is plain `pull_request`,
-# never `pull_request_target` (banned repo-wide and enforced by
-# .github/scripts/check-diff-supply-chain.sh).
+# Least privilege, workflow-wide default: the twelve test matrices and matrix-coverage only check out
+# the tree and run each package's own suite — they read no repository state, comment on nothing, and
+# publish nothing. The four release-path jobs at the bottom of this file are the only exceptions, and
+# each raises its own `permissions:` block to exactly what its registry mechanism needs (`id-token:
+# write` for OIDC/provenance) rather than widening this default for everyone.
+#
+# `secrets.*` appears exactly once in this file — publish-npm's NODE_AUTH_TOKEN, which npm's
+# "package must exist" rule makes unavoidable for a first publish, and which is scheduled for removal
+# (see that job). Everything else is OIDC. The trigger is plain `pull_request`, never
+# `pull_request_target` (banned repo-wide and enforced by .github/scripts/check-diff-supply-chain.sh),
+# so a fork PR still gets no secrets and a read-only token; and no publish job below can fire from a
+# `pull_request` event at all, because they all depend on release-plan, which only runs on a tag ref.
 permissions:
   contents: read
 
@@ -816,3 +879,829 @@ jobs:
 
           print("Every matrix leg runs at the floor (or, for .NET, the pairing) its own manifest declares.")
           PY
+
+  # ────────────────────────────────────────────────────────────────────────────────────────────────
+  # The release path. Four jobs, reachable only by pushing a tag matching `integration-*-v*`.
+  #
+  #     release-plan ──┬──▶ publish-npm    (needs: matrix-coverage + the whole typescript matrix)
+  #                    ├──▶ publish-pypi   (needs: matrix-coverage + the whole python matrix)
+  #                    └──▶ publish-nuget  (needs: matrix-coverage + the dotnet matrix)
+  #
+  # WHY A PLANNER JOB. One tag namespace covers all twelve packages, so every integration tag
+  # triggers all three publish jobs and two of the three must skip *cleanly* rather than fail.
+  # Parsing the tag inside each publish job would mean three copies of the parser — and therefore
+  # three places for the version gate to drift. release-plan parses once, validates once against the
+  # manifest actually on disk, and hands typed outputs down. It is also where the tag-vs-manifest
+  # version gate lives, which is what guarantees that gate runs for all three toolchains and *before*
+  # any registry is contacted.
+  #
+  # WHY EACH PUBLISH JOB NEEDS ITS WHOLE MATRIX, NOT JUST THE TAGGED LEG. A publish must not run
+  # unless that package's own tests passed on that exact commit, and `needs:` is the only mechanism
+  # that expresses it. Depending on the matrix job means depending on all of its legs, so releasing
+  # @cortadel/langgraph requires all eight TypeScript legs green. That coupling is deliberate and the
+  # alternatives are worse:
+  #   * narrowing the matrix on a tag run (`matrix: fromJSON(...)`) would replace the static
+  #     `include:` lists with an expression — and matrix-coverage above reads those lists statically
+  #     out of this file with PyYAML. It is the check that stops a package from silently losing CI
+  #     altogether, and blinding it to buy release convenience is the wrong trade.
+  #   * a separate single-package verify job would run the tagged package's suite a second time on
+  #     every release tag, and would drift from the matrix leg it duplicates.
+  # The coupling does not cross toolchains: the three publish jobs depend on three different matrix
+  # jobs, so a red crewai leg cannot block an npm release.
+  #
+  # Note on `if:` + `needs:` — a job-level `if:` does NOT relax the needs-succeeded requirement (only
+  # a status function such as always() would). So each publish job's effective gate is "all three
+  # dependencies succeeded AND this tag belongs to my toolchain", which is exactly what is wanted.
+  # On any non-tag run release-plan is skipped, and a skipped dependency skips its dependents — so no
+  # publish job can fire from PR or push traffic even before its `if:` is evaluated.
+  #
+  # cancel-in-progress is false on all four, matching typescript.yml's publish-npm / python.yml's
+  # publish-pypi / dotnet.yml's publish-nuget: all three registries are append-only and none permits
+  # reusing a version, so a duplicate or retried run must queue behind an in-flight publish rather
+  # than cancel it mid-push. release-plan is included because cancelling it would fail the publishes
+  # it gates for a reason that has nothing to do with the release.
+  # ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  release-plan:
+    name: resolve the tagged package and check the tag against its manifest
+    # Ref-prefix check, not event-name: `github.ref` is `refs/tags/<name>` only when the ref actually
+    # being built is that tag — true whether this run was started by the tag `push` itself, or by a
+    # `workflow_dispatch` where the operator explicitly picked that tag from the branch/tag selector
+    # (the dispatch's default target is the default branch, refs/heads/main, which never matches this
+    # prefix). A pull_request ref (refs/pull/<n>/merge) never matches either, so this cannot fire from
+    # routine PR/push CI traffic — only a deliberate tag push (or a dispatch explicitly targeting that
+    # tag) satisfies it. Same convention as dotnet.yml's publish-nuget / typescript.yml's publish-npm
+    # / python.yml's publish-pypi.
+    if: startsWith(github.ref, 'refs/tags/integration-')
+    concurrency:
+      # Literal per-job name plus the ref, same convention as every other job in this file —
+      # github.job is null outside `steps` (see the file header comment), so it can't be used here.
+      group: integrations-release-plan-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      slug: ${{ steps.plan.outputs.slug }}
+      version: ${{ steps.plan.outputs.version }}
+      toolchain: ${{ steps.plan.outputs.toolchain }}
+      package-name: ${{ steps.plan.outputs.package-name }}
+      package-project: ${{ steps.plan.outputs.package-project }}
+      python-version: ${{ steps.plan.outputs.python-version }}
+      dotnet-version: ${{ steps.plan.outputs.dotnet-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The tag name arrives through the environment, never interpolated into the shell — a `${{ }}`
+      # substitution inside a `run:` block is textual, so a tag containing shell metacharacters would
+      # be executed rather than parsed. Everything this job emits is likewise derived from files in
+      # the checkout, not from the tag's free text.
+      #
+      # PyYAML is installed on demand exactly as matrix-coverage above (and pr.yml's
+      # workflow-integrity) do it; tomllib is stdlib from 3.11 and ubuntu-latest ships 3.12.
+      - name: Resolve the tag to a package, and require the manifest to agree with it
+        id: plan
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 -c "import yaml" 2>/dev/null || pip install --quiet --disable-pip-version-check --only-binary :all: "pyyaml==6.0.3"
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import secrets
+          import sys
+          import tomllib
+
+          import yaml
+
+          TAG = os.environ["TAG"]
+          PREFIX = "integration-"
+          GRAMMAR = "integration-<directory-slug>-v<version>, e.g. integration-langgraph-v0.1.0"
+
+
+          def fail(message):
+              print(f"::error::{message}")
+              sys.exit(1)
+
+
+          # Only jobs["..."] is read, never wf["on"] — YAML 1.1 parses a bare `on:` key as the
+          # boolean True, which is a trap for anything that tries to look the trigger up by name.
+          wf = yaml.safe_load(open(".github/workflows/integrations.yml", encoding="utf-8"))
+
+          # slug -> (toolchain matrix that claims it, that leg). The same static read matrix-coverage
+          # performs, and the reason the matrices above must stay static `include:` lists.
+          claimed = {}
+          legs = {}
+          for job in ("typescript", "python", "dotnet"):
+              for leg in wf["jobs"][job]["strategy"]["matrix"]["include"]:
+                  claimed[leg["slug"]] = job
+                  legs[leg["slug"]] = leg
+
+          if not TAG.startswith(PREFIX):
+              fail(
+                  f"release tag {TAG!r} does not start with {PREFIX!r}. The grammar is {GRAMMAR}."
+              )
+          rest = TAG[len(PREFIX):]
+
+          # Enumerate EVERY '-v' split point rather than trusting one regex to find "the" boundary.
+          # A slug is a directory name and may itself contain '-v' one day, and a version may contain
+          # '-v' in a pre-release segment, so the boundary is genuinely ambiguous from the string
+          # alone. Disambiguation is done against disk: a split survives only if its left half is a
+          # real integrations/ directory that also has a matrix leg. Requiring exactly one survivor
+          # is what turns prefix shadowing (see the `tags:` comment in the trigger) from a silent
+          # mis-publish into a hard failure.
+          candidates = []
+          for match in re.finditer("-v", rest):
+              slug, version = rest[: match.start()], rest[match.end():]
+              if not slug or not version:
+                  continue
+              if (pathlib.Path("integrations") / slug).is_dir() and slug in claimed:
+                  candidates.append((slug, version))
+
+          if not candidates:
+              fail(
+                  f"release tag {TAG!r} does not name any package that exists under integrations/ "
+                  f"AND has a matrix leg in this workflow. The grammar is {GRAMMAR}, where the slug "
+                  f"is the DIRECTORY name under integrations/ — not the registry package name "
+                  f"(integrations/vercel-ai-sdk publishes as @cortadel/vercel-ai-provider). Known "
+                  f"slugs: {', '.join(sorted(claimed))}."
+              )
+          if len(candidates) > 1:
+              readable = "; ".join(f"slug {s!r} + version {v!r}" for s, v in candidates)
+              fail(
+                  f"release tag {TAG!r} is ambiguous — it decomposes into more than one valid "
+                  f"package/version pair ({readable}), so which package it releases cannot be "
+                  f"decided. Rename one of the colliding directories, or cut a tag that is "
+                  f"unambiguous."
+              )
+
+          slug, version = candidates[0]
+          package = pathlib.PurePosixPath("integrations") / slug
+          directory = pathlib.Path(package)
+
+          # Toolchain from the manifest on disk, never from the matrix — same derivation
+          # matrix-coverage uses, and for the same reason: a package listed under the wrong toolchain
+          # would otherwise be published by the wrong registry job.
+          on_disk = []
+          if (directory / "package.json").is_file():
+              on_disk.append("typescript")
+          if (directory / "pyproject.toml").is_file():
+              on_disk.append("python")
+          if any(directory.glob("*.slnx")):
+              on_disk.append("dotnet")
+          if len(on_disk) != 1:
+              fail(
+                  f"{slug}: expected exactly one toolchain manifest under {package} "
+                  f"(package.json / pyproject.toml / *.slnx), found {on_disk or 'none'}. Refusing to "
+                  f"guess which registry this release belongs to."
+              )
+          toolchain = on_disk[0]
+          if toolchain != claimed[slug]:
+              fail(
+                  f"{slug} is a {toolchain} package on disk but is listed in the {claimed[slug]} "
+                  f"matrix. Fix the matrix before releasing — matrix-coverage explains this failure "
+                  f"in full."
+              )
+
+          package_project = ""
+          dotnet_version = ""
+          python_version = ""
+
+          if toolchain == "typescript":
+              manifest = json.loads((directory / "package.json").read_text(encoding="utf-8"))
+              if manifest.get("private"):
+                  fail(f"{slug}: package.json sets \"private\": true — npm refuses to publish it.")
+              package_name = manifest.get("name")
+              manifest_version = manifest.get("version")
+              manifest_path = f"{package}/package.json"
+          elif toolchain == "python":
+              project = tomllib.loads(
+                  (directory / "pyproject.toml").read_text(encoding="utf-8")
+              )["project"]
+              # A dynamic version would make the read below meaningless — the value shipped would be
+              # computed at build time and could differ from anything in the file. None of the three
+              # declares one today; this fails loudly rather than silently comparing against None.
+              if "version" in (project.get("dynamic") or []):
+                  fail(
+                      f"{slug}: pyproject.toml declares a dynamic version, so the tag cannot be "
+                      f"checked against the manifest. Pin project.version, or teach this job how to "
+                      f"resolve the dynamic source."
+                  )
+              package_name = project.get("name")
+              manifest_version = project.get("version")
+              manifest_path = f"{package}/pyproject.toml"
+              # Build on the interpreter the package itself declares as its floor — the same value
+              # the matrix leg pins, and one matrix-coverage already keeps in agreement with the
+              # manifest, so this cannot drift into building on an interpreter the lock excludes.
+              floors = re.findall(r">=\s*(\d+\.\d+)", project["requires-python"])
+              if len(floors) != 1:
+                  fail(
+                      f"{slug}: cannot read a single '>=' lower bound out of requires-python = "
+                      f"{project['requires-python']!r}; this job needs one to choose an interpreter."
+                  )
+              python_version = floors[0]
+          else:
+              leg = legs[slug]
+              package_project = str(leg["package-project"])
+              dotnet_version = str(leg["dotnet-version"])
+              csproj = (directory / package_project).read_text(encoding="utf-8")
+              # Element form only: `<Version>` never matches `<AssemblyVersion>` or a
+              # `<PackageReference ... Version="..."/>` attribute.
+              ids = re.findall(r"<PackageId>([^<]+)</PackageId>", csproj)
+              versions = re.findall(r"<Version>([^<]+)</Version>", csproj)
+              if len(ids) != 1 or len(versions) != 1:
+                  fail(
+                      f"{slug}: expected exactly one <PackageId> and one <Version> in "
+                      f"{package}/{package_project}, found {len(ids)} and {len(versions)}. The "
+                      f"version that ships is whatever the csproj says — it is NOT derived from the "
+                      f"tag — so this job has to be able to read it unambiguously."
+                  )
+              package_name, manifest_version = ids[0].strip(), versions[0].strip()
+              manifest_path = f"{package}/{package_project}"
+
+          if not package_name or not manifest_version:
+              fail(f"{slug}: could not read a package name and version out of {manifest_path}.")
+
+          # THE GATE. Exact string equality, deliberately — not a normalised or semver-parsed
+          # comparison. A looser check would let `integration-crewai-v0.1` publish `0.1.0`, which is
+          # exactly the class of surprise this exists to stop. (PyPI normalises PEP 440 and nuget.org
+          # normalises SemVer on their own side; that is their business. What this asserts is that
+          # the human who cut the tag and the manifest that will be published agree literally.)
+          if manifest_version != version:
+              fail(
+                  f"tag {TAG!r} says version {version!r}, but {manifest_path} declares "
+                  f"{manifest_version!r}. A tag must never be able to publish a version other than "
+                  f"the one in the manifest. Fix whichever is wrong — and note that all three "
+                  f"registries are append-only and none of them lets a version be reused, so a "
+                  f"wrong version published here cannot be taken back."
+              )
+
+          # Heredoc-delimited, not bare `key=value`. package-name and package-project are read out
+          # of a manifest, and GITHUB_OUTPUT is line-oriented: a value containing a newline written
+          # as `key=value` would be parsed as the first line's value followed by whatever the rest
+          # of the value happened to look like, letting a manifest declare additional job outputs.
+          # It takes a merged malicious manifest plus a release tag to reach, which is a high bar —
+          # but the heredoc form closes it outright, and a random per-value delimiter (asserted
+          # absent from the value) means the encoding cannot be escaped either.
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              for key, value in (
+                  ("slug", slug),
+                  ("version", version),
+                  ("toolchain", toolchain),
+                  ("package-name", package_name),
+                  ("package-project", package_project),
+                  ("python-version", python_version),
+                  ("dotnet-version", dotnet_version),
+              ):
+                  delimiter = f"ghadelim-{secrets.token_hex(16)}"
+                  if delimiter in value:
+                      fail(f"refusing to write output {key!r}: it contains the random delimiter.")
+                  handle.write(f"{key}<<{delimiter}\n{value}\n{delimiter}\n")
+
+          print(
+              f"{TAG} -> {package_name} {manifest_version} ({toolchain}, integrations/{slug}); "
+              f"tag and manifest agree."
+          )
+          PY
+
+  publish-npm:
+    name: publish ${{ needs.release-plan.outputs.package-name }} to npm
+    needs: [release-plan, matrix-coverage, typescript]
+    if: needs.release-plan.outputs.toolchain == 'typescript'
+    concurrency:
+      group: integrations-publish-npm-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Provenance TODAY (the Sigstore/OIDC attestation --provenance produces), and the publish
+      # credential itself AFTER the trusted-publishing migration below. Same permission, two
+      # different jobs over time — worth stating so it is never mistaken for the latter while the
+      # NPM_TOKEN_INTEGRATIONS secret is still in play.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # pnpm/action-setup before actions/setup-node: setup-node's `cache: pnpm` shells out to
+      # `pnpm store path`, so pnpm has to exist first. Same order as the typescript matrix above.
+      #
+      # pnpm stays on 10, and the reason is the same delegation the setup-node comment below turns
+      # on. pnpm 10's `pnpm publish` packs a tarball and then shells out to `npm publish`, so npm's
+      # OIDC flow is what authenticates. pnpm 11 reimplemented publish natively and stopped
+      # delegating, which took npm's OIDC flow out of the path: actions/setup-node writes
+      # `_authToken=${NODE_AUTH_TOKEN}` into the .npmrc it manages, and with no token set pnpm
+      # 11.0.8 forwarded that placeholder verbatim as `Authorization: Bearer ${NODE_AUTH_TOKEN}`, so
+      # the registry answered 404 (pnpm/pnpm#11513). pnpm's own maintainers state the mechanism in
+      # the fix: "This worked in v10 because `pnpm publish` shelled out to `npm publish`, whose own
+      # OIDC flow handled the case" (pnpm/pnpm#11526, merged 2026-05-15 — it makes an unresolved
+      # ${VAR} resolve to '' so OIDC is left as the sole auth source).
+      #
+      # Do not float to 11 on the strength of that fix. It is merged, but its own test plan leaves
+      # "verify the fix resolves the OIDC publish flow on a next-release build" UNCHECKED, and a 404
+      # on a publish is indistinguishable at a glance from "package does not exist", so the
+      # regression misdiagnoses badly. Moving to 11 would also move the OIDC implementation from npm
+      # to pnpm, which makes the npm floor reasoned about below moot and demands a fresh §1.5
+      # rehearsal — so it is a migration, not a version bump.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # 24.x, and deliberately NOT the package's own engines.node floor — the one place in this
+          # file that does not run at the floor. Every matrix leg above does, which is what proves
+          # the package works there; this job is not testing the package, it is talking to the
+          # registry. So this pin answers the REGISTRY's requirements, not the package's.
+          #
+          # The version that matters here is the npm CLI's, because `pnpm publish` on pnpm 10 does
+          # not talk to the registry itself. It packs a tarball and shells out to npm:
+          #     runNpm(opts.npmPath, ["publish", "--ignore-scripts", basename(tarballPath), ...args])
+          # where runNpm is `const npm = npmPath ?? "npm"` spawned through cross-spawn — i.e.
+          # whatever npm actions/setup-node just put on PATH. (Read out of pnpm 10.30.0's own
+          # bundle, dist/pnpm.cjs, module plugin-commands-publishing/lib/publish.js.) That bundle
+          # contains no OIDC code at all — zero occurrences of "oidc", "id-token" or
+          # ACTIONS_ID_TOKEN_REQUEST — so the trusted-publishing exchange is npm's, start to finish.
+          # `--access public --provenance` are passed straight through as well: pnpm strips only its
+          # own flags (--no-git-checks, --embed-readme, --publish-branch, --npm-path), so npm is
+          # already the tool implementing --provenance during the token phase too.
+          #
+          # npm's floor therefore binds: trusted publishing requires npm >= 11.5.1 AND Node >=
+          # 22.14.0 (docs.npmjs.com/trusted-publishers). '22.x' cannot satisfy it. Measured across
+          # the whole of nodejs.org/dist/index.json on 2026-08-14, so the next person need not:
+          #     Node 20.x -> npm  9.6.4 … 10.8.2    (newest v20.20.2 -> npm 10.8.2)
+          #     Node 22.x -> npm 10.5.1 … 10.9.8    (newest v22.23.2 -> npm 10.9.8)
+          #     Node 24.x -> npm 11.3.0 … 11.17.0   (newest v24.19.0 -> npm 11.17.0)
+          # Exactly ZERO of the 35 Node 22 releases ship an npm 11 of any kind, and no future 22
+          # patch will — npm 11 arrived with the 24 line. setup-node resolves '<major>.x' to the
+          # newest release of that major, so '22.x' lands on npm 10.9.8, below the floor, while
+          # '24.x' lands on npm 11.17.0, comfortably above it.
+          #
+          # Why 24.x specifically, over the alternatives:
+          #   * a pinned Node 24 minor: goes stale, and is a live trap rather than a safe choice —
+          #     the first eight Node 24 releases ship npm 11.3.0…11.4.2, BELOW the floor (v24.5.0 ->
+          #     npm 11.5.1 is the first that clears it). '24.x' always resolving to the newest is
+          #     precisely what keeps this correct without maintenance.
+          #   * '22.x' plus `npm install -g npm@^11.5.1`: would work, but adds an unpinned network
+          #     install immediately before an irreversible publish, on the one job in this file that
+          #     holds a write credential. Not worth it to preserve a number.
+          #   * '25.x': also clears the floor (npm 11.6.2…11.12.1) but is not LTS. 24 is the current
+          #     LTS (Krypton); 22 (Jod) is in maintenance and 20 reached EOL 2026-04-30.
+          # 24 also clears the Node >= 22.14.0 half of npm's floor and pnpm 10's engines.node
+          # of >=18.12.
+          #
+          # NOTE the earlier revision of this comment that claimed the opposite — that this job
+          # "publishes with pnpm and never invokes npm at all, so npm's version is irrelevant" — and
+          # do not restore it. It is backwards: pnpm 10 delegates, which is the whole reason npm's
+          # floor reaches this line.
+          #
+          # None of this endangers the FIRST release. Phases 1-3 are token-authenticated and a token
+          # publish with --provenance works fine on npm 10.9.x; the floor binds at phase 4, the
+          # migration to trusted publishing, where too old an npm surfaces as a bare 404 that reads
+          # like "package does not exist". Corrected here in advance so that misdiagnosis never
+          # happens.
+          #
+          # And a correct pin is still only a necessary condition, never a proof: §1.5's "bump one
+          # package to 0.1.1 and tag it" rehearsal stays mandatory, because only a publish that
+          # actually used the OIDC path demonstrates that the OIDC path works.
+          node-version: '24.x'
+          # registry-url makes setup-node write an .npmrc that reads the auth token from
+          # $NODE_AUTH_TOKEN, which the publish step sets. It also points the CLI at
+          # registry.npmjs.org, which is why npm's own trusted-publishing recipe keeps this input
+          # after dropping the token — see the migration note on the publish step.
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+          # Repo-root-relative, like the matrix legs' own — not resolved against a working-directory.
+          cache-dependency-path: integrations/${{ needs.release-plan.outputs.slug }}/pnpm-lock.yaml
+
+      # A fresh build from the tag ref rather than an artifact downloaded from the matrix job — the
+      # same convention all three SDK publish jobs follow (typescript.yml re-runs `pnpm run build`,
+      # python.yml re-runs its build, dotnet.yml re-runs `dotnet pack`).
+      # --ignore-scripts: see the typescript matrix job's comment on why this is safe here. It
+      # governs dependency lifecycle hooks only, so `pnpm run build` (including
+      # n8n-nodes-cortadel's `tsc + node scripts/copy-assets.mjs`) still runs normally.
+      - name: Install and build from the tagged commit
+        working-directory: integrations/${{ needs.release-plan.outputs.slug }}
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm run build
+
+      # The artifact-level half of the version gate, and the npm counterpart of the py.typed and
+      # .nupkg-contents checks the matrix jobs above run. A build that silently produced nothing
+      # would publish a real, permanent, EMPTY package — and npm never lets that version be reused.
+      # Packing into RUNNER_TEMP rather than the package directory keeps the tarball out of the tree
+      # the publish step then packs.
+      #
+      # What is asserted present is read out of each package's own `files` array, not hard-coded.
+      # Seven of the eight declare `files: ["dist"]`, but @cortadel/openclaw declares
+      # `["dist", "openclaw.plugin.json"]` — its plugin manifest is a shipped artefact, and a
+      # dist-only check would have called a tarball missing it green, publishing a permanently
+      # broken OpenClaw plugin. Deriving the assertion from the manifest means the ninth package to
+      # declare a ninth extra file is covered on the day it is added rather than the day it breaks.
+      - name: Pack and verify the tarball that is about to be published
+        working-directory: integrations/${{ needs.release-plan.outputs.slug }}
+        env:
+          EXPECTED_NAME: ${{ needs.release-plan.outputs.package-name }}
+          EXPECTED_VERSION: ${{ needs.release-plan.outputs.version }}
+        run: |
+          rm -rf "$RUNNER_TEMP/packcheck" && mkdir -p "$RUNNER_TEMP/packcheck"
+          pnpm pack --pack-destination "$RUNNER_TEMP/packcheck"
+          python3 - <<'PY'
+          import fnmatch
+          import glob
+          import itertools
+          import json
+          import os
+          import sys
+          import tarfile
+
+          # A dedicated, freshly-emptied directory rather than RUNNER_TEMP itself, so the
+          # exactly-one-tarball assertion below is about what pnpm just produced and cannot be
+          # confused by anything else a step left in the runner's temp directory.
+          tarballs = sorted(glob.glob(os.path.join(os.environ["RUNNER_TEMP"], "packcheck", "*.tgz")))
+          if len(tarballs) != 1:
+              sys.exit(f"expected exactly one packed tarball, found {tarballs}")
+
+          # Only files count as evidence that a declared path shipped; directory members are
+          # filtered out. pnpm 10.30's own tarballs happen to contain no directory entries at all
+          # (verified against a real `pnpm pack` of @cortadel/openclaw: 31 members, 31 of them
+          # files), so today this filter changes nothing. It is here because the check must not
+          # depend on that: a packer that did emit `package/dist` as a member — npm's own `pack`
+          # among them — would otherwise let an empty dist/ satisfy `files: ["dist"]`, which is the
+          # exact failure this step exists to catch.
+          with tarfile.open(tarballs[0]) as archive:
+              members = archive.getmembers()
+              manifest = json.load(archive.extractfile("package/package.json"))
+          shipped = [m.name[len("package/"):] for m in members
+                     if not m.isdir() and m.name.startswith("package/")]
+
+          problems = []
+          if manifest.get("name") != os.environ["EXPECTED_NAME"]:
+              problems.append(
+                  f"name is {manifest.get('name')!r}, expected {os.environ['EXPECTED_NAME']!r}"
+              )
+          if manifest.get("version") != os.environ["EXPECTED_VERSION"]:
+              problems.append(
+                  f"version is {manifest.get('version')!r}, expected "
+                  f"{os.environ['EXPECTED_VERSION']!r}"
+              )
+
+          # `files` is what npm ships, so `files` is what gets asserted. Requiring it to be a
+          # non-empty list is part of the check, not a formality: a package that omits it ships its
+          # whole working directory and would leave this loop with nothing to verify.
+          declared = manifest.get("files")
+          if not isinstance(declared, list) or not declared:
+              problems.append(
+                  f"package.json declares `files` as {declared!r}; this job needs a non-empty list "
+                  f"to know what the tarball is supposed to contain"
+              )
+              declared = []
+
+          def globs(pattern):
+              """Every fnmatch pattern that should count as this npm pattern.
+
+              npm matches `files` with minimatch, where a `**/` segment means "zero or more
+              directories". fnmatch has no such notion and would force `dist/**/*.js` to match at
+              least one intermediate directory, failing a perfectly good `dist/index.js`. Emitting
+              both the present and the elided form of every `**/` restores the zero-directories
+              case. The remaining deviations all run the other way — fnmatch's `*` and `?` cross
+              `/` where minimatch's do not — so a glob entry can end up under-constrained here, but
+              never rejected when npm itself would have been satisfied.
+              """
+              parts = pattern.split("**/")
+              return {
+                  parts[0] + "".join(sep + part for sep, part in zip(combo, parts[1:]))
+                  for combo in itertools.product(("**/", ""), repeat=len(parts) - 1)
+              }
+
+          for entry in declared:
+              # A negation only ever subtracts from the set, so there is nothing to require present.
+              if entry.startswith("!"):
+                  continue
+              want = entry
+              while want.startswith("./"):
+                  want = want[2:]
+              # lstrip("/") and not lstrip("./"): the latter would also eat the leading dot of a
+              # legitimately dot-prefixed entry and quietly stop matching it.
+              want = want.lstrip("/").rstrip("/")
+              if not want:
+                  continue
+              # Three ways to satisfy an entry: it names a file exactly; it names a directory with
+              # at least one file inside it; or it is a glob something matches. The first two are
+              # the only forms any of the eight packages uses today, and both are matched exactly.
+              patterns = globs(want)
+              if any(name == want or name.startswith(want + "/")
+                     or any(fnmatch.fnmatchcase(name, p) for p in patterns)
+                     for name in shipped):
+                  continue
+              problems.append(
+                  f"`files` declares {entry!r} but the tarball contains no file matching it, so "
+                  f"this would publish a package missing something it promises to ship — "
+                  f"permanently, at a version npm will never let you reuse"
+              )
+
+          if problems:
+              sys.exit(f"{tarballs[0]} is wrong: " + "; ".join(problems))
+
+          print(f"{tarballs[0]}: {manifest['name']} {manifest['version']}, "
+                f"{len(shipped)} files, files={declared} all present")
+          PY
+
+      # npm has no `--skip-duplicate` / `skip-existing` flag (nuget.org and PyPI both do, and the
+      # jobs below use them), so idempotency on a re-run has to be built by hand. It matters here
+      # specifically because the provenance assertion further down runs AFTER an irreversible
+      # publish: without this, one flaky attestation lookup would leave every subsequent re-run
+      # permanently red on EPUBLISHCONFLICT with no way to reach the check again.
+      # Both URL shapes were verified against the live registry: a scoped name works unencoded, and
+      # a missing version returns 404 rather than an error page.
+      - name: Is this version already on the registry?
+        id: registry
+        env:
+          PACKAGE: ${{ needs.release-plan.outputs.package-name }}
+          VERSION: ${{ needs.release-plan.outputs.version }}
+        run: |
+          status="$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/${PACKAGE}/${VERSION}")"
+          case "$status" in
+            200)
+              echo "::notice::${PACKAGE}@${VERSION} is already on the registry — skipping the publish step and going straight to the provenance check."
+              echo "published=true" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo "${PACKAGE}@${VERSION} is not on the registry yet."
+              echo "published=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::registry.npmjs.org answered HTTP ${status} for ${PACKAGE}@${VERSION}. Refusing to publish without knowing whether this version already exists — npm never lets a version be reused, so guessing here is not recoverable."
+              exit 1
+              ;;
+          esac
+
+      # --access public is mandatory, not cosmetic: seven of the eight are scoped and npm defaults
+      # scoped packages to restricted (each package.json's publishConfig.access already says the
+      # same; passing it explicitly keeps this step self-documenting). --provenance attaches the
+      # signed Sigstore attestation, and needs the id-token: write permission above. --no-git-checks:
+      # this job checks out a tag ref (detached HEAD), which pnpm's default git checks would reject —
+      # the checkout plus the `needs:` gates are what vouch for this commit instead.
+      #
+      # ── MIGRATING THIS STEP TO TRUSTED PUBLISHING ────────────────────────────────────────────────
+      # The token below exists only because npm trusted publishing cannot bootstrap a package that
+      # does not yet exist ("Package must exist" is a documented prerequisite; npm/cli#8544 is open).
+      # Once all eight packages exist and a human has attached a trusted publisher to each
+      # (`npm trust github <pkg> --allow-publish ...`, an interactive step that cannot be done from
+      # CI — see .github/RELEASING.md), this step becomes exactly two deletions:
+      #     1. delete the `env:` block below (NODE_AUTH_TOKEN / NPM_TOKEN_INTEGRATIONS);
+      #     2. delete ` --provenance` from the command — with trusted publishing the CLI generates
+      #        and publishes the attestation itself, and passing the flag is not how it is done.
+      # Keep `registry-url` on setup-node; npm's own recipe keeps it and simply omits the token.
+      # Then delete the NPM_TOKEN_INTEGRATIONS repository secret and revoke the token itself. This is
+      # not optional housekeeping: npm caps write-permission granular tokens at 90 days, so a
+      # token-based release path has a built-in expiry that will break a release at the worst
+      # possible moment. The secret is deliberately NOT named NPM_TOKEN — that name belongs to
+      # typescript.yml's SDK release, and this one has to be broader (npm's package picker cannot
+      # select packages that do not exist yet, so the bootstrap token must cover "All Packages" to
+      # reach both @cortadel/* and the unscoped n8n-nodes-cortadel).
+      - name: Publish to npm
+        if: steps.registry.outputs.published == 'false'
+        working-directory: integrations/${{ needs.release-plan.outputs.slug }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_INTEGRATIONS }}
+        run: pnpm publish --access public --provenance --no-git-checks
+
+      # Provenance is asserted, not assumed, because it has already silently failed once in this
+      # repository: @cortadel/sdk@1.0.0 has NO attestation
+      # (registry.npmjs.org/-/npm/v1/attestations/@cortadel/sdk@1.0.0 → 404, reproduced against the
+      # live registry) despite publishConfig.provenance being set and typescript.yml's publish step
+      # passing --provenance. Its recorded _nodeVersion/_npmVersion do not match that workflow's pin
+      # either, so that release was almost certainly published by hand. Nothing in CI noticed. This
+      # step is what makes the same failure impossible to miss here, in both the token phase and the
+      # trusted-publishing phase (which produces attestations automatically).
+      #
+      # It runs after an irreversible publish, so it cannot prevent a provenance-less release — it
+      # can only refuse to report one as green. The retry loop absorbs registry propagation delay;
+      # a genuine miss still fails, and the re-run path is safe because the publish step above is
+      # skipped once the version exists.
+      - name: Verify the published version actually carries provenance
+        env:
+          PACKAGE: ${{ needs.release-plan.outputs.package-name }}
+          VERSION: ${{ needs.release-plan.outputs.version }}
+        run: |
+          status="000"
+          for i in $(seq 1 10); do
+            # `|| true` plus the empty-guard, because this step runs under `bash -e` and curl exits
+            # non-zero on a connection or DNS failure — without it a single network blip would abort
+            # the step instead of entering the retry loop, turning a transient fault into a red
+            # release on a package that is already published and cannot be republished. The --retry
+            # flags handle the recoverable cases inside curl first; %{http_code} is 000 whenever no
+            # HTTP response was received, which is neither 200 nor a reason to stop looping.
+            status="$(curl -sS --retry 3 --retry-connrefused --retry-all-errors -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/-/npm/v1/attestations/${PACKAGE}@${VERSION}" || true)"
+            [ -n "$status" ] || status="000"
+            if [ "$status" = "200" ]; then
+              echo "${PACKAGE}@${VERSION} has a published provenance attestation."
+              exit 0
+            fi
+            echo "waiting for the attestation to appear (http $status) ($i/10)..."
+            sleep 15
+          done
+          echo "::error::${PACKAGE}@${VERSION} IS PUBLISHED but has no provenance attestation (last HTTP ${status} from /-/npm/v1/attestations). The release cannot be undone — npm never lets a version be reused — so treat this as a broken release path, not a broken package: check that the publish step really ran with --provenance (or, post-migration, that a trusted publisher is attached), and that id-token: write is still set on this job. @cortadel/sdk@1.0.0 has exactly this defect."
+          exit 1
+
+  publish-pypi:
+    name: publish ${{ needs.release-plan.outputs.package-name }} to PyPI (trusted publishing)
+    needs: [release-plan, matrix-coverage, python]
+    if: needs.release-plan.outputs.toolchain == 'python'
+    concurrency:
+      group: integrations-publish-pypi-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write   # required for the PyPI trusted-publishing OIDC exchange
+      contents: read
+    # No `environment:` block, and this is a deliberate choice rather than an omission.
+    #
+    # A GitHub Environment with required reviewers is the usual way to add a human gate to a PyPI
+    # trusted publisher, and PyPI's own form offers an optional "Environment name" field for it. It
+    # is not used here because a mismatch in EITHER direction — configured on PyPI but absent from
+    # this job, or set here and blank on PyPI — is a hard failure reported as `invalid-publisher` /
+    # `invalid-pending-publisher`, an error whose text says nothing whatsoever about environments.
+    # python.yml's publish-pypi records this repo's own version of that trap ("a protection rule with
+    # no environment to satisfy it never resolves"). So the safe encoding is: no environment here,
+    # and PyPI's "Environment name" field left BLANK when the pending publishers are registered.
+    # .github/RELEASING.md documents adding one as optional hardening — and that both sides must
+    # change in the same commit.
+    #
+    # Unlike python.yml's publish-pypi, this job stores NO token. That is the substantive difference
+    # and the reason it is worth stating: `cortadel` 1.0.0 already exists on PyPI, which is exactly
+    # the situation in which the existing PYPI_TOKEN is most likely to have been minted scoped to
+    # that project — and a project-scoped token provably cannot create a new project (Warehouse's
+    # ProjectName/ProjectID caveat verifiers reject any context outside the projects they enumerate).
+    # Worse, Warehouse checks the macaroon's permission AFTER create_project runs, so a failed
+    # project-scoped attempt can leave an empty project record squatting the name. Trusted publishing
+    # sidesteps the question entirely: the credential is minted per run and expires in ~15 minutes.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          # The package's own declared requires-python floor, resolved by release-plan — the same
+          # value the matrix leg pins, and one matrix-coverage already keeps in agreement with the
+          # manifest. Hard-coding a version here would add a fourth place for that floor to drift.
+          python-version: ${{ needs.release-plan.outputs.python-version }}
+          enable-cache: true
+          # Repo-root-relative, like the python matrix leg's own — NOT resolved against the job's
+          # working-directory.
+          cache-dependency-glob: integrations/${{ needs.release-plan.outputs.slug }}/uv.lock
+
+      # The matrix leg's install split, minus `--extra test` (nothing here runs the suite; the
+      # `python` job already did, on this exact commit). `--group build` is what puts hatchling and
+      # editables in the venv so the build below can run --no-build-isolation; --no-install-project
+      # keeps the package itself uninstalled; --no-build blocks third-party sdist build hooks;
+      # --locked asserts uv.lock is already consistent with pyproject.toml. Verified locally on
+      # integrations/pydantic-ai that dropping --extra test leaves this exact chain working.
+      - name: Sync the build backend from the lockfile
+        working-directory: integrations/${{ needs.release-plan.outputs.slug }}
+        run: uv sync --group build --no-install-project --no-build --locked
+
+      # `uv build --no-build-isolation`, identical to the matrix leg's own step and for the identical
+      # reason: without the flag, uv provisions throwaway build environments and resolves hatchling
+      # and friends from PyPI unpinned and unhashed on every run (the matrix job's comment records
+      # the measurement). A fresh build from the tag ref rather than an artifact from the matrix job,
+      # matching every SDK publish job's convention.
+      - name: Build sdist and wheel
+        working-directory: integrations/${{ needs.release-plan.outputs.slug }}
+        run: uv build --sdist --wheel --no-build-isolation .
+
+      # The artifact-level half of the version gate. Both filenames encode the normalised project
+      # name and the version (verified locally: cortadel_pydantic_ai-0.1.0.tar.gz and
+      # cortadel_pydantic_ai-0.1.0-py3-none-any.whl), so this catches a build that produced something
+      # other than what the tag promised — before the upload, which PyPI can never take back: it
+      # refuses to reuse a version AND refuses to reuse a filename, "even once a project has been
+      # deleted and recreated".
+      - name: Assert both artifacts carry the tagged version
+        working-directory: integrations/${{ needs.release-plan.outputs.slug }}
+        env:
+          EXPECTED_VERSION: ${{ needs.release-plan.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import sys
+
+          version = os.environ["EXPECTED_VERSION"]
+          artifacts = sorted(glob.glob("dist/*"))
+          wheels = [a for a in artifacts if a.endswith(".whl")]
+          sdists = [a for a in artifacts if a.endswith(".tar.gz")]
+          if len(wheels) != 1 or len(sdists) != 1:
+              sys.exit(f"expected exactly one wheel and one sdist under dist/, found {artifacts}")
+
+          # PEP 427/625 filenames are `<name>-<version>[-...]`, so the version is delimited by '-'
+          # on the left and by '-' or '.' on the right; a bare substring test would accept 0.1.0
+          # inside 10.1.0rc1.
+          for artifact in (wheels[0], sdists[0]):
+              stem = os.path.basename(artifact)
+              if f"-{version}-" not in stem and not stem.endswith(f"-{version}.tar.gz"):
+                  sys.exit(
+                      f"{artifact} does not carry version {version!r} — the tag and the built "
+                      f"artifact disagree. PyPI never lets a version or even a filename be reused, "
+                      f"so this must be fixed before the upload, not after."
+                  )
+          print(f"dist/ carries version {version}: {', '.join(artifacts)}")
+          PY
+
+      # Same pinned action python.yml uses — it is the same action in both auth modes. The
+      # difference is what is ABSENT: no `user:` and no `password:`, which is what makes the action
+      # take the trusted-publishing path and mint a short-lived token from the OIDC identity of this
+      # job. packages-dir is repo-root-relative (like python.yml's `sdk/python/dist`), not relative
+      # to any working-directory. skip-existing keeps a retried run idempotent after an infra flake.
+      #
+      # Switching to trusted publishing also turns on PEP 740 attestations by default, which the
+      # token path cannot produce. That is a benefit; it is called out because it visibly changes
+      # what appears on the project page and should not be mistaken for a misconfiguration.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: integrations/${{ needs.release-plan.outputs.slug }}/dist
+          skip-existing: true
+
+  publish-nuget:
+    name: publish ${{ needs.release-plan.outputs.package-name }} to NuGet (trusted publishing)
+    needs: [release-plan, matrix-coverage, dotnet]
+    if: needs.release-plan.outputs.toolchain == 'dotnet'
+    concurrency:
+      group: integrations-publish-nuget-${{ github.ref }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write   # required for the NuGet/login OIDC exchange
+      contents: read
+    # No DOTNET_ROLL_FORWARD here, unlike the dotnet matrix job above: that variable exists so a
+    # net8.0 *test binary* can execute on a runner whose only shared runtime is net10. This job never
+    # executes the package — it packs and pushes it — so the roll-forward is not needed, and leaving
+    # it out keeps the reason it exists elsewhere legible.
+    #
+    # No `environment:` block, for the same reason publish-pypi has none: this job's nuget.org
+    # trusted-publishing policy must leave its Environment field empty, and the two have to agree or
+    # the OIDC exchange 401s.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          # Read out of this workflow's own dotnet matrix by release-plan, so the SDK that packs the
+          # release is the SDK that built and tested it. matrix-coverage already asserts that pin is
+          # compatible with the package's target framework and new enough for the .slnx format.
+          dotnet-version: ${{ needs.release-plan.outputs.dotnet-version }}
+
+      # A clean output directory, and the push below globs THAT — never bin/. The package's own
+      # working tree can carry a stale Cortadel.AgentFramework.0.1.0.nupkg (plus its .snupkg) under
+      # bin/Release/ from a local `dotnet pack`, and globbing bin/ would push whatever happened to be
+      # sitting there. Same shape as dotnet.yml's publish-nuget (`dotnet pack ... -o ./nupkg`), and
+      # like it this re-packs from the tag ref rather than reusing the matrix job's output. No
+      # --no-build for the same reason: this job did not build anything yet, so pack restores and
+      # builds for itself.
+      #
+      # The version that ships is whatever <Version> in the csproj says — it is NOT derived from the
+      # tag. release-plan has already asserted the two agree; the filename check below re-asserts it
+      # against the artifact, because nuget.org is append-only (packages can only be unlisted, never
+      # deleted) and 0.1.0 is burned permanently on first push.
+      - name: Pack the .nupkg
+        env:
+          SLUG: ${{ needs.release-plan.outputs.slug }}
+          PACKAGE_PROJECT: ${{ needs.release-plan.outputs.package-project }}
+        run: dotnet pack "integrations/${SLUG}/${PACKAGE_PROJECT}" -c Release -o ./nupkg
+
+      - name: Assert the packed artifact is exactly the tagged package and version
+        env:
+          EXPECTED_NAME: ${{ needs.release-plan.outputs.package-name }}
+          EXPECTED_VERSION: ${{ needs.release-plan.outputs.version }}
+        run: |
+          expected="${EXPECTED_NAME}.${EXPECTED_VERSION}.nupkg"
+          found="$(ls ./nupkg/*.nupkg 2>/dev/null | xargs -r -n1 basename || true)"
+          if [ "$found" != "$expected" ]; then
+            echo "::error::dotnet pack produced '${found:-nothing}' but the tag promised '${expected}'. nuget.org is append-only — a package can be unlisted but never deleted, and the version is burned on first push — so this is resolved before the push, not after."
+            exit 1
+          fi
+          echo "./nupkg/$expected is the tagged package."
+
+      # The minted key lives 1 hour and each OIDC token is single-use (one login, one push), so this
+      # step sits immediately before the push it feeds, not at the top of the job — dotnet.yml's
+      # publish-nuget makes the same point. `user:` is the nuget.org profile name, not a secret.
+      #
+      # This login is satisfied by a SECOND trusted-publishing policy, distinct from the one
+      # dotnet.yml's own — a nuget.org policy is keyed on (package owner, repo owner, repo, workflow
+      # FILE, environment) and never on a package, so dotnet.yml's policy does not match this file.
+      # See the security note in this workflow's header for the blast radius that policy carries, and
+      # .github/RELEASING.md for how to create it.
+      - name: NuGet login (OIDC -> short-lived API key)
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: cortadel-admin
+
+      # Pushing the .nupkg pushes its co-located .snupkg automatically — no separate symbols step.
+      # --skip-duplicate makes a retried run idempotent against a version nuget.org already has
+      # instead of failing the whole job.
+      - name: Push to nuget.org
+        run: |
+          dotnet nuget push "./nupkg/*.nupkg" \
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
