@@ -37,13 +37,40 @@ name: Integrations
 #     python.yml's header records for sdk/python — nothing to run until one is added.
 #
 # RELEASING. The publish jobs an earlier revision of this header promised ("those get added with the
-# first release, together with their own per-package tag prefix") are now at the bottom of this file:
-# release-plan, publish-npm, publish-pypi and publish-nuget. The maintainer-side setup they depend on
-# — none of which can be done from a workflow file — is in .github/RELEASING.md; until it is done, a
-# release tag runs the gates and then fails at the registry call. It is not uniform across the three:
-# npm needs a repository secret that does not exist yet, NuGet needs a trusted-publishing policy
-# naming this file, and PyPI needs NOTHING — its credential, the account-scoped PYPI_TOKEN secret, is
-# already configured (see the auth-styles note below).
+# first release, together with their own per-package tag prefix") are at the bottom of this file:
+# release-plan, publish-npm and publish-pypi. The maintainer-side setup they depend on — none of
+# which can be done from a workflow file — is in .github/RELEASING.md; until it is done, a release
+# tag runs the gates and then fails at the registry call. It is not uniform across the two: npm needs
+# a repository secret that does not exist yet, and PyPI needs NOTHING — its credential, the
+# account-scoped PYPI_TOKEN secret, is already configured (see the auth-styles note below).
+#
+# ⚠ THE .NET PACKAGE DOES NOT PUBLISH FROM THIS FILE. `Cortadel.AgentFramework`
+# (integrations/microsoft-agent-framework) is still TESTED here — the `dotnet` matrix leg below is
+# its CI gate and matrix-coverage still asserts it has one — but its NuGet publish lives in
+# .github/workflows/dotnet.yml, in the `integration-release-plan` + `publish-nuget-integration` jobs.
+# The reason is structural, not a preference:
+#
+#   A nuget.org trusted-publishing policy is a tuple of (package owner, repository owner,
+#   repository, WORKFLOW FILE, environment) and never names a package. The `cortadel` account's
+#   policy names `dotnet.yml`. Tag `integration-microsoft-agent-framework-v0.1.0` therefore reached
+#   this file's NuGet/login step and died there:
+#
+#       Token exchange failed (HTTP 401) at https://www.nuget.org/api/v2/token.
+#       Make sure you are using the username of the policy creator, not the policy owner:
+#       Workflow mismatch for policy 'cortadel': expected 'dotnet.yml', actual 'integrations.yml'
+#
+#   Nothing was published, the tag was deleted and 0.1.0 is unspent. Publishing from the workflow the
+#   policy already trusts is what unblocks it without website access.
+#
+# The cleaner alternative, so this is understood as a constraint: nuget.org allows several policies
+# per account, so adding a SECOND policy whose *Workflow file* is `integrations.yml` lets the publish
+# move back here as the `publish-nuget` job this file used to have (git history at commit d50675e).
+# That needs the nuget.org website. .github/RELEASING.md §3 carries both halves as a checklist.
+#
+# What is left here in its place is `nuget-release-moved` at the bottom of this file — a signpost
+# that publishes nothing, holds no credential, and fails a .NET release tag that dotnet.yml's own
+# `tags:` patterns do not cover. Without it, adding a second .NET integration would produce a green
+# release run that published nothing at all.
 #
 # Tag grammar: `integration-<directory-slug>-v<version>`, e.g. integration-langgraph-v0.1.0. The slug
 # is the directory under integrations/, never the registry package name — integrations/vercel-ai-sdk
@@ -52,15 +79,17 @@ name: Integrations
 # release-plan, which re-derives the package, its toolchain and its version from the manifest on
 # disk. See .github/RELEASING.md and CONTRIBUTING.md#releasing for the full scheme and its rationale.
 #
-# SECURITY NOTE, because it is not obvious from reading any single job: this file now holds
-# release credentials for three registries. In particular a nuget.org trusted-publishing policy is
-# scoped to (package owner, repo, WORKFLOW FILE) and never to a package — per-package scoping does
-# not exist (NuGetGallery issue #10587, open) — so the policy naming this file grants it push rights
-# over *every* package owned by the `cortadel` nuget.org account, Cortadel.Sdk included. Anyone who
-# can land a change to this file on a release tag can publish those. Review changes here with that in
-# mind, and keep the publish jobs inline: NuGet/login issue #6 reports a 401 "No matching trust
-# policy" when the publishing job lives in a called/reusable workflow, so this file deliberately
-# contains no `uses: ./`, no `workflow_call` and no `secrets: inherit`.
+# SECURITY NOTE, because it is not obvious from reading any single job: this file holds release
+# credentials for two registries, npm and PyPI. It no longer holds any NuGet credential — there is no
+# OIDC exchange in this file at all now that the .NET publish moved to dotnet.yml, which is where the
+# nuget.org blast-radius warning moved with it (an owner-scoped nuget.org key can push *every*
+# package the `cortadel` account owns, Cortadel.Sdk included; per-package scoping does not exist,
+# NuGetGallery issue #10587). Treat dotnet.yml as release-security-sensitive for NuGet, and this file
+# for npm and PyPI. Should the publish ever move back here (see the RELEASING note above), that
+# warning moves back too — and keep the publish jobs inline when it does: NuGet/login issue #6
+# reports a 401 "No matching trust policy" when the publishing job lives in a called/reusable
+# workflow, which is why this file contains no `uses: ./`, no `workflow_call` and no
+# `secrets: inherit`.
 #
 # The npm bootstrap token has the same blast radius, for an equally structural reason, and it is
 # stated here rather than left implicit in the phrase "bounded by the short expiry":
@@ -123,8 +152,14 @@ on:
     # of publishing the wrong package, and a thirteenth package needs no edit here.
     #
     # No collision with the SDK tag prefixes: sdk-dotnet-v* (dotnet.yml), sdk-ts-v* (typescript.yml)
-    # and sdk-py-v* (python.yml) are the only other tag triggers in this repository, and neither
-    # pattern can match the other's namespace.
+    # and sdk-py-v* (python.yml) cannot match this namespace, nor this one theirs.
+    #
+    # There IS one deliberate overlap, and it is not a collision: dotnet.yml also triggers on
+    # `integration-microsoft-agent-framework-v*`, because the nuget.org policy is bound to that
+    # filename (see this file's header). A .NET integration tag therefore starts BOTH workflows —
+    # this one to run the twelve packages' matrices, matrix-coverage and release-plan, and dotnet.yml
+    # to build, test and publish the one package. The two do not race: nothing in this file talks to
+    # nuget.org any more.
     #
     # GitHub does NOT evaluate `paths` for tag pushes — path filters only gate branch pushes, as the
     # headers of dotnet.yml/typescript.yml/python.yml each record. So the pattern below is the *only*
@@ -143,12 +178,13 @@ on:
 
 # Least privilege, workflow-wide default: the twelve test matrices and matrix-coverage only check out
 # the tree and run each package's own suite — they read no repository state, comment on nothing, and
-# publish nothing. The four release-path jobs at the bottom of this file are the only exceptions, and
-# each states its own `permissions:` block holding exactly what its registry mechanism needs, rather
-# than widening this default for everyone. Only two of them need anything beyond the default:
-# publish-npm (`id-token: write`, for the Sigstore provenance attestation) and publish-nuget
-# (`id-token: write`, for the NuGet/login OIDC exchange). publish-pypi authenticates with an API
-# token and performs no OIDC exchange at all, so it keeps a plain `contents: read`.
+# publish nothing. The four release-path jobs at the bottom of this file each state their own
+# `permissions:` block holding exactly what their registry mechanism needs, rather than widening this
+# default for everyone. Exactly ONE of them needs anything beyond the default: publish-npm
+# (`id-token: write`, for the Sigstore provenance attestation). publish-pypi authenticates with an
+# API token and performs no OIDC exchange at all; release-plan and nuget-release-moved only read the
+# checked-out tree; so all three keep a plain `contents: read`. Since the .NET publish moved to
+# dotnet.yml, no job in this file performs a NuGet OIDC exchange.
 #
 # `secrets.*` appears exactly twice in this file, both times on a publish job: publish-npm's
 # NODE_AUTH_TOKEN (NPM_TOKEN_INTEGRATIONS — npm's "package must exist" rule makes it unavoidable for
@@ -910,17 +946,25 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────────────────────────────
   # The release path. Four jobs, reachable only by pushing a tag matching `integration-*-v*`.
   #
-  #     release-plan ──┬──▶ publish-npm    (needs: matrix-coverage + the whole typescript matrix)
-  #                    ├──▶ publish-pypi   (needs: matrix-coverage + the whole python matrix)
-  #                    └──▶ publish-nuget  (needs: matrix-coverage + the dotnet matrix)
+  #     release-plan ──┬──▶ publish-npm          (needs: matrix-coverage + the whole typescript matrix)
+  #                    ├──▶ publish-pypi         (needs: matrix-coverage + the whole python matrix)
+  #                    └──▶ nuget-release-moved  (publishes NOTHING — see below)
+  #
+  # Two registries are released from this file. The third, NuGet, is released from dotnet.yml because
+  # the nuget.org policy is bound to that workflow FILENAME — the file header has the 401 that proved
+  # it. `nuget-release-moved` is what remains here: it holds no credential, contacts no registry, and
+  # exists so a .NET release tag that dotnet.yml does not cover fails loudly instead of producing a
+  # green run in which nobody published anything.
   #
   # WHY A PLANNER JOB. One tag namespace covers all twelve packages, so every integration tag
-  # triggers all three publish jobs and two of the three must skip *cleanly* rather than fail.
+  # triggers all three downstream jobs and two of the three must skip *cleanly* rather than fail.
   # Parsing the tag inside each publish job would mean three copies of the parser — and therefore
   # three places for the version gate to drift. release-plan parses once, validates once against the
   # manifest actually on disk, and hands typed outputs down. It is also where the tag-vs-manifest
   # version gate lives, which is what guarantees that gate runs for all three toolchains and *before*
-  # any registry is contacted.
+  # any registry is contacted. It keeps resolving .NET tags for exactly that reason: the gate must
+  # still run on this side, and matrix-coverage's guarantees about the dotnet leg are what dotnet.yml
+  # reads its solution / package-project / SDK columns out of.
   #
   # WHY EACH PUBLISH JOB NEEDS ITS WHOLE MATRIX, NOT JUST THE TAGGED LEG. A publish must not run
   # unless that package's own tests passed on that exact commit, and `needs:` is the only mechanism
@@ -933,8 +977,10 @@ jobs:
   #     altogether, and blinding it to buy release convenience is the wrong trade.
   #   * a separate single-package verify job would run the tagged package's suite a second time on
   #     every release tag, and would drift from the matrix leg it duplicates.
-  # The coupling does not cross toolchains: the three publish jobs depend on three different matrix
-  # jobs, so a red crewai leg cannot block an npm release.
+  # The coupling does not cross toolchains: the two publish jobs depend on two different matrix jobs,
+  # so a red crewai leg cannot block an npm release. The .NET package's equivalent coupling now lives
+  # in dotnet.yml, which runs this package's own build+test itself before publishing — `needs:`
+  # cannot cross workflow files, so that is the only mechanism available there.
   #
   # Note on `if:` + `needs:` — a job-level `if:` does NOT relax the needs-succeeded requirement (only
   # a status function such as always() would). So each publish job's effective gate is "all three
@@ -943,10 +989,11 @@ jobs:
   # publish job can fire from PR or push traffic even before its `if:` is evaluated.
   #
   # cancel-in-progress is false on all four, matching typescript.yml's publish-npm / python.yml's
-  # publish-pypi / dotnet.yml's publish-nuget: all three registries are append-only and none permits
-  # reusing a version, so a duplicate or retried run must queue behind an in-flight publish rather
-  # than cancel it mid-push. release-plan is included because cancelling it would fail the publishes
-  # it gates for a reason that has nothing to do with the release.
+  # publish-pypi / dotnet.yml's two publish jobs: all three registries are append-only and none
+  # permits reusing a version, so a duplicate or retried run must queue behind an in-flight publish
+  # rather than cancel it mid-push. release-plan is included because cancelling it would fail the
+  # publishes it gates for a reason that has nothing to do with the release, and nuget-release-moved
+  # because a cancelled signpost is indistinguishable from a passing one.
   # ────────────────────────────────────────────────────────────────────────────────────────────────
 
   release-plan:
@@ -972,6 +1019,12 @@ jobs:
       version: ${{ steps.plan.outputs.version }}
       toolchain: ${{ steps.plan.outputs.toolchain }}
       package-name: ${{ steps.plan.outputs.package-name }}
+      # package-project and dotnet-version have no consumer in this file since the NuGet publish
+      # moved to dotnet.yml (which resolves both independently, out of this file's dotnet matrix).
+      # They are kept rather than deleted for two reasons: package-project is what the version gate
+      # below reads the csproj through, so it exists either way; and the pair is exactly the contract
+      # a restored `publish-nuget` needs on the day a policy naming this file is created. Costs
+      # nothing, and deleting them would make the move back a bigger edit than the move out.
       package-project: ${{ steps.plan.outputs.package-project }}
       python-version: ${{ steps.plan.outputs.python-version }}
       dotnet-version: ${{ steps.plan.outputs.dotnet-version }}
@@ -1659,88 +1712,136 @@ jobs:
           packages-dir: integrations/${{ needs.release-plan.outputs.slug }}/dist
           skip-existing: true
 
-  publish-nuget:
-    name: publish ${{ needs.release-plan.outputs.package-name }} to NuGet (trusted publishing)
-    needs: [release-plan, matrix-coverage, dotnet]
+  # ────────────────────────────────────────────────────────────────────────────────────────────────
+  # This is where `publish-nuget` used to be. It published `Cortadel.AgentFramework` from this file
+  # and could never work: a nuget.org trusted-publishing policy is keyed on (package owner,
+  # repository owner, repository, WORKFLOW FILE, environment) and the `cortadel` account's policy
+  # names `dotnet.yml`, so the OIDC exchange 401'd with "Workflow mismatch for policy 'cortadel':
+  # expected 'dotnet.yml', actual 'integrations.yml'". The publish now lives in
+  # .github/workflows/dotnet.yml (`integration-release-plan` + `publish-nuget-integration`), which
+  # also builds and tests the package from its own folder-local Cortadel.AgentFramework.slnx. The
+  # full story, and the checklist for moving it back once a policy naming this file exists, are in
+  # this file's header and .github/RELEASING.md §3.
+  #
+  # This job replaces it rather than the job simply being deleted, and it is deliberately NOT a
+  # publisher: no `id-token: write`, no registry call, no credential of any kind. It exists to close
+  # the one hole the move opens. dotnet.yml is triggered by a tag pattern naming ONE package
+  # (`integration-microsoft-agent-framework-v*`), while this file's trigger is the permissive
+  # `integration-*-v*` glob — so a second .NET integration added later would tag, resolve cleanly
+  # here, find no publish job on either side, and finish GREEN having published nothing. That failure
+  # is silent and would be discovered by a user, not by CI. So this job re-reads dotnet.yml's own
+  # `tags:` patterns and fails the release if none of them covers the tag being built.
+  #
+  # It intentionally does not `needs:` matrix-coverage or the dotnet matrix: it publishes nothing, so
+  # gating it on the suite would only delay a signpost. dotnet.yml runs the package's tests itself
+  # before it pushes.
+  # ────────────────────────────────────────────────────────────────────────────────────────────────
+  nuget-release-moved:
+    name: .NET releases publish from dotnet.yml — check that tag is covered there
+    needs: [release-plan]
     if: needs.release-plan.outputs.toolchain == 'dotnet'
     concurrency:
-      group: integrations-publish-nuget-${{ github.ref }}
+      group: integrations-nuget-release-moved-${{ github.ref }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    # Reads the checked-out tree and nothing else. The `id-token: write` this job's predecessor
+    # carried is gone with the publish it fed, and belongs in dotnet.yml now.
     permissions:
-      id-token: write   # required for the NuGet/login OIDC exchange
       contents: read
-    # No DOTNET_ROLL_FORWARD here, unlike the dotnet matrix job above: that variable exists so a
-    # net8.0 *test binary* can execute on a runner whose only shared runtime is net10. This job never
-    # executes the package — it packs and pushes it — so the roll-forward is not needed, and leaving
-    # it out keeps the reason it exists elsewhere legible.
-    #
-    # No `environment:` block — and here, unlike publish-pypi above, there IS a registry side to keep
-    # in agreement: this job's nuget.org trusted-publishing policy must leave its Environment field
-    # empty, because the two have to match or the OIDC exchange 401s. Adding an environment is
-    # therefore a two-sided change; .github/RELEASING.md §5 spells it out.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          # Read out of this workflow's own dotnet matrix by release-plan, so the SDK that packs the
-          # release is the SDK that built and tested it. matrix-coverage already asserts that pin is
-          # compatible with the package's target framework and new enough for the .slnx format.
-          dotnet-version: ${{ needs.release-plan.outputs.dotnet-version }}
 
-      # A clean output directory, and the push below globs THAT — never bin/. The package's own
-      # working tree can carry a stale Cortadel.AgentFramework.0.1.0.nupkg (plus its .snupkg) under
-      # bin/Release/ from a local `dotnet pack`, and globbing bin/ would push whatever happened to be
-      # sitting there. Same shape as dotnet.yml's publish-nuget (`dotnet pack ... -o ./nupkg`), and
-      # like it this re-packs from the tag ref rather than reusing the matrix job's output. No
-      # --no-build for the same reason: this job did not build anything yet, so pack restores and
-      # builds for itself.
-      #
-      # The version that ships is whatever <Version> in the csproj says — it is NOT derived from the
-      # tag. release-plan has already asserted the two agree; the filename check below re-asserts it
-      # against the artifact, because nuget.org is append-only (packages can only be unlisted, never
-      # deleted) and 0.1.0 is burned permanently on first push.
-      - name: Pack the .nupkg
+      # The tag arrives through the environment, never interpolated into the shell — same rule
+      # release-plan states. PyYAML is installed on demand exactly as the jobs above do it.
+      - name: Confirm dotnet.yml's tag patterns cover this release
         env:
+          TAG: ${{ github.ref_name }}
           SLUG: ${{ needs.release-plan.outputs.slug }}
-          PACKAGE_PROJECT: ${{ needs.release-plan.outputs.package-project }}
-        run: dotnet pack "integrations/${SLUG}/${PACKAGE_PROJECT}" -c Release -o ./nupkg
-
-      - name: Assert the packed artifact is exactly the tagged package and version
-        env:
-          EXPECTED_NAME: ${{ needs.release-plan.outputs.package-name }}
-          EXPECTED_VERSION: ${{ needs.release-plan.outputs.version }}
+          PACKAGE_NAME: ${{ needs.release-plan.outputs.package-name }}
+          VERSION: ${{ needs.release-plan.outputs.version }}
         run: |
-          expected="${EXPECTED_NAME}.${EXPECTED_VERSION}.nupkg"
-          found="$(ls ./nupkg/*.nupkg 2>/dev/null | xargs -r -n1 basename || true)"
-          if [ "$found" != "$expected" ]; then
-            echo "::error::dotnet pack produced '${found:-nothing}' but the tag promised '${expected}'. nuget.org is append-only — a package can be unlisted but never deleted, and the version is burned on first push — so this is resolved before the push, not after."
-            exit 1
-          fi
-          echo "./nupkg/$expected is the tagged package."
+          python3 -c "import yaml" 2>/dev/null || pip install --quiet --disable-pip-version-check --only-binary :all: "pyyaml==6.0.3"
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
 
-      # The minted key lives 1 hour and each OIDC token is single-use (one login, one push), so this
-      # step sits immediately before the push it feeds, not at the top of the job — dotnet.yml's
-      # publish-nuget makes the same point. `user:` is the nuget.org profile name, not a secret.
-      #
-      # This login is satisfied by a SECOND trusted-publishing policy, distinct from the one
-      # dotnet.yml's own — a nuget.org policy is keyed on (package owner, repo owner, repo, workflow
-      # FILE, environment) and never on a package, so dotnet.yml's policy does not match this file.
-      # See the security note in this workflow's header for the blast radius that policy carries, and
-      # .github/RELEASING.md for how to create it.
-      - name: NuGet login (OIDC -> short-lived API key)
-        id: nuget-login
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
-        with:
-          user: cortadel-admin
+          import yaml
 
-      # Pushing the .nupkg pushes its co-located .snupkg automatically — no separate symbols step.
-      # --skip-duplicate makes a retried run idempotent against a version nuget.org already has
-      # instead of failing the whole job.
-      - name: Push to nuget.org
-        run: |
-          dotnet nuget push "./nupkg/*.nupkg" \
-            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+          TAG = os.environ["TAG"]
+          SLUG = os.environ["SLUG"]
+          PACKAGE_NAME = os.environ["PACKAGE_NAME"]
+          VERSION = os.environ["VERSION"]
+          DOTNET_WORKFLOW = ".github/workflows/dotnet.yml"
+
+          wf = yaml.safe_load(open(DOTNET_WORKFLOW, encoding="utf-8"))
+
+          # YAML 1.1 parses a bare `on:` key as the boolean True — the trap every other reader in
+          # this repository documents. Both spellings are accepted here rather than assuming which
+          # one this parser produced, so a future PyYAML/spec change cannot turn this check into a
+          # silent pass.
+          trigger = wf.get("on", wf.get(True)) or {}
+          patterns = ((trigger.get("push") or {}).get("tags")) or []
+          if isinstance(patterns, str):
+              patterns = [patterns]
+          if not patterns:
+              print(
+                  f"::error::{DOTNET_WORKFLOW} declares no push tag patterns at all, so nothing "
+                  f"publishes {PACKAGE_NAME}. The NuGet publish lives there because the nuget.org "
+                  f"policy is bound to that filename — see this workflow's header."
+              )
+              sys.exit(1)
+
+
+          def covers(pattern, tag):
+              """Approximate GitHub's ref filter matching.
+
+              `*` matches any run of characters except `/`, `**` matches across `/`, and `?` matches
+              one non-`/` character. Ref *names* here never contain `/`, so the approximation is
+              exact for this use; it is written out rather than delegated to fnmatch because
+              fnmatch's `*` crosses `/` and `[...]` classes would be interpreted, neither of which
+              matches GitHub's grammar.
+              """
+              regex = ""
+              index = 0
+              while index < len(pattern):
+                  char = pattern[index]
+                  if char == "*":
+                      if pattern.startswith("**", index):
+                          regex += ".*"
+                          index += 2
+                          continue
+                      regex += "[^/]*"
+                  elif char == "?":
+                      regex += "[^/]"
+                  else:
+                      regex += re.escape(char)
+                  index += 1
+              return re.fullmatch(regex, tag) is not None
+
+
+          matched = [p for p in patterns if covers(p, TAG)]
+          if not matched:
+              print(
+                  f"::error::Tag {TAG!r} releases {PACKAGE_NAME} {VERSION} (integrations/{SLUG}), a "
+                  f".NET package — but NOTHING PUBLISHED IT. This workflow stopped publishing to "
+                  f"nuget.org because a trusted-publishing policy is keyed on a workflow FILENAME "
+                  f"and the account's policy names dotnet.yml; the publish moved to {DOTNET_WORKFLOW} "
+                  f"(integration-release-plan + publish-nuget-integration). That file's push tag "
+                  f"patterns are {patterns} and none of them matches this tag, so its jobs never "
+                  f"ran. Fix it one of two ways: add a pattern for this package to {DOTNET_WORKFLOW} "
+                  f"(the narrow, per-package form is deliberate — see its `tags:` comment), or "
+                  f"create a nuget.org policy whose Workflow file is integrations.yml and restore "
+                  f"the publish-nuget job here (.github/RELEASING.md §3 has both). Nothing was "
+                  f"published, so the version is unspent — re-tag once one side covers it."
+              )
+              sys.exit(1)
+
+          print(
+              f"::notice::{PACKAGE_NAME} {VERSION} (integrations/{SLUG}) publishes from "
+              f"{DOTNET_WORKFLOW}, not from this workflow — the nuget.org trusted-publishing policy "
+              f"is bound to that filename. Tag {TAG} is covered there by {matched}. Watch that "
+              f"workflow's publish-nuget-integration job for the actual release."
+          )
+          PY

@@ -8,21 +8,23 @@ The SDKs in `sdk/` release separately, on their own `sdk-ts-v*` / `sdk-py-v*` / 
 see `CONTRIBUTING.md#releasing`. Nothing in this file changes how they work.
 
 > **Read this before your first release.** As of this writing **none of the twelve is published.**
-> `.github/workflows/integrations.yml` has the publish jobs, but two of the three registries still
-> need a human to configure something first. A release tag pushed before then runs all the gates,
-> passes them, and then fails at the registry call.
+> `.github/workflows/integrations.yml` has the npm and PyPI publish jobs; the .NET package's NuGet
+> publish lives in `.github/workflows/dotnet.yml` (see [§3](#3-nuget--why-the-net-package-publishes-from-dotnetyml)
+> — the reason is a nuget.org policy bound to a *workflow filename*, and it is a workaround, not a
+> preference). One of the three registries still needs a human to configure something first. A
+> release tag pushed before then runs all the gates, passes them, and then fails at the registry call.
 
 ---
 
 ## What must exist before the first tag
 
-The whole checklist, in one place. Two rows need work; one does not.
+The whole checklist, in one place. One row needs work; two do not.
 
 | Registry | What the workflow needs | Status | Do this |
 | --- | --- | --- | --- |
 | **npm** (8 packages) | the **`NPM_TOKEN_INTEGRATIONS`** repository secret, minted *All Packages / Read and write* | **Missing — you must create it.** `gh secret list` on `cortadel/cortadel` shows `NPM_TOKEN` and `PYPI_TOKEN` but **no** `NPM_TOKEN_INTEGRATIONS`. `NPM_TOKEN` is the SDK's narrower secret and is **not** a substitute. | [§1.2](#12-phase-1--mint-the-bootstrap-token--one-time-per-registry) |
 | **PyPI** (3 packages) | the **`PYPI_TOKEN`** repository secret, **account-scoped** | **Already configured — nothing to do.** The secret exists, and `publish-pypi` uses it exactly as `python.yml` does for the `cortadel` SDK. No trusted publisher is registered on pypi.org and none is wanted. | [§2](#2-pypi--nothing-to-configure) |
-| **NuGet** (1 package) | a nuget.org **trusted-publishing policy** whose *Workflow file* is `integrations.yml` | **Missing — you must create it.** `dotnet.yml`'s existing policy names a different workflow file and can never match this one. | [§3.1](#31-create-the-policy--one-time-per-registry) |
+| **NuGet** (1 package) | nothing — the existing policy, whose *Workflow file* is `dotnet.yml`, is reused | **Already configured — nothing to do.** The policy that publishes `Cortadel.Sdk` is owner-scoped, so it also covers `Cortadel.AgentFramework`; the package publishes from `dotnet.yml` for exactly that reason. | [§3](#3-nuget--why-the-net-package-publishes-from-dotnetyml) |
 
 Nothing else is a prerequisite. Everything else in this file is either the per-release procedure, or
 optional hardening explicitly labelled as such.
@@ -61,8 +63,17 @@ not always the same:
 package name disagree, which is why the tag keys on the directory and the workflow reads the package
 name out of the manifest.
 
+The **NuGet row is the other one to remember**, for a different reason: its tag is the only one that
+is matched by two workflows. `integrations.yml` matches it with the permissive `integration-*-v*`
+glob (so the package's test matrix, `matrix-coverage` and `release-plan` all still run there), and
+`dotnet.yml` matches it with a literal `integration-microsoft-agent-framework-v*` pattern, because
+that is the file the nuget.org policy trusts — [§3](#3-nuget--why-the-net-package-publishes-from-dotnetyml).
+Nothing races: only `dotnet.yml` contacts nuget.org.
+
 The tag's version must equal the version in that package's manifest exactly. `release-plan` fails the
-run on any mismatch, before any registry is contacted — see `CONTRIBUTING.md#releasing`.
+run on any mismatch, before any registry is contacted — and for the .NET package the identical gate
+runs again in `dotnet.yml`'s `integration-release-plan`, which is the one that actually gates the
+push. See `CONTRIBUTING.md#releasing`.
 
 ---
 
@@ -354,35 +365,72 @@ rehearsal anyway, wire it as a manually-dispatched job, not as part of the tag p
 
 ---
 
-## 3. NuGet — one-time setup for `Cortadel.AgentFramework`
+## 3. NuGet — why the .NET package publishes from `dotnet.yml`
 
-A **new trusted-publishing policy is required**, and the reason is the **workflow filename**, not the
-new package ID. A nuget.org policy is a tuple of *(package owner, repository owner, repository,
-workflow file, environment)* and never names a package — "the policy will apply to all packages owned
-by the selected owner". So nothing needs pre-registering for `Cortadel.AgentFramework` itself (an
-owner-wide key creates new IDs on first push), but `dotnet.yml`'s existing policy does not match
-`integrations.yml` and never will.
+**Nothing to configure. `Cortadel.AgentFramework` publishes from
+`.github/workflows/dotnet.yml`, not from `integrations.yml`, and that is a constraint imposed by
+nuget.org — not a preference.**
 
-> **Blast radius, stated up front.** This policy lets `integrations.yml` mint a key that can push
-> **any** package owned by the `cortadel` nuget.org account, `Cortadel.Sdk` included. Per-package
-> scoping does not exist (NuGetGallery issue #10587, open). Anyone who can land a change to
-> `integrations.yml` on a release tag can publish those packages. This is inherent to nuget.org's
-> design, not a misconfiguration — but treat `integrations.yml` as release-security-sensitive from
-> now on.
+A nuget.org trusted-publishing policy is a tuple of *(package owner, repository owner, repository,
+**workflow file**, environment)* and never names a package — "the policy will apply to all packages
+owned by the selected owner". The `cortadel` account has exactly one policy and it names
+`dotnet.yml`. So an OIDC exchange from any other workflow file is rejected, whatever the package.
 
-### 3.1 Create the policy — one-time, per registry
+That is not a deduction. Tag `integration-microsoft-agent-framework-v0.1.0` was pushed while the
+publish job still lived in `integrations.yml`, and died at `NuGet/login`:
+
+```
+Token exchange failed (HTTP 401) at https://www.nuget.org/api/v2/token.
+Make sure you are using the username of the policy creator, not the policy owner:
+Workflow mismatch for policy 'cortadel': expected 'dotnet.yml', actual 'integrations.yml'
+```
+
+Nothing was published (nuget.org returns no hits for the ID), that tag has been deleted, and **`0.1.0`
+is unspent** — it can still be released as `0.1.0`.
+
+Since the policy is owner-scoped, the key it mints can create `Cortadel.AgentFramework` on first push
+just as well as it pushes `Cortadel.Sdk`. So the package publishes from the workflow file the policy
+already trusts, and no registry-side setup is needed before the first tag.
+
+### 3.1 What that means in the workflows
+
+| Concern | Where it lives now |
+| --- | --- |
+| The package's CI gate (build/test/pack, `.nupkg` contents) | `integrations.yml`, `dotnet` matrix leg — **unchanged** |
+| Coverage/toolchain/floor assertions | `integrations.yml`, `matrix-coverage` — **unchanged** |
+| Tag → package resolution + tag-vs-`<Version>` gate | both: `integrations.yml`'s `release-plan` *and* `dotnet.yml`'s `integration-release-plan` |
+| Build + test from `Cortadel.AgentFramework.slnx` before the push | `dotnet.yml`, `publish-nuget-integration` (a `needs:` cannot cross workflow files, so it re-runs them itself) |
+| `NuGet/login` + `dotnet nuget push` | `dotnet.yml`, `publish-nuget-integration` |
+| A .NET tag `dotnet.yml` does not cover | `integrations.yml`, `nuget-release-moved` — fails the release loudly rather than finishing green having published nothing |
+
+`dotnet.yml`'s tag pattern names **one package** (`integration-microsoft-agent-framework-v*`). A
+second .NET integration therefore needs a pattern added there; `nuget-release-moved` is what makes
+forgetting that a red run instead of a silent no-op.
+
+> **Blast radius, stated up front.** The policy lets `dotnet.yml` mint a key that can push **any**
+> package owned by the `cortadel` nuget.org account — `Cortadel.Sdk` and now `Cortadel.AgentFramework`
+> both. Per-package scoping does not exist (NuGetGallery issue #10587, open). Anyone who can land a
+> change to `dotnet.yml` on a release tag can publish those packages. This is inherent to nuget.org's
+> design, not a misconfiguration — but treat `dotnet.yml` as release-security-sensitive. (This warning
+> used to point at `integrations.yml`; it moved with the publish job.)
+
+### 3.2 The cleaner alternative — a second policy, and move it back
+
+Recorded so this reads as a constraint rather than a design choice. nuget.org allows several policies
+per account, so the tidy end state is one where every integration releases from `integrations.yml`.
+It needs the nuget.org **website**, which is why it is not what the repo does today.
 
 - [ ] Sign in to `https://www.nuget.org` as the account behind **`cortadel-admin`** — the username
-      `dotnet.yml` already passes to `NuGet/login`, and the same one `integrations.yml` passes.
+      both `dotnet.yml` publish jobs pass to `NuGet/login`.
 - [ ] Go to **`https://www.nuget.org/account/trustedpublishing`** (or: username menu → *Trusted
       Publishing*).
 - [ ] Open the existing policy that publishes `Cortadel.Sdk` and **write down its *Package owner*
       value verbatim** before creating anything. Expected: `cortadel` (the owner of `Cortadel.Sdk`).
 
-      This is the single irreversible decision in this file. The new package ID becomes owned by
-      whichever *Package owner* the policy names, on first push, and because the `Cortadel.` prefix is
+      This is the single irreversible decision here. A new package ID becomes owned by whichever
+      *Package owner* the policy names, on first push, and because the `Cortadel.` prefix is
       unreserved nothing will warn you if you pick wrong.
-- [ ] Add a new policy with exactly:
+- [ ] Add a **second** policy (leave the `dotnet.yml` one alone — it releases the SDK) with exactly:
 
       | Field | Value |
       | --- | --- |
@@ -398,8 +446,18 @@ owner-wide key creates new IDs on first push), but `dotnet.yml`'s existing polic
       private GitHub repos" and `cortadel/cortadel` is public, so it probably will not appear — but if
       it does, the first tagged release clears it, and the 7-day clock can be restarted from the UI at
       any time.
+- [ ] Only then, in the same PR: move `integration-release-plan` + `publish-nuget-integration` out of
+      `dotnet.yml` and back into `integrations.yml` as a `publish-nuget` job with
+      `needs: [release-plan, matrix-coverage, dotnet]` (git history has the original at commit
+      `d50675e` — it needs no build/test steps of its own once it can depend on the matrix leg again),
+      delete `nuget-release-moved`, and drop `integration-microsoft-agent-framework-v*` from
+      `dotnet.yml`'s `tags:` list. Move the blast-radius warning above back to `integrations.yml` with
+      it. Keep the job **inline**: NuGet/login issue #6 reports a 401 "No matching trust policy" when
+      the publishing job lives in a called/reusable workflow.
+- [ ] Rehearse with a patch version (`0.1.1`), not with a first release. Only a publish that actually
+      used the new policy proves the new policy works.
 
-### 3.2 Optional, and unrelated to publishing — reserve the ID prefix
+### 3.3 Optional, and unrelated to publishing — reserve the ID prefix
 
 - [ ] `Cortadel.` is **not** currently a reserved prefix (`Cortadel.Sdk` shows `"verified": false` in
       the nuget.org search API). Nothing blocks the new ID — rejection only happens when a *different*
@@ -408,7 +466,7 @@ owner-wide key creates new IDs on first push), but `dotnet.yml`'s existing polic
 - [ ] To claim it, email `account@nuget.org` with owner display name `cortadel` and requested prefix
       `Cortadel.*`. Not a prerequisite for publishing.
 
-### 3.3 Ownership
+### 3.4 Ownership
 
 - [ ] If `Cortadel.AgentFramework` should be co-owned by a second nuget.org account, that must be done
       **after** the first push, from the package's *Manage owners* page. It cannot be set at push time.
@@ -417,8 +475,8 @@ owner-wide key creates new IDs on first push), but `dotnet.yml`'s existing polic
 
 ## 4. Cutting a release
 
-Once the prerequisites are in place — npm's secret (§1) and NuGet's policy (§3); PyPI needs nothing
-(§2) — a release is one tag.
+Once the prerequisites are in place — only npm's secret (§1); PyPI (§2) and NuGet (§3) need nothing —
+a release is one tag.
 
 ```bash
 git checkout main && git pull
@@ -441,6 +499,18 @@ What runs, in order:
    `integrations.yml`.
 3. The one matching publish job runs. The other two skip.
 
+**For the .NET tag, step 3 is in the other workflow.** `integrations.yml` runs steps 1–2 exactly as
+above and then `nuget-release-moved`, which publishes nothing and only confirms `dotnet.yml` covers
+the tag. In parallel, `dotnet.yml` runs `integration-release-plan` (the same resolution and the same
+tag-vs-`<Version>` gate) and then `publish-nuget-integration`, which restores, builds and tests
+`integrations/microsoft-agent-framework/Cortadel.AgentFramework.slnx`, packs, re-checks the artifact
+is `Cortadel.AgentFramework.<version>.nupkg` with its assembly, XML docs and README inside, and only
+then does `NuGet/login` + `dotnet nuget push`. **Watch `dotnet.yml`, not `integrations.yml`, for a
+.NET release** — and see [§3](#3-nuget--why-the-net-package-publishes-from-dotnetyml) for why.
+`dotnet.yml`'s SDK jobs (`build`, `generation-drift`, `conformance-base`) also start on that tag,
+because tag pushes ignore `paths:` filters; they gate `sdk/dotnet`, they are not dependencies of the
+publish, and a red one there neither blocks nor taints the integration release.
+
 ### If something goes wrong
 
 **All three registries are append-only and none of them lets a version be reused.** npm: "once
@@ -461,9 +531,11 @@ and the npm job checks the registry first and skips its publish step if the vers
 No publish job sets `environment:`. How many sides that has depends on the registry, and getting that
 wrong is the trap:
 
-- **NuGet — two-sided.** The nuget.org policy's *Environment* field is blank, and `publish-nuget` must
-  stay blank to match, or the OIDC exchange 401s with an error whose text mentions nothing about
-  environments.
+- **NuGet — two-sided.** The nuget.org policy's *Environment* field is blank, and **both** of
+  `dotnet.yml`'s publish jobs (`publish-nuget` for the SDK, `publish-nuget-integration` for the
+  integration) must stay blank to match, or the OIDC exchange 401s with an error whose text mentions
+  nothing about environments. They share one policy, so this is not a per-job choice: setting the
+  policy's *Environment* field obliges every job that uses it.
 - **PyPI and npm — one-sided, today.** Both authenticate with a stored API token, and a token carries
   no environment claim, so there is no registry field to keep in agreement. An Environment on those
   jobs would be exactly one thing: a human approval gate. (npm becomes two-sided at phase 4, §1.5 — a
@@ -495,6 +567,14 @@ Half of a two-sided change is worse than none of it.
       precisely because nothing had been released. Revisit it once `@cortadel/openclaw` exists.
 - [ ] If npm phase 4 (§1.5) has landed, correct `CONTRIBUTING.md#releasing` — it will then be
       describing npm as token-authenticated when it is not.
+- [ ] `CONTRIBUTING.md#releasing` still describes the arrangement §3 replaced, and it is stale **now**,
+      not after the first release. Three specific claims: "Three things the `integrations.yml` release
+      path guarantees" (for the .NET package two of the three are enforced in `dotnet.yml`); "Each
+      publish job depends on its toolchain's whole test matrix" (`publish-nuget-integration` cannot —
+      `needs:` does not cross workflow files — so it runs the suite itself); and "two of the three
+      registries need a human to configure something … a nuget.org trusted-publishing policy naming
+      `integrations.yml`" (NuGet now needs nothing). Fixing it is a one-paragraph edit — or delete the
+      need for it entirely by doing [§3.2](#32-the-cleaner-alternative--a-second-policy-and-move-it-back).
 
 ---
 
@@ -502,5 +582,8 @@ Half of a two-sided change is worse than none of it.
 
 - [`.github/workflows/integrations.yml`](workflows/integrations.yml) — the workflow. Its header
   documents the tag grammar, the security note, and why the auth mechanisms differ per registry.
+- [`.github/workflows/dotnet.yml`](workflows/dotnet.yml) — where the .NET integration actually
+  publishes, and where the nuget.org blast radius now lives. Its header carries the same 401 and the
+  same move-back checklist as [§3](#3-nuget--why-the-net-package-publishes-from-dotnetyml).
 - [`CONTRIBUTING.md#releasing`](../CONTRIBUTING.md#releasing) — the contributor-facing summary.
 - [`integrations/README.md`](../integrations/README.md) — the contributor contract for these packages.
