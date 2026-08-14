@@ -7,10 +7,29 @@ a trusted publisher or mint a token) or the **per-release procedure** once that 
 The SDKs in `sdk/` release separately, on their own `sdk-ts-v*` / `sdk-py-v*` / `sdk-dotnet-v*` tags —
 see `CONTRIBUTING.md#releasing`. Nothing in this file changes how they work.
 
-> **Read this before your first release.** As of this writing **none of the twelve is published**, and
-> none of the registry-side configuration below exists yet. `.github/workflows/integrations.yml` has
-> the publish jobs, but they are inert until a human completes §1–§3. A release tag pushed before then
-> runs all the gates, passes them, and then fails at the registry call.
+> **Read this before your first release.** As of this writing **none of the twelve is published.**
+> `.github/workflows/integrations.yml` has the publish jobs, but two of the three registries still
+> need a human to configure something first. A release tag pushed before then runs all the gates,
+> passes them, and then fails at the registry call.
+
+---
+
+## What must exist before the first tag
+
+The whole checklist, in one place. Two rows need work; one does not.
+
+| Registry | What the workflow needs | Status | Do this |
+| --- | --- | --- | --- |
+| **npm** (8 packages) | the **`NPM_TOKEN_INTEGRATIONS`** repository secret, minted *All Packages / Read and write* | **Missing — you must create it.** `gh secret list` on `cortadel/cortadel` shows `NPM_TOKEN` and `PYPI_TOKEN` but **no** `NPM_TOKEN_INTEGRATIONS`. `NPM_TOKEN` is the SDK's narrower secret and is **not** a substitute. | [§1.2](#12-phase-1--mint-the-bootstrap-token--one-time-per-registry) |
+| **PyPI** (3 packages) | the **`PYPI_TOKEN`** repository secret, **account-scoped** | **Already configured — nothing to do.** The secret exists, and `publish-pypi` uses it exactly as `python.yml` does for the `cortadel` SDK. No trusted publisher is registered on pypi.org and none is wanted. | [§2](#2-pypi--nothing-to-configure) |
+| **NuGet** (1 package) | a nuget.org **trusted-publishing policy** whose *Workflow file* is `integrations.yml` | **Missing — you must create it.** `dotnet.yml`'s existing policy names a different workflow file and can never match this one. | [§3.1](#31-create-the-policy--one-time-per-registry) |
+
+Nothing else is a prerequisite. Everything else in this file is either the per-release procedure, or
+optional hardening explicitly labelled as such.
+
+The one thing on the PyPI row that is **not** verifiable from CI: that `PYPI_TOKEN`'s scope really is
+*Entire account* rather than *Project: cortadel*. See [§2.1](#21-pre-flight--optional-one-time) — it
+costs one page load and the failure mode if the assumption is wrong is a spent version number.
 
 ---
 
@@ -73,6 +92,13 @@ setup left at phase 2 has a built-in expiry that will break a release without wa
       open Organization settings and check whether *Require two-factor authentication* is enforced.
       If it is, a Bypass-2FA token will be **rejected**, and phase 1 must instead be done
       interactively from a laptop with an OTP rather than from CI.
+- [ ] Confirm for yourself that the secret really is absent before minting anything —
+      `gh secret list --repo cortadel/cortadel`. At the time of writing it lists `NPM_TOKEN` and
+      `PYPI_TOKEN` but **no `NPM_TOKEN_INTEGRATIONS`**, which is the whole reason phases 1–2 below
+      exist. `NPM_TOKEN` is the SDK's own narrower secret and is **not** a substitute: `publish-npm`
+      reads `NPM_TOKEN_INTEGRATIONS` by name, and an unset secret expands to the empty string rather
+      than failing, so the first symptom of skipping this is a `publish` step that authenticates as
+      nobody.
 - [ ] Note for later: `@cortadel/sdk@1.0.0` has **no provenance attestation**
       (`https://registry.npmjs.org/-/npm/v1/attestations/@cortadel/sdk@1.0.0` returns 404), and its
       recorded `_nodeVersion`/`_npmVersion` do not match `typescript.yml`'s pin. That release was
@@ -259,81 +285,71 @@ for `npm trust`, and requires an account-level 2FA challenge.
 
 ---
 
-## 2. PyPI — one-time setup for the three Python packages
+## 2. PyPI — nothing to configure
 
-PyPI is the easy one: it supports **pending publishers**, which exist precisely for the
-create-a-new-project case. No token is involved and none should be created.
+**There is no registry-side setup for PyPI.** No pending publisher to register, no trusted publisher
+to create, nothing to click on pypi.org before the first tag. This section exists to say so, and to
+record the two things that are worth checking anyway.
 
-> **Do not reuse `secrets.PYPI_TOKEN`.** The `cortadel` SDK project already exists on PyPI, which is
-> exactly the situation in which that token was most likely minted **scoped to that project** — and a
-> project-scoped token provably cannot create a new project. Worse, Warehouse checks the token's
-> permission *after* it creates the project record, so a failed attempt can leave an empty
-> `cortadel-crewai` project squatting the name with zero releases. The workflow contains no
-> `password:` input; keep it that way.
+`publish-pypi` authenticates with the **`PYPI_TOKEN` repository secret** — the same secret, the same
+pinned action and the same `user: __token__` / `password:` inputs `python.yml` already uses to publish
+the `cortadel` SDK. That is the repository owner's decision, and it is also what makes creating three
+brand-new projects possible:
 
-### 2.1 Pre-flight — one-time, per registry
+- The token is **account-scoped**, so it can create projects that do not exist yet — and all three of
+  `cortadel-crewai`, `cortadel-google-adk` and `cortadel-pydantic-ai` are brand new.
+- A **project-scoped** token could not, and this is the detail to remember if the secret is ever
+  re-minted narrower: Warehouse's `ProjectName`/`ProjectID` caveat verifiers reject any context
+  outside the projects the token enumerates. Worse, Warehouse checks the macaroon's permission *after*
+  `create_project` runs, so a project-scoped attempt can leave an empty `cortadel-crewai` project
+  squatting the name with zero releases.
 
-- [ ] Confirm your PyPI account has a **verified primary email** (`https://pypi.org/manage/account/` →
-      *Account emails*). The *Add* button on the pending-publisher form is rendered **disabled**
-      without one. 2FA should already be on (PyPI has required it for uploads since 2023).
-- [ ] Optional but worth recording: open `https://pypi.org/manage/account/token/` and note the scope
-      of the existing `PYPI_TOKEN`. If it reads *Scope: Project: cortadel*, that confirms the token
-      path was closed and the trusted-publishing decision was necessary. This is not discoverable from
-      CI, so write the answer down somewhere.
+Possible follow-up, not scheduled and deliberately not implemented: once the three projects exist,
+migrating them to PyPI trusted publishing would remove the stored token from this path and turn on
+PEP 740 attestations.
 
-### 2.2 Register a pending publisher — one-time, **per package** (×3)
+> **An earlier revision of this section said the opposite — ignore any copy of it you still have.** It
+> told you to register three *pending publishers* at `https://pypi.org/manage/account/publishing/` and
+> warned you off `secrets.PYPI_TOKEN` entirely. That is not how this repository publishes. A pending
+> publisher registered by mistake is inert rather than harmful — it can never match a job that sends a
+> password — but delete it rather than leaving a misleading entry on the account page.
 
-- [ ] Go to **`https://pypi.org/manage/account/publishing/`** (avatar menu → *Your account* →
-      *Publishing* in the left sidebar).
+### 2.1 Pre-flight — optional, one-time
 
-      This is the **account-level** page. Do not look for a project settings page — these three
-      projects do not exist yet, so they have none.
-- [ ] Under *Add a new pending publisher*, GitHub tab, fill exactly:
+Neither of these blocks a release. Both are cheap, and the first one checks the single assumption the
+whole PyPI path rests on.
 
-      | Field | Value |
-      | --- | --- |
-      | PyPI Project Name | `cortadel-crewai` |
-      | Owner | `cortadel` |
-      | Repository name | `cortadel` |
-      | Workflow name | `integrations.yml` |
-      | Environment name | *(leave blank)* |
+- [ ] Open `https://pypi.org/manage/account/token/` and confirm `PYPI_TOKEN`'s scope reads **"Entire
+      account (all projects)"** and not *Scope: Project: cortadel*. **This is not discoverable from
+      CI** — the workflow cannot tell you, and the failure mode if the assumption is wrong is an
+      upload rejected with the thoroughly confusing *"Non-user identities cannot create new
+      projects"*, after the version number is already spent. If it turns out to be project-scoped, the
+      fix is to mint a new account-scoped token on that same page and replace the repository secret —
+      not to switch mechanisms.
+- [ ] Confirm the account has a **verified primary email** and 2FA (PyPI has required 2FA for uploads
+      since 2023). An API token cannot be created without them, so if `PYPI_TOKEN` exists this is
+      already true; check it only if you are re-minting.
 
-- [ ] **Workflow name is a bare filename.** `integrations.yml` — never
-      `.github/workflows/integrations.yml`. Warehouse's validator rejects any value containing a `/`
-      ("Workflow filename must be a filename only, without directories") and anything not ending in
-      `.yml`/`.yaml`. A plain reading of the rendered docs suggests the full path and is misleading on
-      this point.
-- [ ] **Leave Environment name blank.** The workflow sets no `environment:`, and a mismatch in either
-      direction fails with `invalid-pending-publisher` — an error that says nothing about
-      environments. See §5 if you want to add one.
-- [ ] Repeat twice more, changing **only** the project name: `cortadel-google-adk`, then
-      `cortadel-pydantic-ai`. Owner, repository, workflow and environment stay identical.
-- [ ] Check each *PyPI Project Name* character-for-character against the `name =` field in the
-      matching `pyproject.toml` (`integrations/crewai` → `cortadel-crewai`, `integrations/google-adk`
-      → `cortadel-google-adk`, `integrations/pydantic-ai` → `cortadel-pydantic-ai`).
-
-      A mismatch does **not** fail at registration. It fails at upload with the thoroughly confusing
-      message *"Non-user identities cannot create new projects"* — after having created an empty
-      project under the wrong name.
-- [ ] You should end with three pending publishers listed.
-
-### 2.3 First release — **per package** (×3)
+### 2.2 First release — **per package** (×3)
 
 - [ ] **Release the three on separate tags, not together.** PyPI rate-limits project *creation*
       (`TooManyProjectsCreated` → HTTP 429); three brand-new projects from one burst is close to what
       that guard exists for. Suggested first: `integration-pydantic-ai-v0.1.0`.
-- [ ] After each release, confirm on `https://pypi.org/manage/account/publishing/` that the pending
-      publisher has disappeared from the *pending* list and now appears under its own project's
-      Settings → Publishing as a normal publisher. The conversion is automatic; nothing else to do.
-- [ ] Expect PEP 740 attestations to appear on the project page. That is trusted publishing working —
-      the token path cannot produce them — not a misconfiguration.
+- [ ] Before tagging, check each project name character-for-character against the `name =` field in
+      the matching `pyproject.toml` (`integrations/crewai` → `cortadel-crewai`,
+      `integrations/google-adk` → `cortadel-google-adk`, `integrations/pydantic-ai` →
+      `cortadel-pydantic-ai`). The name that gets created is whatever the manifest says; a typo
+      permanently creates the wrong project, and PyPI will not let the name or the version be reused.
+- [ ] Do **not** expect PEP 740 attestations on the project page. The token path cannot produce them:
+      `pypa/gh-action-pypi-publish` force-disables attestations whenever a `password` is supplied,
+      because attestations currently require trusted publishing. Their absence is the configuration
+      working, not a fault — and it is the one thing the follow-up above would buy.
+- [ ] Confirm each project appears at `0.1.0` on pypi.org, and that its *Publishing* settings page
+      lists **no** publishers. That is expected here.
 
-> A pending publisher does **not** reserve the name. Between registering it and the first publish,
-> anyone can claim `cortadel-crewai` and silently invalidate your publisher. Keep the window short.
-
-**TestPyPI is deliberately skipped.** It needs a separate account, three more pending publishers and a
-second trigger path, and validates almost nothing that matters here: it cannot tell you whether the
-production token scope is right, and its names do not reserve production names. If you want a
+**TestPyPI is deliberately skipped.** It needs a separate account and a separate token, a second
+trigger path, and validates almost nothing that matters here — its names do not reserve production
+names, and a TestPyPI token's scope tells you nothing about the production one's. If you want a
 rehearsal anyway, wire it as a manually-dispatched job, not as part of the tag path.
 
 ---
@@ -401,7 +417,8 @@ owner-wide key creates new IDs on first push), but `dotnet.yml`'s existing polic
 
 ## 4. Cutting a release
 
-Once §1–§3 are done, a release is one tag.
+Once the prerequisites are in place — npm's secret (§1) and NuGet's policy (§3); PyPI needs nothing
+(§2) — a release is one tag.
 
 ```bash
 git checkout main && git pull
@@ -441,23 +458,29 @@ and the npm job checks the registry first and skips its publish step if the vers
 
 ## 5. Optional hardening: a GitHub Environment with required reviewers
 
-Neither publish job sets `environment:`, and both PyPI and NuGet are configured with their environment
-field **blank**. That is a deliberate safety choice: a mismatch in either direction is a hard failure
-whose error text mentions nothing about environments, and this repository has already been bitten by a
-job pinned to an environment that did not exist (see `python.yml`'s `publish-pypi` comment).
+No publish job sets `environment:`. How many sides that has depends on the registry, and getting that
+wrong is the trap:
 
-If you want a human approval gate on releases — which is the main thing an environment buys, and the
-protection PyPI's own form help text calls out — it must be added on **both** sides in the same
-change:
+- **NuGet — two-sided.** The nuget.org policy's *Environment* field is blank, and `publish-nuget` must
+  stay blank to match, or the OIDC exchange 401s with an error whose text mentions nothing about
+  environments.
+- **PyPI and npm — one-sided, today.** Both authenticate with a stored API token, and a token carries
+  no environment claim, so there is no registry field to keep in agreement. An Environment on those
+  jobs would be exactly one thing: a human approval gate. (npm becomes two-sided at phase 4, §1.5 — a
+  trusted publisher *does* have an environment, set with `npm trust github … --env`.)
 
-1. GitHub: repo → Settings → Environments → *New environment* → name it `pypi` (and/or `nuget`) →
-   Configure → add **Required reviewers**.
-2. The workflow job: add `environment: pypi` to `publish-pypi` (and/or `environment: nuget` to
-   `publish-nuget`).
-3. The registry: set the matching *Environment name* on the PyPI publisher / nuget.org policy, for
-   **every** affected package — three separate edits on PyPI.
+Either way, add one deliberately: this repository has already been bitten by the other half of the
+trap, a job pinned to an environment that did not exist and therefore never resolved (see
+`python.yml`'s `publish-pypi` comment).
 
-Half of that change is worse than none of it.
+1. GitHub: repo → Settings → Environments → *New environment* → name it `pypi` (and/or `npm`,
+   `nuget`) → Configure → add **Required reviewers**.
+2. The workflow job: add `environment: pypi` to `publish-pypi` (and/or the others).
+3. The registry — **only where one exists**: set the matching *Environment name* on the nuget.org
+   policy, and, after §1.5, on each of the eight npm trusted publishers. PyPI has nothing to set while
+   the token path is in use.
+
+Half of a two-sided change is worse than none of it.
 
 ---
 

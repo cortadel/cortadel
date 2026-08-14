@@ -155,7 +155,7 @@ registries (npm, PyPI and nuget.org are append-only, and none of them lets a ver
 | `sdk-dotnet-v*` | `Cortadel.Sdk` | NuGet | OIDC trusted publishing (`NuGet/login`) |
 | `sdk-ts-v*` | `@cortadel/sdk` | npm | the `NPM_TOKEN` secret — **not** OIDC. `id-token: write` on that job exists for provenance (the Sigstore attestation) only |
 | `sdk-py-v*` | `cortadel` | PyPI | the `PYPI_TOKEN` secret |
-| `integration-<dir-slug>-v*` | one of the twelve `integrations/` packages | npm / PyPI / NuGet | PyPI and NuGet: OIDC trusted publishing. npm: the `NPM_TOKEN_INTEGRATIONS` secret, temporarily — npm trusted publishing cannot bootstrap a package that does not yet exist |
+| `integration-<dir-slug>-v*` | one of the twelve `integrations/` packages | npm / PyPI / NuGet | NuGet: OIDC trusted publishing. PyPI: the `PYPI_TOKEN` secret, same as the SDK — it is account-scoped, which is what allows creating a project that does not exist yet. npm: the `NPM_TOKEN_INTEGRATIONS` secret, temporarily — npm trusted publishing cannot bootstrap a package that does not yet exist |
 
 Do not restate this as "NuGet and npm use OIDC" — an earlier revision of `CONTRIBUTING.md` did, and it
 was wrong about npm.

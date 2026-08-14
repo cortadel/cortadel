@@ -308,15 +308,19 @@ registry is contacted:
   toolchain's whole test matrix plus `matrix-coverage`. Releasing an npm package needs all eight
   TypeScript legs green; it does not need the Python or .NET legs.
 
-Auth differs per registry, deliberately: PyPI and NuGet use OIDC trusted publishing and store no
-secret, while npm uses the `NPM_TOKEN_INTEGRATIONS` secret **temporarily** — npm trusted publishing
-cannot bootstrap a package that does not yet exist, so the first publish of each package has to be
-token-authenticated. `publish-npm` carries the exact edit that removes the token afterwards.
+Auth differs per registry, deliberately, and only one of the three is OIDC:
 
-**Maintainers: the registry-side setup is not in this repo and must be done by a human before the
-first tag.** It is written out step by step, split into one-time-per-registry and one-time-per-package
-work, in **[`.github/RELEASING.md`](.github/RELEASING.md)** — which also covers what to do when a
-release goes wrong (short version: all three registries are append-only and none lets a version be
-reused, so you fix forward).
+| Registry | Auth | Why |
+| --- | --- | --- |
+| NuGet | OIDC trusted publishing (`NuGet/login`) — no stored secret | a nuget.org policy is owner-wide and creates new package IDs on first push, so there is nothing to bootstrap |
+| PyPI | the `PYPI_TOKEN` repository secret — the same **account-scoped** token `python.yml` publishes the `cortadel` SDK with | account-scoped is what lets it create the three brand-new projects; a project-scoped token cannot create a project at all. No trusted publisher is configured on pypi.org and none is wanted |
+| npm | the `NPM_TOKEN_INTEGRATIONS` secret, **temporarily** | npm trusted publishing cannot bootstrap a package that does not yet exist, so the first publish of each package has to be token-authenticated. `publish-npm` carries the exact edit that removes the token afterwards |
+
+**Maintainers: two of the three registries need a human to configure something before the first tag** —
+npm's `NPM_TOKEN_INTEGRATIONS` secret (which does not exist yet) and a nuget.org trusted-publishing
+policy naming `integrations.yml`. PyPI needs nothing; its token is already configured. The checklist
+is at the top of **[`.github/RELEASING.md`](.github/RELEASING.md)**, followed by the step-by-step
+procedure and what to do when a release goes wrong (short version: all three registries are
+append-only and none lets a version be reused, so you fix forward).
 
 Thank you for contributing to Cortadel!
