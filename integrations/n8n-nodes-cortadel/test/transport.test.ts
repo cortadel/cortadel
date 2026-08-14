@@ -6,6 +6,7 @@ import {
 	compact,
 	cortadelRequest,
 	getCortadelBaseUrl,
+	stripTrailingSlashes,
 } from '../shared/transport';
 import { createFakeContext } from './helpers';
 
@@ -18,6 +19,42 @@ describe('base URL handling', () => {
 	it('falls back to a local self-hosted server when blank', async () => {
 		const ctx = createFakeContext({ credentials: { baseUrl: '   ' } });
 		expect(await getCortadelBaseUrl(ctx as any)).toBe(DEFAULT_BASE_URL);
+	});
+});
+
+describe('stripTrailingSlashes', () => {
+	it('matches the trailing-slash semantics it replaced', () => {
+		// Left column is the input, right column is what `/\/+$/` produced for it.
+		const cases: Array<[string, string]> = [
+			['', ''],
+			['/', ''],
+			['///', ''],
+			['http://x', 'http://x'],
+			['http://x/', 'http://x'],
+			['http://x///', 'http://x'],
+			['http://h//a//', 'http://h//a'],
+			['no-slash-here', 'no-slash-here'],
+			// `$` has no `m` flag, so a trailing newline stopped the old regex matching.
+			['http://x/\n', 'http://x/\n'],
+		];
+		for (const [input, expected] of cases) {
+			expect(stripTrailingSlashes(input)).toBe(expected);
+		}
+	});
+
+	it('stays linear on an interior slash run that made the old regex backtrack', () => {
+		// The pathological shape for the unanchored `/\/+$/`: a long run of slashes that
+		// is NOT at the end, so every start position in the run matches greedily, fails
+		// `$`, and backtracks the whole run. That regex needs ~906 ms here; a linear scan
+		// needs microseconds, so this budget cannot flake but a regression cannot pass.
+		const pathological = `http://h/${'/'.repeat(64_000)}a`;
+
+		const started = performance.now();
+		const result = stripTrailingSlashes(pathological);
+		const elapsed = performance.now() - started;
+
+		expect(result).toBe(pathological); // nothing to strip — the run is interior
+		expect(elapsed).toBeLessThan(100);
 	});
 });
 

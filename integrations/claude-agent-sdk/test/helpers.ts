@@ -28,8 +28,7 @@ import type {
   SearchResults,
 } from "@cortadel/sdk";
 
-import type { CortadelMemory } from "../src/index.js";
-import type { CortadelMemoryClient } from "../src/index.js";
+import type { CortadelMemory, CortadelMemoryClient } from "../src/index.js";
 
 export const BASE_URL = "http://localhost:3001";
 export const USER_ID = "e2e-claude-agent-sdk";
@@ -238,7 +237,8 @@ let transcriptCounter = 0;
 /** Write a JSONL transcript into a fresh temp directory and return its path. */
 export async function writeTranscript(entries: Record<string, unknown>[]): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "cortadel-cas-"));
-  const path = join(directory, `session-${(transcriptCounter += 1)}.jsonl`);
+  transcriptCounter += 1;
+  const path = join(directory, `session-${transcriptCounter}.jsonl`);
   await writeFile(path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
   return path;
 }

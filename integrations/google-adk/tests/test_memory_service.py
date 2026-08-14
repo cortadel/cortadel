@@ -15,8 +15,10 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import inspect
 import logging
+from typing import Optional
 
 from conftest import TEST_APP
 from conftest import TEST_USER
@@ -26,6 +28,7 @@ from conftest import make_hit
 from conftest import make_session
 from cortadel import CortadelError
 from cortadel_google_adk import DEFAULT_TOP_K
+from cortadel_google_adk import CortadelMemoryOptions
 from cortadel_google_adk import CortadelMemoryService
 from cortadel_google_adk._convert import MEMORY_AUTHOR
 from google.adk.memory.base_memory_service import BaseMemoryService
@@ -35,8 +38,23 @@ from google.genai import types
 import pytest
 
 
-def build(factory: FakeClientFactory, **kwargs) -> CortadelMemoryService:
-    return CortadelMemoryService("http://localhost:3001", client_factory=factory, **kwargs)
+def build(
+    factory: FakeClientFactory,
+    *,
+    options: Optional[CortadelMemoryOptions] = None,
+    **kwargs,
+) -> CortadelMemoryService:
+    """The service under test, stubbed at the client boundary.
+
+    ``client_factory`` lives in the options bundle, so a test that needs other
+    bundled options passes its own and has the fake factory patched into it.
+    """
+    bundle = options if options is not None else CortadelMemoryOptions()
+    return CortadelMemoryService(
+        "http://localhost:3001",
+        options=dataclasses.replace(bundle, client_factory=factory),
+        **kwargs,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +362,10 @@ async def test_add_events_honours_custom_metadata(factory: FakeClientFactory) ->
 async def test_constructor_defaults_flow_into_conversation_options(
     factory: FakeClientFactory,
 ) -> None:
-    service = build(factory, project="proj", tags=["adk"], is_agent_memory=True)
+    service = build(
+        factory,
+        options=CortadelMemoryOptions(project="proj", tags=["adk"], is_agent_memory=True),
+    )
 
     await service.add_events_to_memory(
         app_name=TEST_APP,
@@ -416,6 +437,63 @@ async def test_add_fact_ignores_blank_text(factory: FakeClientFactory) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Public option surface
+# ---------------------------------------------------------------------------
+
+
+# The names are the published contract; which of the two places they are passed
+# in is not. Spelled out here rather than derived, so a rename has to be made
+# twice on purpose instead of following along silently.
+CANONICAL_OPTIONS = {
+    "base_url",
+    "user_id",
+    "api_key",
+    "app_name",
+    "top_k",
+    "search_mode",
+    "rerank",
+    "memory_type",
+    "scope_recall_to_session",
+    "is_agent_memory",
+    "project",
+    "tags",
+    "raise_on_error",
+    "on_error",
+    "timeout",
+    "user_id_resolver",
+    "client_factory",
+    "max_clients",
+    "dedupe_sessions",
+}
+
+
+def test_every_canonical_option_is_reachable_exactly_once() -> None:
+    """Splitting the constructor must not rename, drop or duplicate an option."""
+    keywords = set(inspect.signature(CortadelMemoryService.__init__).parameters) - {
+        "self",
+        "options",
+    }
+    bundled = {f.name for f in dataclasses.fields(CortadelMemoryOptions)}
+
+    assert keywords | bundled == CANONICAL_OPTIONS
+    assert not keywords & bundled, "an option must live in one place, not two"
+
+
+def test_bundled_option_defaults_are_unchanged() -> None:
+    """The bundle is a move, not a redesign: every default survived it."""
+    defaults = CortadelMemoryOptions()
+
+    assert defaults.app_name == "cortadel-google-adk"
+    assert defaults.is_agent_memory is False
+    assert defaults.project is None
+    assert defaults.tags is None
+    assert defaults.timeout == 100.0
+    assert defaults.client_factory is None
+    assert defaults.max_clients == 128
+    assert defaults.dedupe_sessions == 256
+
+
+# ---------------------------------------------------------------------------
 # Failure policy — `raise_on_error` (fail-open by default) and `on_error`
 # ---------------------------------------------------------------------------
 
@@ -447,6 +525,10 @@ async def test_raise_on_error_binds_value_to_behaviour(
     service = build(factory, raise_on_error=raise_on_error)
     await service.client_for(TEST_APP, TEST_USER)
     factory.only().raises = CortadelError(503, "unavailable", "degraded")
+    # Built outside the raises blocks below, so the only call that can satisfy
+    # them is the memory call itself — a fixture that started throwing would
+    # otherwise pass as if the service had raised.
+    session = make_session(make_event(author="user", text="hi", event_id="e1"))
 
     if raise_on_error:
         with pytest.raises(CortadelError) as excinfo:
@@ -455,18 +537,14 @@ async def test_raise_on_error_binds_value_to_behaviour(
         assert excinfo.value.code == "unavailable"
 
         with pytest.raises(CortadelError):
-            await service.add_session_to_memory(
-                make_session(make_event(author="user", text="hi", event_id="e1"))
-            )
+            await service.add_session_to_memory(session)
     else:
         response = await service.search_memory(
             app_name=TEST_APP, user_id=TEST_USER, query="q"
         )
         assert response.memories == []
         # Writes degrade too, rather than taking the turn down.
-        await service.add_session_to_memory(
-            make_session(make_event(author="user", text="hi", event_id="e1"))
-        )
+        await service.add_session_to_memory(session)
 
 
 async def test_default_service_degrades_search_to_empty(factory: FakeClientFactory) -> None:
@@ -570,7 +648,9 @@ async def test_a_failing_client_factory_goes_through_the_policy() -> None:
         raise ValueError(f"cannot build a client for {user_id}")
 
     service = CortadelMemoryService(
-        "http://localhost:3001", client_factory=broken_factory, on_error=seen.append
+        "http://localhost:3001",
+        on_error=seen.append,
+        options=CortadelMemoryOptions(client_factory=broken_factory),
     )
 
     response = await service.search_memory(app_name=TEST_APP, user_id=TEST_USER, query="q")
@@ -618,7 +698,7 @@ async def test_async_context_manager_closes(factory: FakeClientFactory) -> None:
 async def test_client_pool_evicts_and_closes_the_least_recent(
     factory: FakeClientFactory,
 ) -> None:
-    service = build(factory, max_clients=2)
+    service = build(factory, options=CortadelMemoryOptions(max_clients=2))
 
     await service.search_memory(app_name=TEST_APP, user_id="e2e-a", query="q")
     await service.search_memory(app_name=TEST_APP, user_id="e2e-b", query="q")

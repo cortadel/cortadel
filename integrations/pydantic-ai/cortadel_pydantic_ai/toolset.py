@@ -11,7 +11,7 @@ Use this module directly only when you want the tools without the automatic memo
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from pydantic_ai.toolsets import FunctionToolset
 
@@ -33,6 +33,11 @@ from ._backend import (
     resolve_setting,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from cortadel import MemoryCreated, SearchHit
+
 __all__ = ["TOOLSET_ID", "cortadel_toolset"]
 
 TOOLSET_ID = "cortadel-memory"
@@ -42,6 +47,40 @@ _SEARCH_UNAVAILABLE = (
     "Long-term memory is temporarily unavailable. Answer from the current conversation instead."
 )
 _ADD_UNAVAILABLE = "Long-term memory is temporarily unavailable, so that was not saved."
+_NO_HITS = "No relevant memories found."
+_EMPTY_TEXT = "Nothing to save: the text was empty."
+
+
+def _render_hits(hits: Optional["Sequence[SearchHit]"]) -> str:
+    """Render a `try_search` outcome as the string the model sees.
+
+    `None` means the call failed (as opposed to `[]` for no hits), and the model is told so
+    plainly rather than being handed an empty result it would read as "nothing is known".
+    """
+    if hits is None:
+        return _SEARCH_UNAVAILABLE
+    lines = []
+    for hit in hits:
+        text = (hit.content or "").strip()
+        if text:
+            lines.append(f"- {text}")
+    if not lines:
+        return _NO_HITS
+    return "\n".join(lines)
+
+
+def _render_created(created: Optional["MemoryCreated"]) -> str:
+    """Render a `try_add` outcome as the string the model sees.
+
+    A successful call does not always mean a new memory was written — the write pipeline
+    deduplicates, supersedes and invalidates, and reports which happened via `event`.
+    """
+    if created is None:
+        return _ADD_UNAVAILABLE
+    event = (created.event or "ADD").upper()
+    if event == "SKIP_DUPLICATE":
+        return "Already known — no duplicate was created."
+    return f"Saved to long-term memory (event: {event})."
 
 
 def cortadel_toolset(
@@ -58,7 +97,8 @@ def cortadel_toolset(
     client_factory: Optional[ClientFactory] = None,
     on_error: Optional[Callable[[Exception], None]] = None,
     raise_on_error: bool = False,
-    id: str = TOOLSET_ID,  # noqa: A002 - matches FunctionToolset's own parameter name
+    # Shadows the `id` builtin deliberately: it matches `FunctionToolset`'s own parameter name.
+    id: str = TOOLSET_ID,  # noqa: A002
 ) -> FunctionToolset[Any]:
     """Build a `FunctionToolset` exposing `search_memory` and `add_memories`.
 
@@ -132,16 +172,7 @@ def build_toolset(
             rerank=rerank,
             memory_type=memory_type,
         )
-        if hits is None:
-            return _SEARCH_UNAVAILABLE
-        if not hits:
-            return "No relevant memories found."
-        lines = []
-        for hit in hits:
-            text = (hit.content or "").strip()
-            if text:
-                lines.append(f"- {text}")
-        return "\n".join(lines) if lines else "No relevant memories found."
+        return _render_hits(hits)
 
     async def add_memories(ctx: RunContext[Any], text: str) -> str:
         """Save a durable fact about the user to long-term memory.
@@ -155,16 +186,9 @@ def build_toolset(
         """
         text = (text or "").strip()
         if not text:
-            return "Nothing to save: the text was empty."
+            return _EMPTY_TEXT
         created = await backend.try_add(ctx, text, memory_type=memory_type)
-        if created is None:
-            return _ADD_UNAVAILABLE
-        # A successful call does not always mean a new memory was written — the write pipeline
-        # deduplicates, supersedes and invalidates, and reports which happened via `event`.
-        event = (created.event or "ADD").upper()
-        if event == "SKIP_DUPLICATE":
-            return "Already known — no duplicate was created."
-        return f"Saved to long-term memory (event: {event})."
+        return _render_created(created)
 
     toolset: FunctionToolset[Any] = FunctionToolset(id=id)
     # `takes_ctx=True` is explicit rather than inferred: it keeps tool registration working even

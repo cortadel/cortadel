@@ -147,7 +147,8 @@ class TestRecall:
     async def test_a_custom_header_is_used(self, registry: ClientRegistry) -> None:
         cap = make(registry, instructions_header="KNOWN FACTS:")
         block = await cap._recall_instructions(any_ctx(prompt="q"))
-        assert block is not None and block.startswith("KNOWN FACTS:")
+        assert block is not None
+        assert block.startswith("KNOWN FACTS:")
 
     async def test_an_unreachable_server_injects_nothing(self, failing_registry: ClientRegistry) -> None:
         cap = make(failing_registry)
@@ -157,7 +158,8 @@ class TestRecall:
         seen: list[Exception] = []
         cap = make(failing_registry, on_error=seen.append)
         await cap._recall_instructions(any_ctx(prompt="q"))
-        assert len(seen) == 1 and isinstance(seen[0], CortadelError)
+        assert len(seen) == 1
+        assert isinstance(seen[0], CortadelError)
 
 
 class TestErrorPolicy:
@@ -167,8 +169,9 @@ class TestErrorPolicy:
 
     async def test_raise_on_error_propagates_the_failure(self, failing_registry: ClientRegistry) -> None:
         cap = make(failing_registry, raise_on_error=True)
+        ctx = any_ctx(prompt="q")
         with pytest.raises(CortadelError):
-            await cap._recall_instructions(any_ctx(prompt="q"))
+            await cap._recall_instructions(ctx)
 
     async def test_on_error_still_fires_before_the_re_raise(
         self, failing_registry: ClientRegistry
@@ -177,8 +180,9 @@ class TestErrorPolicy:
         # whether the run dies.
         seen: list[Exception] = []
         cap = make(failing_registry, on_error=seen.append, raise_on_error=True)
+        ctx = any_ctx(prompt="q")
         with pytest.raises(CortadelError) as caught:
-            await cap._recall_instructions(any_ctx(prompt="q"))
+            await cap._recall_instructions(ctx)
         assert seen == [caught.value]
 
     async def test_raise_on_error_also_covers_persistence(
@@ -188,8 +192,9 @@ class TestErrorPolicy:
 
         cap = make(failing_registry, raise_on_error=True)
         result = FakeResult([ModelRequest(parts=[UserPromptPart(content="I prefer metric.")])])
+        ctx = any_ctx()
         with pytest.raises(CortadelError):
-            await cap.after_run(any_ctx(), result=result)
+            await cap.after_run(ctx, result=result)
 
     async def test_a_swallowed_failure_without_a_callback_warns(
         self, failing_registry: ClientRegistry, caplog: pytest.LogCaptureFixture
@@ -313,7 +318,8 @@ class TestPersistence:
         result = self.turn()
         assert await cap.after_run(any_ctx(), result=result) is result
         await cap.aclose()
-        assert len(seen) == 1 and isinstance(seen[0], CortadelError)
+        assert len(seen) == 1
+        assert isinstance(seen[0], CortadelError)
 
     async def test_a_turn_with_nothing_conversational_is_not_sent(self, registry: ClientRegistry) -> None:
         cap = make(registry)
@@ -331,7 +337,8 @@ class TestPersistence:
         seen: list[Exception] = []
         cap = make(failing_registry, on_error=seen.append)
         await cap.after_run(any_ctx(), result=self.turn())
-        assert len(seen) == 1 and isinstance(seen[0], CortadelError)
+        assert len(seen) == 1
+        assert isinstance(seen[0], CortadelError)
 
     async def test_a_broken_result_object_cannot_fail_the_run(self, registry: ClientRegistry) -> None:
         class Broken:

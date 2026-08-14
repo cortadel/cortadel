@@ -22,7 +22,6 @@ hierarchy genuinely has no counterpart to report.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from crewai.memory.types import MemoryRecord, ScopeInfo
@@ -35,87 +34,76 @@ class InertStorage:
     protocol. Deliberately not a subclass — the protocol is duck-typed, and
     inheriting it would drag ``crewai.memory.storage.backend`` into import time
     for no benefit.
+
+    **About the signatures.** Every method here answers "nothing stored locally"
+    however it is asked, so restating the protocol's filter/paging/threshold
+    parameters would name arguments the body can never honour. They are declared
+    variadic instead, which is both honest and *more* permissive than the real
+    signature: ``crewai.memory.unified_memory`` calls these by keyword
+    (``scope_prefix=``, ``limit=``, ``record_ids=``, ``min_score=``, ...) and a
+    variadic accepts every one of those call shapes — including any keyword a
+    future CrewAI release adds, which a restated signature would reject with
+    ``TypeError``. The authoritative parameter lists live in
+    ``crewai.memory.storage.backend``; mirroring them here would be a second copy
+    to keep in sync for no behavioural gain.
+
+    ``get_scope_info`` is the one exception: its argument is the only one that
+    changes an answer, so it keeps a real parameter.
     """
 
-    def save(self, records: list[MemoryRecord]) -> None:
+    def save(self, *_args: Any, **_kwargs: Any) -> None:
         return None
 
-    def search(
-        self,
-        query_embedding: list[float],
-        scope_prefix: str | None = None,
-        categories: list[str] | None = None,
-        metadata_filter: dict[str, Any] | None = None,
-        limit: int = 10,
-        min_score: float = 0.0,
-    ) -> list[tuple[MemoryRecord, float]]:
+    def search(self, *_args: Any, **_kwargs: Any) -> list[tuple[MemoryRecord, float]]:
         # Cortadel searches by *text*, not by a caller-supplied embedding, so
         # this vector-only entry point can never be served faithfully.
         # CortadelMemory.recall() overrides the text path instead.
         return []
 
-    def delete(
-        self,
-        scope_prefix: str | None = None,
-        categories: list[str] | None = None,
-        record_ids: list[str] | None = None,
-        older_than: datetime | None = None,
-        metadata_filter: dict[str, Any] | None = None,
-    ) -> int:
+    def delete(self, *_args: Any, **_kwargs: Any) -> int:
         return 0
 
-    def update(self, record: MemoryRecord) -> None:
+    def update(self, *_args: Any, **_kwargs: Any) -> None:
         return None
 
-    def get_record(self, record_id: str) -> MemoryRecord | None:
+    def get_record(self, *_args: Any, **_kwargs: Any) -> MemoryRecord | None:
         return None
 
-    def list_records(
-        self,
-        scope_prefix: str | None = None,
-        limit: int = 200,
-        offset: int = 0,
-    ) -> list[MemoryRecord]:
+    def list_records(self, *_args: Any, **_kwargs: Any) -> list[MemoryRecord]:
         return []
 
     def get_scope_info(self, scope: str) -> ScopeInfo:
         return ScopeInfo(path=scope)
 
-    def list_scopes(self, parent: str = "/") -> list[str]:
+    def list_scopes(self, *_args: Any, **_kwargs: Any) -> list[str]:
         return []
 
-    def list_categories(self, scope_prefix: str | None = None) -> dict[str, int]:
+    def list_categories(self, *_args: Any, **_kwargs: Any) -> dict[str, int]:
         return {}
 
-    def count(self, scope_prefix: str | None = None) -> int:
+    def count(self, *_args: Any, **_kwargs: Any) -> int:
         return 0
 
-    def reset(self, scope_prefix: str | None = None) -> None:
+    def reset(self, *_args: Any, **_kwargs: Any) -> None:
         return None
 
-    async def asave(self, records: list[MemoryRecord]) -> None:
-        return None
+    # The async trio below is `async` because ``StorageBackend`` declares it so
+    # and callers await it; each one delegates to its sync twin rather than
+    # repeating the empty value. This is exactly the shape of CrewAI's own
+    # reference backend (``LanceDBStorage.asave``/``asearch``/``adelete`` are
+    # likewise `async` with nothing to await) — there is no asynchrony to have
+    # in a no-op, and dropping the keyword would break `await`.
+
+    async def asave(self, *args: Any, **kwargs: Any) -> None:
+        return self.save(*args, **kwargs)
 
     async def asearch(
-        self,
-        query_embedding: list[float],
-        scope_prefix: str | None = None,
-        categories: list[str] | None = None,
-        metadata_filter: dict[str, Any] | None = None,
-        limit: int = 10,
-        min_score: float = 0.0,
+        self, *args: Any, **kwargs: Any
     ) -> list[tuple[MemoryRecord, float]]:
-        return []
+        return self.search(*args, **kwargs)
 
-    async def adelete(
-        self,
-        scope_prefix: str | None = None,
-        categories: list[str] | None = None,
-        record_ids: list[str] | None = None,
-        older_than: datetime | None = None,
-        metadata_filter: dict[str, Any] | None = None,
-    ) -> int:
-        return 0
+    async def adelete(self, *args: Any, **kwargs: Any) -> int:
+        return self.delete(*args, **kwargs)
 
     def close(self) -> None:
         return None

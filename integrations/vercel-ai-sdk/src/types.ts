@@ -5,7 +5,6 @@ import type {
   ConversationOptions,
   ConversationResult,
   MemoryCreated,
-  SearchHit,
   SearchOptions,
   SearchResults,
 } from "@cortadel/sdk";
@@ -130,4 +129,5 @@ export interface FormatMemoriesContext {
   userId: string;
 }
 
-export type { SearchHit };
+/** The SDK's search hit, re-exported: it appears in this package's `formatMemories` signature. */
+export type { SearchHit } from "@cortadel/sdk";

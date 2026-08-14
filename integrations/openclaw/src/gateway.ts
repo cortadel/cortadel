@@ -67,6 +67,29 @@ export class CircuitBreaker {
   }
 }
 
+/** Cap on a rendered object, so one odd throw cannot emit an unbounded log line. */
+const MAX_RENDERED_ERROR = 200;
+
+/**
+ * Describe a thrown object that carries no usable `message`.
+ *
+ * `String(obj)` is `"[object Object]"` for anything that does not override
+ * `toString`, which discards every field the log line existed to carry. JSON
+ * keeps the shape. It can still fail (circular references, `BigInt`) or yield
+ * nothing (a `toJSON` returning `undefined`), so the plain cast stays as the
+ * last resort.
+ */
+function renderErrorValue(err: object): string {
+  let rendered: string;
+  try {
+    rendered = JSON.stringify(err) ?? String(err);
+  } catch {
+    // Circular or non-serialisable — fall back to whatever `toString` gives.
+    rendered = String(err);
+  }
+  return rendered.length > MAX_RENDERED_ERROR ? `${rendered.slice(0, MAX_RENDERED_ERROR)}…` : rendered;
+}
+
 /**
  * Turn an unknown thrown value into one readable line.
  *
@@ -80,9 +103,12 @@ export function describeError(err: unknown): string {
     if (e.name === "TimeoutError" || e.name === "AbortError") return "cortadel request timed out";
     const status = typeof e.status === "number" ? e.status : undefined;
     const code = typeof e.code === "string" ? e.code : undefined;
-    const message = typeof e.message === "string" ? e.message : String(err);
+    const message = typeof e.message === "string" ? e.message : renderErrorValue(err);
+    // Built separately rather than nested inline: a template literal inside a
+    // template literal's interpolation is a readability trap.
+    const statusSuffix = status === undefined ? "" : ` (${status})`;
     if (status !== undefined || code !== undefined) {
-      return `cortadel ${code ?? "error"}${status !== undefined ? ` (${status})` : ""}: ${message}`;
+      return `cortadel ${code ?? "error"}${statusSuffix}: ${message}`;
     }
     return message;
   }

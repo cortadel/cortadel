@@ -102,6 +102,21 @@ export function toRunScope(runtime: unknown): RunScope {
   };
 }
 
+/**
+ * Read `bag[key]` when it is a non-empty string.
+ *
+ * The `typeof value === "string"` test is load-bearing, not cosmetic: `bag` is an untrusted run
+ * object, so this lookup can resolve an inherited `Object.prototype` member (`"constructor"`,
+ * `"toString"`, `"__proto__"`). Every one of those is a function or an object and never a string,
+ * so the type test rejects them and the run degrades to "no user id" — the check a bare truthiness
+ * guard would have missed. Keep it if this ever widens beyond strings.
+ *
+ * Deliberately *not* an `Object.hasOwn` guard. LangChain's own context filter tests `key in
+ * invokeContext` (`langchain/dist/agents/nodes/middleware.js`), so it honours a context object that
+ * inherits the key from a prototype getter. Rejecting inherited keys here would make the tool path
+ * disagree with the middleware path about who the user is — the exact split this module's header
+ * warns about — while defending only against a globally polluted `Object.prototype`.
+ */
 function readString(bag: unknown, key: string): string | undefined {
   if (!bag || typeof bag !== "object") return undefined;
   const value = (bag as Record<string, unknown>)[key];
@@ -111,8 +126,14 @@ function readString(bag: unknown, key: string): string | undefined {
 function readEnv(name: string): string | undefined {
   // DeepAgents ships a browser build, so `process` is not guaranteed to exist.
   if (typeof process === "undefined" || !process.env) return undefined;
+  // Same string test as `readString`, for the same reason: `process.env` inherits from
+  // `Object.prototype`, so a non-literal `name` could otherwise resolve a function. Real env values
+  // are always strings, so this rejects nothing a deployment can actually set.
   const value = process.env[name];
-  return value ? value : undefined;
+  if (typeof value !== "string") return undefined;
+  // `||`, not `??`: an env var set to the empty string means "unset" here, so that a blank
+  // `CORTADEL_BASE_URL` still falls through to the next default instead of pinning a blank URL.
+  return value || undefined;
 }
 
 /**

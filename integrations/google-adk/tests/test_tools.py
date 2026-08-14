@@ -22,6 +22,7 @@ from conftest import FakeClientFactory
 from conftest import make_hit
 from conftest import make_session
 from cortadel import CortadelError
+from cortadel_google_adk import CortadelMemoryOptions
 from cortadel_google_adk import CortadelMemoryService
 from cortadel_google_adk import cortadel_memory_tools
 from google.adk.agents.invocation_context import InvocationContext
@@ -32,7 +33,11 @@ import pytest
 
 
 def build(factory: FakeClientFactory, **kwargs) -> CortadelMemoryService:
-    return CortadelMemoryService("http://localhost:3001", client_factory=factory, **kwargs)
+    return CortadelMemoryService(
+        "http://localhost:3001",
+        options=CortadelMemoryOptions(client_factory=factory),
+        **kwargs,
+    )
 
 
 def tool_context() -> ToolContext:

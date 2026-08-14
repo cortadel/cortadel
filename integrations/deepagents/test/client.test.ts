@@ -81,6 +81,27 @@ describe("resolveUserId / resolveThreadId", () => {
     expect(resolveUserId(scope)).toBeUndefined();
   });
 
+  /**
+   * The other dynamic-key lookup in the package. Unlike the role table in `messages.ts`, this one
+   * type-tests its result, and no `Object.prototype` member is a string — so an inherited key
+   * resolves to nothing instead of to a function. These lock that in.
+   */
+  it("resolves nothing from an inherited Object.prototype key", () => {
+    const scope = toRunScope({ context: {}, configurable: {} });
+    for (const key of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      expect(resolveUserId(scope, key)).toBeUndefined();
+    }
+  });
+
+  it("disables memory for a run rather than binding it to an inherited member", () => {
+    const provider = new ClientProvider({
+      baseUrl: "http://localhost:3001",
+      userIdKey: "constructor",
+    });
+    expect(provider.forRun(toRunScope({ context: {}, configurable: {} }))).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no Cortadel user id for this run"));
+  });
+
   it("reads the LangGraph thread id", () => {
     expect(resolveThreadId(toRunScope({ configurable: { thread_id: "e2e-thread-9" } }))).toBe("e2e-thread-9");
     expect(resolveThreadId(toRunScope({ configurable: {} }))).toBeUndefined();

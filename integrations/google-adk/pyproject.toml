@@ -59,6 +59,34 @@ test = [
     "pytest-asyncio>=0.24",
 ]
 
+# The build backend, carried here so uv.lock resolves it instead of the index. CI installs this
+# group and then builds with --no-build-isolation; without it, building the editable wheel creates
+# an isolated build environment and resolves the backend straight from PyPI on every run, unpinned
+# and lock-free. Measured, not assumed — `uv pip install --no-deps --no-build -e . -v --refresh`
+# logs "Adding direct dependency: hatchling*", "Sending revalidation request for:
+# https://pypi.org/simple/hatchling/", and installs eight packages at whatever versions are newest
+# that day. That is what SonarCloud githubactions:S8544 flags on the install step, and it is a true
+# positive.
+#
+# `editables` is listed even though `[build-system] requires` does not mention it, and that was
+# found by running the build rather than by reading the manifest: hatchling asks for it at build
+# time through PEP 517's dynamic `get_requires_for_build_editable()` hook ("Adding direct
+# dependency: editables>=0.3, <1.dev0"), which it returns only for *editable* wheels. Build
+# isolation used to satisfy that hook silently; --no-build-isolation does not, so omitting it here
+# fails the install step with "ModuleNotFoundError: No module named 'editables'". The remaining six
+# (packaging, pathspec, pluggy, tomli, tomlkit, trove-classifiers) are hatchling's own dependencies
+# and come in transitively.
+#
+# A PEP 735 dependency group rather than an extra: groups are local development metadata and never
+# reach the built wheel or sdist, so a consumer running `pip install cortadel-google-adk[test]` is
+# unaffected and no new public install option is added. Versions and hashes live in uv.lock — re-run
+# `uv lock` after touching this group or `[build-system] requires`.
+[dependency-groups]
+build = [
+    "hatchling",
+    "editables",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

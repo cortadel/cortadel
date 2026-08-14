@@ -137,7 +137,7 @@ const FILTERABLE_KEYS: ReadonlySet<string> = new Set([
 
 // Filter keys the Cortadel search endpoint can enforce itself, so they are lifted out of the
 // post-filter and pushed into SearchOptions.
-const SERVER_FILTER_KEYS: readonly string[] = ["memoryType", "sessionId"];
+const SERVER_FILTER_KEYS: ReadonlySet<string> = new Set(["memoryType", "sessionId"]);
 
 /** Options for {@link CortadelStore}. */
 export interface CortadelStoreOptions {
@@ -255,7 +255,7 @@ export class CortadelStore extends BaseStore {
           "onError: () => {}.",
       );
     }
-    if (options.textKeys !== undefined && options.textKeys.length === 0) {
+    if (options.textKeys?.length === 0) {
       throw new Error("textKeys must name at least one key.");
     }
 
@@ -448,7 +448,7 @@ export class CortadelStore extends BaseStore {
     const server: Record<string, string> = {};
     const post: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(raw)) {
-      if (SERVER_FILTER_KEYS.includes(key) && typeof value === "string") {
+      if (SERVER_FILTER_KEYS.has(key) && typeof value === "string") {
         // memoryType is also present on a hit, so leaving it out of the post-filter is safe;
         // sessionId is not exposed on a hit at all and could not be checked here.
         server[key] = value;
@@ -497,7 +497,9 @@ export class CortadelStore extends BaseStore {
   }
 
   private valueToAdd(op: PutOperation): [string, AddOptions] {
-    const value: Record<string, unknown> = { ...(op.value ?? {}) };
+    // Only reached with a non-null value ({@link putOp} routes `value: null` to a delete); the
+    // spread would yield `{}` for a null anyway, so no `?? {}` fallback is needed.
+    const value: Record<string, unknown> = { ...op.value };
     let text: string | undefined;
     for (const key of this.textKeys) {
       const candidate = value[key];

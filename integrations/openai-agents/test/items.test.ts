@@ -56,6 +56,26 @@ describe('itemText', () => {
     ).toBe('answer');
   });
 
+  it('keeps a bare part that carries text but no `type`', () => {
+    expect(itemText({ role: 'user', content: [{ text: 'shim output' }] })).toBe('shim output');
+  });
+
+  it('ignores a content part whose `type` is not a string', () => {
+    // Coercing the type with `String()` would have flattened the first part to
+    // `"[object Object]"` — harmless — but the second defines its own `toString()`, so coercion
+    // would have let it impersonate a real text part and leak plumbing into a memory.
+    expect(
+      itemText({
+        role: 'user',
+        content: [
+          { type: {}, text: 'from an object type' },
+          { type: { toString: () => 'input_text' }, text: 'impersonating a text part' },
+          { type: 'input_text', text: 'the only real text' },
+        ],
+      }),
+    ).toBe('the only real text');
+  });
+
   it('returns empty for an image-only turn', () => {
     expect(itemText({ role: 'user', content: [{ type: 'input_image', image: 'x' }] })).toBe('');
   });

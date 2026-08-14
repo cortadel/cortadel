@@ -73,8 +73,9 @@ function readEnv(name: string): string | undefined {
   if (typeof process === 'undefined' || !process.env) {
     return undefined;
   }
-  const value = process.env[name];
-  return value ? value : undefined;
+  // `||`, not `??`: a variable that is present but empty (`CORTADEL_API_KEY=`) means "not
+  // configured" and must fall through to the caller's default, which `??` would not do.
+  return process.env[name] || undefined;
 }
 
 /** Explicit argument wins, then `CORTADEL_BASE_URL`, then the self-hosted default. */

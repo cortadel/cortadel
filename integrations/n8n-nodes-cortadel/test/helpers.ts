@@ -78,7 +78,7 @@ export function createFakeContext(options: FakeContextOptions = {}): FakeContext
 			parameters: {},
 		}),
 		getNodeParameter: (name: string, _index: number, fallback?: unknown) =>
-			Object.prototype.hasOwnProperty.call(params, name) ? params[name] : fallback,
+			Object.hasOwn(params, name) ? params[name] : fallback,
 		getInputData: () => options.inputData ?? [{ json: {} }],
 		continueOnFail: () => options.continueOnFail === true,
 		addInputData: (_type: string, data: unknown) => {

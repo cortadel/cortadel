@@ -326,7 +326,7 @@ export class CortadelMemory {
     if (!this.persist) return undefined;
     const messages = messagesOf(state, this.messagesKey);
     if (messages.length === 0) return undefined;
-    const last = messages[messages.length - 1];
+    const last = messages.at(-1);
     // Mid tool loop: the model asked for a tool, or we are looking at the tool's reply. The turn
     // is not over, so persisting now would submit half a turn and then submit it again.
     if (hasToolCalls(last) || messageType(last) === "tool") return undefined;
@@ -524,6 +524,29 @@ function anchorId(message: unknown): string {
   return messageId(message) ?? `text:${textOf(message).slice(0, 256)}`;
 }
 
+/**
+ * The text one LangChain content block contributes, or `undefined` when it contributes none.
+ *
+ * The two are distinct: a block that *is* the empty string still contributes a (blank) line, while
+ * a non-text block — an image, a `thinking` part — contributes nothing at all and is skipped.
+ */
+function blockText(block: unknown): string | undefined {
+  if (typeof block === "string") return block;
+  if (block === null || typeof block !== "object") return undefined;
+  const text = (block as Record<string, unknown>).text;
+  return typeof text === "string" ? text : undefined;
+}
+
+/** Flatten a content-block array to plain text, one line per contributing block. */
+function blocksText(content: readonly unknown[]): string {
+  const parts: string[] = [];
+  for (const block of content) {
+    const text = blockText(block);
+    if (text !== undefined) parts.push(text);
+  }
+  return parts.join("\n").trim();
+}
+
 /** Flatten a message's content to plain text, tolerating content-block arrays. */
 function textOf(message: unknown): string {
   if (message === null || typeof message !== "object") {
@@ -531,17 +554,7 @@ function textOf(message: unknown): string {
   }
   const content = (message as Record<string, unknown>).content;
   if (typeof content === "string") return content.trim();
-  if (Array.isArray(content)) {
-    const parts: string[] = [];
-    for (const block of content) {
-      if (typeof block === "string") parts.push(block);
-      else if (block !== null && typeof block === "object") {
-        const text = (block as Record<string, unknown>).text;
-        if (typeof text === "string") parts.push(text);
-      }
-    }
-    return parts.join("\n").trim();
-  }
+  if (Array.isArray(content)) return blocksText(content);
   return "";
 }
 

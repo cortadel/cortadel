@@ -20,6 +20,7 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Mapping
 from collections.abc import Sequence
+from dataclasses import dataclass
 import logging
 import os
 from typing import Any
@@ -80,6 +81,50 @@ ErrorObserver = Callable[[BaseException], None]
 _SESSIONLESS = "__no_session__"
 
 
+@dataclass(frozen=True)
+class CortadelMemoryOptions:
+    """The set-once half of :class:`CortadelMemoryService`'s configuration.
+
+    The keywords that stayed on the constructor are the ones that shape what a
+    turn retrieves and what happens when Cortadel is down — you reach for those
+    while tuning an agent. These are the rest: the client wiring you pick once,
+    and the ingestion defaults, each of which ``add_session_to_memory`` and
+    ``add_events_to_memory`` can already override per call through
+    ``custom_metadata``.
+
+    No option was renamed; only where you pass it moved::
+
+        CortadelMemoryService(
+            "http://localhost:3001",
+            options=CortadelMemoryOptions(project="atlas", timeout=30.0),
+        )
+
+    Attributes:
+      app_name: App name Cortadel records for access logging on searches. Note
+        this is *Cortadel's* app name, unrelated to ADK's ``app_name``, which
+        arrives per call.
+      is_agent_memory: When ``True``, conversation ingestion extracts facts
+        about the *assistant* rather than about the user.
+      project: Cortadel project scope stamped on ingested conversations.
+      tags: Tags stamped on every fact extracted from ingested conversations.
+      timeout: Per-client HTTP timeout in seconds.
+      client_factory: Builds a Cortadel client from a resolved user id.
+        Overrides ``base_url``/``api_key``/``app_name``/``timeout`` entirely.
+        Primarily a test seam.
+      max_clients: Cap on pooled per-user clients (LRU; evicted ones close).
+      dedupe_sessions: How many session ids to track for delta ingestion.
+    """
+
+    app_name: str = DEFAULT_APP_NAME
+    is_agent_memory: bool = False
+    project: Optional[str] = None
+    tags: Optional[Sequence[str]] = None
+    timeout: float = 100.0
+    client_factory: Optional[Callable[[str], Any]] = None
+    max_clients: int = DEFAULT_MAX_CLIENTS
+    dedupe_sessions: int = DEFAULT_DEDUPE_SESSIONS
+
+
 class CortadelMemoryService(BaseMemoryService):
     """Long-term memory for ADK agents, backed by a Cortadel server.
 
@@ -115,8 +160,6 @@ class CortadelMemoryService(BaseMemoryService):
         Leave ``None`` (default) to scope memory to the ADK session's user.
       api_key: Bearer token. Defaults to ``$CORTADEL_API_KEY``. Omit when the
         server runs with auth disabled.
-      app_name: App name Cortadel records for access logging on searches. Note
-        this is *Cortadel's* app name, unrelated to ADK's ``app_name``.
       top_k: Maximum hits per search (Cortadel accepts 1–50). Defaults to 5;
         see :data:`DEFAULT_TOP_K`.
       search_mode: ``hybrid`` (default), ``text`` or ``vector``.
@@ -127,25 +170,19 @@ class CortadelMemoryService(BaseMemoryService):
       scope_recall_to_session: When ``True``, recall only returns memories
         written from the same ADK session id. Off by default: cross-session
         recall is the point of long-term memory.
-      is_agent_memory: When ``True``, conversation ingestion extracts facts
-        about the *assistant* rather than about the user.
-      project: Cortadel project scope stamped on ingested conversations.
-      tags: Tags stamped on every fact extracted from ingested conversations.
       raise_on_error: Propagate Cortadel failures to the caller. Off by
         default — a memory outage degrades the agent to no-memory instead of
         taking the run down.
       on_error: Called with the exception behind **every** failed Cortadel
         call, whether it is then swallowed or re-raised. When it is ``None``
         and the failure is swallowed, a warning is logged instead.
-      timeout: Per-client HTTP timeout in seconds.
       user_id_resolver: Maps ``(adk_app_name, adk_user_id)`` to the Cortadel
         user id. Overrides ``user_id`` when both are given. Use it to namespace
         per ADK app, e.g. ``lambda app, user: f"{app}:{user}"``.
-      client_factory: Builds a Cortadel client from a resolved user id.
-        Overrides ``base_url``/``api_key``/``app_name``/``timeout`` entirely.
-        Primarily a test seam.
-      max_clients: Cap on pooled per-user clients (LRU; evicted ones close).
-      dedupe_sessions: How many session ids to track for delta ingestion.
+      options: The set-once wiring and ingestion defaults — ``app_name``,
+        ``is_agent_memory``, ``project``, ``tags``, ``timeout``,
+        ``client_factory``, ``max_clients``, ``dedupe_sessions``. See
+        :class:`CortadelMemoryOptions`.
     """
 
     def __init__(
@@ -154,49 +191,43 @@ class CortadelMemoryService(BaseMemoryService):
         *,
         user_id: Optional[str] = None,
         api_key: Optional[str] = None,
-        app_name: str = DEFAULT_APP_NAME,
         top_k: int = DEFAULT_TOP_K,
         search_mode: str = "hybrid",
         rerank: Optional[str] = None,
         memory_type: Optional[str] = None,
         scope_recall_to_session: bool = False,
-        is_agent_memory: bool = False,
-        project: Optional[str] = None,
-        tags: Optional[Sequence[str]] = None,
         raise_on_error: bool = False,
         on_error: Optional[ErrorObserver] = None,
-        timeout: float = 100.0,
         user_id_resolver: Optional[UserIdResolver] = None,
-        client_factory: Optional[Callable[[str], Any]] = None,
-        max_clients: int = DEFAULT_MAX_CLIENTS,
-        dedupe_sessions: int = DEFAULT_DEDUPE_SESSIONS,
+        options: Optional[CortadelMemoryOptions] = None,
     ) -> None:
+        opts = options if options is not None else CortadelMemoryOptions()
         resolved_base_url = base_url or os.environ.get(BASE_URL_ENV) or DEFAULT_BASE_URL
         resolved_api_key = api_key if api_key is not None else os.environ.get(API_KEY_ENV)
 
         self._base_url = resolved_base_url
         self._pinned_user_id = user_id
-        self._cortadel_app_name = app_name
+        self._cortadel_app_name = opts.app_name
         self._top_k = top_k
         self._search_mode = search_mode
         self._rerank = rerank
         self._memory_type = memory_type
         self._scope_recall_to_session = scope_recall_to_session
-        self._is_agent_memory = is_agent_memory
-        self._project = project
-        self._tags = list(tags) if tags else None
+        self._is_agent_memory = opts.is_agent_memory
+        self._project = opts.project
+        self._tags = list(opts.tags) if opts.tags else None
         self._raise_on_error = raise_on_error
         self._on_error = on_error
         self._user_id_resolver = user_id_resolver
 
-        factory = client_factory or self._default_client_factory(
-            resolved_base_url, resolved_api_key, app_name, timeout
+        factory = opts.client_factory or self._default_client_factory(
+            resolved_base_url, resolved_api_key, opts.app_name, opts.timeout
         )
-        self._pool = ClientPool(factory, max_clients=max_clients)
+        self._pool = ClientPool(factory, max_clients=opts.max_clients)
 
-        if dedupe_sessions < 1:
+        if opts.dedupe_sessions < 1:
             raise ValueError("dedupe_sessions must be at least 1.")
-        self._dedupe_sessions = dedupe_sessions
+        self._dedupe_sessions = opts.dedupe_sessions
         # (cortadel_user_id, session_id) -> fingerprints already ingested.
         self._ingested: "OrderedDict[tuple[str, str], set[str]]" = OrderedDict()
         self._ingest_lock = asyncio.Lock()

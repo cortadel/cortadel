@@ -199,7 +199,8 @@ class TestAutomaticPersistence:
         await agent.run("turn two", message_history=first.all_messages())
 
         sessions = [options.session_id for _messages, options in registry.only().conversations]
-        assert sessions[0] and sessions[0] == sessions[1]
+        assert sessions[0]  # a session id was recorded at all
+        assert sessions[1] == sessions[0]
 
     async def test_persist_disabled_stores_nothing(self) -> None:
         registry = marker_registry()

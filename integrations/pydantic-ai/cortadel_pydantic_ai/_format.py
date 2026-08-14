@@ -15,7 +15,6 @@ from cortadel import ChatMessage
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
-    SystemPromptPart,
     TextPart,
     UserPromptPart,
 )
@@ -102,6 +101,38 @@ def format_memories(hits: Sequence[SearchHit], header: str = DEFAULT_INSTRUCTION
     return "\n".join([header, "", *lines])
 
 
+def _user_messages_in(request: ModelRequest) -> list[ChatMessage]:
+    """The user prompts in one request, as Cortadel messages.
+
+    `SystemPromptPart`s are skipped along with everything else that is not a user prompt:
+    a system prompt is agent configuration, not a fact about the user.
+    """
+    out: list[ChatMessage] = []
+    for part in request.parts:
+        if not isinstance(part, UserPromptPart):
+            continue
+        text = content_text(part.content)
+        if text:
+            out.append(ChatMessage(role="user", content=text))
+    return out
+
+
+def _assistant_message_in(response: ModelResponse) -> Optional[ChatMessage]:
+    """The assistant's text in one response, or `None` when it said nothing.
+
+    Tool calls, tool returns and thinking parts are mechanics rather than things to remember,
+    so only `TextPart`s contribute. Several of them join into one message.
+    """
+    chunks = [
+        part.content.strip()
+        for part in response.parts
+        if isinstance(part, TextPart) and part.content and part.content.strip()
+    ]
+    if not chunks:
+        return None
+    return ChatMessage(role="assistant", content="\n\n".join(chunks))
+
+
 def chat_messages_from(messages: Sequence[ModelMessage]) -> list[ChatMessage]:
     """Convert run messages into Cortadel `ChatMessage`s.
 
@@ -115,19 +146,9 @@ def chat_messages_from(messages: Sequence[ModelMessage]) -> list[ChatMessage]:
     out: list[ChatMessage] = []
     for message in messages:
         if isinstance(message, ModelRequest):
-            for part in message.parts:
-                if isinstance(part, UserPromptPart):
-                    text = content_text(part.content)
-                    if text:
-                        out.append(ChatMessage(role="user", content=text))
-                elif isinstance(part, SystemPromptPart):
-                    continue
+            out.extend(_user_messages_in(message))
         elif isinstance(message, ModelResponse):
-            chunks = [
-                part.content.strip()
-                for part in message.parts
-                if isinstance(part, TextPart) and part.content and part.content.strip()
-            ]
-            if chunks:
-                out.append(ChatMessage(role="assistant", content="\n\n".join(chunks)))
+            assistant = _assistant_message_in(message)
+            if assistant is not None:
+                out.append(assistant)
     return out

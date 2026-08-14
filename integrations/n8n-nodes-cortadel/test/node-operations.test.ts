@@ -287,6 +287,17 @@ describe('user scoping and error propagation', () => {
 		expect((second.ctx.requests[0].body as any).user_id).toBe('e2e-bob');
 	});
 
+	it('rejects an unknown operation, including inherited Object keys', async () => {
+		// The dispatch table is a Map on purpose. As a plain object, `operation:
+		// 'toString'` would resolve `Object.prototype.toString`, pass a truthiness
+		// check and be invoked as a handler. Every one of these must 404, not dispatch.
+		for (const operation of ['nope', 'toString', 'constructor', 'valueOf', '__proto__']) {
+			await expect(
+				run({ params: { operation, userId: TEST_USER } }),
+			).rejects.toThrow(/unknown operation/i);
+		}
+	});
+
 	it('wraps a transport failure as a node error', async () => {
 		await expect(
 			run({

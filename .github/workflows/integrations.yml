@@ -110,7 +110,7 @@ jobs:
           # The four legs that moved here from the Python matrix (claude-agent-sdk, deepagents,
           # langgraph, openai-agents) were each run through this job's exact command chain locally
           # against their committed pnpm-lock.yaml before being added: install, typecheck, test,
-          # build — 99, 83, 132 and 98 tests respectively, all green.
+          # build — 99, 97, 132 and 100 tests respectively, all green.
           - slug: claude-agent-sdk
             node-version: '20.x'
           - slug: deepagents
@@ -214,7 +214,7 @@ jobs:
       group: integrations-python-${{ matrix.slug }}-${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
-    # Generous enough for the heaviest leg (crewai resolves 154 packages, including a large
+    # Generous enough for the heaviest leg (crewai resolves 159 packages, including a large
     # onnxruntime wheel) without letting a hung leg burn a full hour of runner time.
     timeout-minutes: 25
     defaults:
@@ -239,7 +239,16 @@ jobs:
       # distribution publishes a wheel, so --no-build costs nothing today. If a future lock update
       # introduces an sdist-only dependency this step fails loudly — that is the flag working as
       # intended, and the fix is to look at the new dependency, not to drop it.
-      - run: uv sync --extra test --no-install-project --no-build --locked
+      #
+      # --group build adds the PEP 735 dependency group each of the three pyprojects declares,
+      # holding the hatchling build backend and editables. It is what makes the --no-build-isolation
+      # install below possible: that flag runs whatever backend is already in the environment, so
+      # the backend has to arrive here, from the lock, instead of being resolved live at build time.
+      # A dependency group rather than a second extra deliberately — groups are local development
+      # metadata and never reach a built wheel, so nothing about the published packages or their
+      # `test` extra changes. --no-install-project does not suppress the group: verified per leg
+      # that hatchling and editables land in the venv while the project itself stays uninstalled.
+      - run: uv sync --extra test --group build --no-install-project --no-build --locked
       # The local package, installed on its own with --no-deps: every dependency is already in
       # place from the step above, so this resolves nothing external.
       #
@@ -249,10 +258,46 @@ jobs:
       #     "`cortadel-crewai==0.1.0 @ editable+.` can't be installed because it is marked as
       #     `--no-build` but has no binary distribution". So the local package cannot be folded
       #     back into the sync step.
-      #   * `uv pip install --no-deps --no-build -e .` SUCCEEDS on all three legs.
+      #   * `uv pip install --no-deps --no-build ... -e .` SUCCEEDS on all three legs.
       # So the stricter flag is carried here too, rather than leaving this as the one install in
       # the job where a build hook could still run.
-      - run: uv pip install --no-deps --no-build -e .
+      #
+      # --no-build-isolation is what closes SonarCloud githubactions:S8544 ("Python dependencies
+      # should be locked to verified versions") on this line. An earlier revision of this comment
+      # argued the finding was a false positive because "no index is queried and no remote artifact
+      # is fetched". That claim was measured and it is FALSE — do not restore it. --no-deps only
+      # disables resolution of the package's *runtime* dependencies; building the editable wheel is
+      # a separate PEP 517 step, and under build isolation uv spins up a throwaway environment and
+      # resolves `[build-system] requires` from PyPI on every run:
+      #
+      #     DEBUG Adding direct dependency: hatchling*
+      #     DEBUG Sending revalidation request for: https://pypi.org/simple/hatchling/
+      #     DEBUG Selecting: hatchling==1.32.0 [compatible]
+      #     DEBUG Calling `hatchling.build.get_requires_for_build_editable()`
+      #     DEBUG Adding direct dependency: editables>=0.3, <1.dev0
+      #
+      # Eight packages in all (hatchling, editables, packaging, pathspec, pluggy, tomli, tomlkit,
+      # trove-classifiers), unpinned, unhashed and whatever is newest that day. That is exactly the
+      # class of unlocked dependency the rule exists to catch, and the one install in this job
+      # --no-build could never have covered: --no-build governs third-party *sdists*, not our own
+      # build backend.
+      #
+      # With --no-build-isolation uv runs the backend already present in the synced venv, which
+      # `--group build` above installs from uv.lock. Verified on each of the three legs by
+      # re-running this exact command with `-v --refresh`: zero pypi.org/simple requests (down from
+      # eight packages' worth), and hatchling now loading from
+      # .venv/lib/site-packages/hatchling/build.py rather than a temporary build environment.
+      # editables has to be in that group even though `[build-system] requires` never mentions it —
+      # hatchling requests it through the dynamic get_requires_for_build_editable() hook above, and
+      # without it this step fails with "ModuleNotFoundError: No module named 'editables'".
+      #
+      # The step is still here rather than dropped: replacing it with `-o pythonpath=.` on the
+      # pytest step also clears the finding but buys nothing (an editable install's whole effect on
+      # sys.path is a .pth holding this one directory, so the import resolves to the same file —
+      # measured on google-adk, 78 passed, identical module path), and installing the built wheel
+      # by path instead would make pytest import from site-packages rather than the tree under
+      # review, since pytest puts only tests/ on sys.path here.
+      - run: uv pip install --no-deps --no-build --no-build-isolation -e .
 
       # tests/ explicitly, even though all three already set `testpaths = ["tests"]` — the path is
       # passed so this step documents its own scope rather than relying on config a reader of this
@@ -270,8 +315,15 @@ jobs:
       # not worth it. uv's own build frontend produces the same sdist+wheel from the same
       # hatchling backend. This builds our own trusted source, which is the point of the step —
       # it is not the third-party sdist execution --no-build blocks above.
+      #
+      # --no-build-isolation for the same reason as the install step, and it is not redundant with
+      # it: `uv build` provisions its own build environments and was resolving hatchling from the
+      # index twice more per leg (once for the sdist, once for the wheel). The flag changes only
+      # where the backend comes from, not what is produced — checked by diffing the verbose logs
+      # with and without it, both of which call `build_sdist` then `build_wheel` against the source
+      # tree — and both artifacts still satisfy the py.typed check below.
       - name: Build sdist and wheel
-        run: uv build --sdist --wheel .
+        run: uv build --sdist --wheel --no-build-isolation .
 
       # PEP 561: py.typed is what makes a type checker treat the installed package as typed rather
       # than falling back to Any. All three declare it in their hatch include lists, but a target

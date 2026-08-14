@@ -107,7 +107,10 @@ export async function readViaSdk(sessionId: string, cwd?: string): Promise<Trans
   const messages = (await getSessionMessages(sessionId, cwd ? { dir: cwd } : undefined)) as unknown;
   if (!Array.isArray(messages)) return [];
   return messages.filter(isRecord).map((message) => ({
-    type: String(message.type ?? ""),
+    // `message` is only known to be a record, so `type` is `unknown`: coerce with a
+    // type guard rather than `String()`, which would turn a non-string into a
+    // stringified object that no downstream comparison could ever match.
+    type: typeof message.type === "string" ? message.type : "",
     message: message.message,
     uuid: uuidOf(message.uuid),
     isHuman: true,

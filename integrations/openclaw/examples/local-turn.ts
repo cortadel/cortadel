@@ -120,31 +120,29 @@ function toolOf(host: FakeHost, name: string): CortadelAgentTool {
 
 const heading = (text: string): void => console.log(`\n${"─".repeat(72)}\n${text}\n${"─".repeat(72)}`);
 
-async function main(): Promise<void> {
-  heading(`1. Load the plugin (Cortadel at ${BASE_URL} as ${USER_ID})`);
+/**
+ * The walkthrough, one function per numbered step.
+ *
+ * Split up rather than written as one long `main()` because each step is the
+ * unit a reader actually wants to read: the name says which part of the plugin
+ * it exercises, and `main()` below stays a table of contents for the whole run.
+ */
 
-  const host = createFakeHost({
-    baseUrl: BASE_URL,
-    apiKey: process.env.CORTADEL_API_KEY,
-    userId: USER_ID,
-    recallScope: "fixed",
-    topK: 5,
-    // Short budget so an unreachable server fails fast in this demo.
-    timeoutMs: 8000,
-    tags: ["openclaw-example"],
-  });
-
+/** Step 1 tail — what the plugin registered onto the host. */
+function showRegistrations(host: FakeHost): void {
   console.log(`\n  tools registered : ${host.tools.map((t) => t.name).join(", ")}`);
   console.log(`  hooks registered : ${[...host.hooks.keys()].join(", ")}`);
   console.log(`  memory corpus    : ${host.corpus ? "registered (additive)" : "disabled"}`);
-  if (host.promptSection) {
-    console.log("\n  System-prompt section the model sees:");
-    for (const line of host.promptSection({ availableTools: new Set(host.tools.map((t) => t.name)) })) {
-      console.log(`    · ${line}`);
-    }
-  }
+  if (!host.promptSection) return;
 
-  // ── Turn 1: the user states something durable. -----------------------------
+  console.log("\n  System-prompt section the model sees:");
+  for (const line of host.promptSection({ availableTools: new Set(host.tools.map((t) => t.name)) })) {
+    console.log(`    · ${line}`);
+  }
+}
+
+/** Step 2 — the user states something durable, and Cortadel distils it. */
+async function runCapture(host: FakeHost): Promise<void> {
   heading("2. Turn 1 — capture (llm_output)");
 
   const turnOne = {
@@ -163,74 +161,112 @@ async function main(): Promise<void> {
   // Extraction runs off the request path, so give it a moment to land.
   console.log("\n  (waiting 3s for Cortadel's extraction pipeline)");
   await new Promise((resolve) => setTimeout(resolve, 3000));
+}
 
-  // ── Turn 2: a later question that should recall those facts. ---------------
-  heading("3. Turn 2 — automatic recall (before_prompt_build)");
-
-  const question = "Which database should I use for the new service, and when can I ship it?";
-  console.log(`  user : ${question}\n`);
-
+/** Fire `before_prompt_build` and hand back what it resolved to. */
+async function recallOnce(host: FakeHost, question: string): Promise<RecallResult | undefined> {
   // Each hook returns its own result type; this one's is `{ prependContext }`.
-  const recalled = (await hookOf(host, "before_prompt_build")({ prompt: question, messages: [] }, TURN)) as
+  return (await hookOf(host, "before_prompt_build")({ prompt: question, messages: [] }, TURN)) as
     | RecallResult
     | undefined;
+}
 
+/** Step 3 — a later question that should pull those facts back in. */
+async function runRecall(host: FakeHost, question: string): Promise<void> {
+  heading("3. Turn 2 — automatic recall (before_prompt_build)");
+  console.log(`  user : ${question}\n`);
+
+  const recalled = await recallOnce(host, question);
   if (recalled?.prependContext) {
     console.log("  → prepended to the turn context:\n");
+    // `^` with the `m` flag matches at every line start, which no plain-string
+    // `replaceAll` can express — so this one stays a regex.
     console.log(recalled.prependContext.replace(/^/gm, "    "));
   } else {
     console.log("  → nothing injected (no server, no matches, or already injected this session).");
   }
+}
 
-  // ── The same memories, reached deliberately by the agent. ------------------
+/** Step 4 — the same memories, reached deliberately by the agent. */
+async function runAgentSearch(host: FakeHost): Promise<void> {
   heading("4. Turn 2 — the agent calls cortadel_search_memory itself");
 
   const searchResult = await toolOf(host, "cortadel_search_memory").execute("example-call-1", {
     query: "database preference",
     topK: 3,
   });
-  console.log(`  ${searchResult.content[0].text.replace(/\n/g, "\n  ")}`);
+  console.log(`  ${searchResult.content[0].text.replaceAll("\n", "\n  ")}`);
+}
 
-  // ── And through OpenClaw's own memory tool. --------------------------------
+/** Step 5 — and through OpenClaw's own memory tool. */
+async function runCorpus(host: FakeHost): Promise<void> {
   heading("5. The same memories through OpenClaw's built-in memory_search");
 
   if (!host.corpus) {
     console.log("  (corpus supplement disabled by config)");
-  } else {
-    const rows = await host.corpus.search({ query: "deployment schedule", maxResults: 3, agentSessionKey: SESSION_KEY });
-    if (rows.length === 0) {
-      console.log("  (no rows — Cortadel unreachable or nothing stored yet)");
-    } else {
-      for (const row of rows) {
-        console.log(`  [${row.corpus}] ${row.path}  score=${row.score.toFixed(4)}`);
-        console.log(`      ${row.snippet}`);
-      }
-      // Every row is addressable, so the agent can read one back in full.
-      const full = await host.corpus.get({ lookup: rows[0].path, agentSessionKey: SESSION_KEY });
-      if (full) console.log(`\n  memory_get(${rows[0].path}):\n      ${full.content}`);
-    }
+    return;
   }
 
-  // ── Recall dedupe: the same question again injects nothing new. ------------
+  const rows = await host.corpus.search({ query: "deployment schedule", maxResults: 3, agentSessionKey: SESSION_KEY });
+  if (rows.length === 0) {
+    console.log("  (no rows — Cortadel unreachable or nothing stored yet)");
+    return;
+  }
+
+  for (const row of rows) {
+    console.log(`  [${row.corpus}] ${row.path}  score=${row.score.toFixed(4)}`);
+    console.log(`      ${row.snippet}`);
+  }
+  // Every row is addressable, so the agent can read one back in full.
+  const full = await host.corpus.get({ lookup: rows[0].path, agentSessionKey: SESSION_KEY });
+  if (full) console.log(`\n  memory_get(${rows[0].path}):\n      ${full.content}`);
+}
+
+/** Step 6 — recall dedupe: the same question again injects nothing new. */
+async function runRepeatRecall(host: FakeHost, question: string): Promise<void> {
   heading("6. Ask again — recall does not repeat itself");
 
-  const again = (await hookOf(host, "before_prompt_build")({ prompt: question, messages: [] }, TURN)) as
-    | RecallResult
-    | undefined;
+  const again = await recallOnce(host, question);
   console.log(
     again?.prependContext
       ? "  → injected new memories (different hits than last turn)."
       : "  → nothing injected — either already in this conversation's context, or memory is unavailable.",
   );
+}
+
+async function main(): Promise<void> {
+  heading(`1. Load the plugin (Cortadel at ${BASE_URL} as ${USER_ID})`);
+
+  const host = createFakeHost({
+    baseUrl: BASE_URL,
+    apiKey: process.env.CORTADEL_API_KEY,
+    userId: USER_ID,
+    recallScope: "fixed",
+    topK: 5,
+    // Short budget so an unreachable server fails fast in this demo.
+    timeoutMs: 8000,
+    tags: ["openclaw-example"],
+  });
+  showRegistrations(host);
+
+  await runCapture(host);
+
+  const question = "Which database should I use for the new service, and when can I ship it?";
+  await runRecall(host, question);
+  await runAgentSearch(host);
+  await runCorpus(host);
+  await runRepeatRecall(host, question);
 
   heading("Done");
   console.log(`  Memories are stored under user "${USER_ID}".`);
   console.log("  Inspect them in the Cortadel dashboard, or clean up with the SDK's delete().\n");
 }
 
-main().catch((error: unknown) => {
+try {
+  await main();
+} catch (error: unknown) {
   // Reaching here means a bug, not an outage: every Cortadel call inside the
   // plugin is already guarded and degrades on its own.
   console.error("\nExample failed:", error);
   process.exit(1);
-});
+}

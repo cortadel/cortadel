@@ -34,6 +34,24 @@ export interface MessagePair {
  */
 const TEXT_PART_TYPES = new Set(['input_text', 'output_text', 'text', 'summary_text']);
 
+/**
+ * Whether a content part's `type` names one of the text-bearing kinds.
+ *
+ * A missing `type` counts: some provider shims emit a bare `{ text: '…' }` part.
+ *
+ * The `typeof` check is load-bearing, not defensive noise. `type` arrives as `unknown`, and
+ * coercing it with `String()` would flatten every object to `"[object Object]"` — worse, a part
+ * whose `type` carried its own `toString()` could return `"text"` and impersonate a real text
+ * part. Only an actual string can name a kind; anything else is a shape we do not understand and
+ * is dropped.
+ */
+function isTextPartType(partType: unknown): boolean {
+  if (partType === undefined) {
+    return true;
+  }
+  return typeof partType === 'string' && TEXT_PART_TYPES.has(partType);
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -91,8 +109,7 @@ export function itemText(item: unknown): string {
     if (!partRecord) {
       continue;
     }
-    const partType = partRecord['type'];
-    if (partType !== undefined && !TEXT_PART_TYPES.has(String(partType))) {
+    if (!isTextPartType(partRecord['type'])) {
       continue;
     }
     const text = partRecord['text'];

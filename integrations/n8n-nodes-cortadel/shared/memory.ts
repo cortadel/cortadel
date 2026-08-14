@@ -78,36 +78,38 @@ export function createFallbackMessageFactory(): MessageFactory {
 
 let messageFactoryPromise: Promise<MessageFactory> | undefined;
 
+/** Resolves the host's real LangChain message classes, or the shim if absent. */
+async function resolveMessageFactory(): Promise<MessageFactory> {
+	try {
+		// Indirect specifier: this module is an optional *host* capability, not a
+		// dependency of this package, so it must not be resolved at compile time.
+		const specifier = '@langchain/core/messages';
+		const mod = (await import(specifier)) as {
+			HumanMessage: new (content: string) => MinimalMessage;
+			AIMessage: new (content: string) => MinimalMessage;
+			SystemMessage: new (content: string) => MinimalMessage;
+		};
+		if (!mod?.HumanMessage || !mod?.AIMessage || !mod?.SystemMessage) {
+			return createFallbackMessageFactory();
+		}
+		return {
+			human: (content: string) => new mod.HumanMessage(content),
+			ai: (content: string) => new mod.AIMessage(content),
+			system: (content: string) => new mod.SystemMessage(content),
+		};
+	} catch {
+		return createFallbackMessageFactory();
+	}
+}
+
 /**
  * Prefers the host's own `@langchain/core/messages` so the objects we hand the agent
  * are genuine LangChain messages; falls back to the shim when it is not resolvable.
  * Never rejects, and the resolved factory is cached for the process.
  */
 export function loadMessageFactory(): Promise<MessageFactory> {
-	if (messageFactoryPromise === undefined) {
-		messageFactoryPromise = (async () => {
-			try {
-				// Indirect specifier: this module is an optional *host* capability, not a
-				// dependency of this package, so it must not be resolved at compile time.
-				const specifier = '@langchain/core/messages';
-				const mod = (await import(specifier)) as {
-					HumanMessage: new (content: string) => MinimalMessage;
-					AIMessage: new (content: string) => MinimalMessage;
-					SystemMessage: new (content: string) => MinimalMessage;
-				};
-				if (!mod?.HumanMessage || !mod?.AIMessage || !mod?.SystemMessage) {
-					return createFallbackMessageFactory();
-				}
-				return {
-					human: (content: string) => new mod.HumanMessage(content),
-					ai: (content: string) => new mod.AIMessage(content),
-					system: (content: string) => new mod.SystemMessage(content),
-				};
-			} catch {
-				return createFallbackMessageFactory();
-			}
-		})();
-	}
+	// `??=` short-circuits, so the import is still attempted exactly once per process.
+	messageFactoryPromise ??= resolveMessageFactory();
 	return messageFactoryPromise;
 }
 
@@ -440,7 +442,8 @@ export class CortadelChatMemory {
 		if (this.contextFormat === 'messages') {
 			return facts.map((fact) => render(fact));
 		}
-		return [render(`${this.contextHeader}\n${facts.map((f) => `- ${f}`).join('\n')}`)];
+		const bulletList = facts.map((fact) => `- ${fact}`).join('\n');
+		return [render(`${this.contextHeader}\n${bulletList}`)];
 	}
 }
 

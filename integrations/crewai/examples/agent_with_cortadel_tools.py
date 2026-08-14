@@ -35,10 +35,11 @@ BASE_URL = os.environ.get("CORTADEL_BASE_URL", "http://localhost:3001")
 
 def main() -> None:
     # Both tools share one client, so one connection serves the whole agent.
+    # Servers that enforce auth also want an api_key argument here; leaving it
+    # off falls back to $CORTADEL_API_KEY.
     tools = cortadel_tools(
         base_url=BASE_URL,
         user_id=USER_ID,
-        # api_key="...",   # only when the server enforces auth
     )
 
     support = Agent(

@@ -145,4 +145,38 @@ describe("describeError", () => {
     expect(describeError(new Error("plain"))).toBe("plain");
     expect(describeError(42)).toBe("42");
   });
+
+  it("keeps the shape of a thrown object that has no message", () => {
+    // Regression: this used to render as "[object Object]", so a throw the SDK
+    // did not wrap reached the log with every field stripped off it.
+    const described = describeError({ reason: "socket hang up", retryable: true });
+    expect(described).not.toContain("[object Object]");
+    expect(described).toContain("socket hang up");
+    expect(described).toContain("retryable");
+  });
+
+  it("keeps the status and code when the message is unusable", () => {
+    expect(describeError({ status: 500, code: "http_error" })).toBe(
+      'cortadel http_error (500): {"status":500,"code":"http_error"}',
+    );
+  });
+
+  it("never throws on a value that cannot be rendered", () => {
+    // `describeError` runs inside a catch block; a throw here would escape
+    // `call()` and break its "never a throw" contract.
+    const circular: Record<string, unknown> = { reason: "loop" };
+    circular.self = circular;
+    expect(() => describeError(circular)).not.toThrow();
+
+    // A null-prototype object has no `toString`, so `String()` alone throws.
+    const bare = Object.create(null) as Record<string, unknown>;
+    bare.reason = "no prototype";
+    expect(describeError(bare)).toContain("no prototype");
+  });
+
+  it("caps a huge object so one odd throw cannot flood the log", () => {
+    const described = describeError({ blob: "x".repeat(5_000) });
+    expect(described.length).toBeLessThan(300);
+    expect(described.endsWith("…")).toBe(true);
+  });
 });

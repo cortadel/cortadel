@@ -247,7 +247,8 @@ class Backend:
         if self.on_error is not None:
             try:
                 self.on_error(exc)
-            except Exception:  # noqa: BLE001 - a broken error handler must not break the run
+            # A broken error handler must not break the run.
+            except Exception:  # noqa: BLE001
                 _log.exception("cortadel: on_error callback raised")
             return
         if not self.raise_on_error:
@@ -296,7 +297,8 @@ class Backend:
         try:
             client = self.client_for(ctx)
             results = await client.search(query, options)
-        except Exception as exc:  # noqa: BLE001 - memory must degrade, never fail the run
+        # Memory must degrade, never fail the run.
+        except Exception as exc:  # noqa: BLE001
             self.report(exc)
             return None
         return list(results.results or [])

@@ -103,3 +103,71 @@ describe("toChatMessages", () => {
     expect(toChatMessages([new SystemMessage("only system")])).toEqual([]);
   });
 });
+
+/**
+ * Message types that name an inherited `Object.prototype` member.
+ *
+ * A message's `type` / `role` / `getType()` is data, not a vetted enum — it arrives from LangGraph
+ * state, from a plain `{ role, content }` object a caller passed to `agent.invoke`, or from a tool
+ * result. A plain-object role table answers `"constructor"` with `Object`, `"toString"` with a
+ * function and `"__proto__"` with `Object.prototype`: all truthy, so an `if (!role) continue` guard
+ * lets them through and a non-string role reaches Cortadel as a conversation role.
+ */
+const INHERITED_KEYS = [
+  "constructor",
+  "toString",
+  "valueOf",
+  "hasOwnProperty",
+  "__proto__",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+];
+
+describe("toChatMessages / inherited Object.prototype keys", () => {
+  it.each(INHERITED_KEYS)('skips a message whose type is "%s"', (key) => {
+    expect(toChatMessages([{ type: key, content: "poison" }])).toEqual([]);
+    expect(toChatMessages([{ role: key, content: "poison" }])).toEqual([]);
+    expect(toChatMessages([{ getType: () => key, content: "poison" }])).toEqual([]);
+  });
+
+  it("skips them exactly like any other unknown type", () => {
+    const inherited = toChatMessages(INHERITED_KEYS.map((key) => ({ type: key, content: "x" })));
+    const unknown = toChatMessages([
+      { type: "system", content: "x" },
+      { type: "tool", content: "x" },
+      { type: "nonsense", content: "x" },
+    ]);
+    expect(inherited).toEqual(unknown);
+    expect(inherited).toEqual([]);
+  });
+
+  it("never emits a role that is not a string", () => {
+    for (const key of INHERITED_KEYS) {
+      for (const role of toChatMessages([{ type: key, content: "poison" }]).map((m) => m.role)) {
+        expect(typeof role).toBe("string");
+      }
+    }
+  });
+
+  it("drops them from a transcript without disturbing the real dialogue", () => {
+    const converted = toChatMessages([
+      new HumanMessage("remember I ship on Fridays"),
+      { type: "constructor", content: "poison" },
+      { role: "toString", content: "poison" },
+      new AIMessage("Noted."),
+    ]);
+
+    expect(converted).toEqual([
+      { role: "user", content: "remember I ship on Fridays" },
+      { role: "assistant", content: "Noted." },
+    ]);
+  });
+
+  it("still reports the type verbatim — the guard belongs at the role mapping", () => {
+    // `messageType` is a reporter, not a filter: narrowing it here would mask, rather than fix,
+    // the lookup that actually mishandles these strings.
+    expect(messageType({ type: "constructor", content: "x" })).toBe("constructor");
+    expect(messageType({ role: "toString", content: "x" })).toBe("toString");
+  });
+});

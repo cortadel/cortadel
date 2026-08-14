@@ -321,8 +321,8 @@ export class CortadelSession implements Session {
     }
 
     const pairs = messagePairs([item]);
-    const last = this.pending[this.pending.length - 1];
-    const popped = pairs[pairs.length - 1];
+    const last = this.pending.at(-1);
+    const popped = pairs.at(-1);
     if (last && popped && last.role === popped.role && last.content === popped.text) {
       this.pending.pop();
     }
@@ -522,8 +522,9 @@ export class CortadelSession implements Session {
       };
     }
 
-    const insertAt = lastUserIndex(items);
-    const position = insertAt === undefined ? items.length : insertAt;
+    // `??`, not `||`: index 0 is a legitimate insertion point (the user message is first), and
+    // `||` would mistake it for "no user message" and append at the end instead.
+    const position = lastUserIndex(items) ?? items.length;
     const memoryItem: AgentInputItem = { role: 'system', content: block };
     return {
       input: [...items.slice(0, position), memoryItem, ...items.slice(position)],

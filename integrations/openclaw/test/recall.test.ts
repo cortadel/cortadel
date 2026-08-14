@@ -136,7 +136,8 @@ describe("formatRecallBlock", () => {
     const block = formatRecallBlock(many, 1_000)!;
 
     expect(block.injected.length).toBeLessThan(many.length);
-    expect(block.injected.length).toBe(block.text.split("\n").length - 3); // minus the two tags and the header
+    // minus the two tags and the header
+    expect(block.injected).toHaveLength(block.text.split("\n").length - 3);
     for (const emitted of block.injected) expect(block.text).toContain(emitted.id === "m0" ? "- x" : "x");
     // Every rendered id is an input id, in input order, with no gaps.
     expect(block.injected.map((h) => h.id)).toEqual(many.slice(0, block.injected.length).map((h) => h.id));

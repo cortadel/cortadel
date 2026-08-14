@@ -17,6 +17,9 @@ import { generateText, stepCountIs } from "ai";
 
 import { cortadelTools } from "@cortadel/vercel-ai-provider";
 
+// Model output is untrusted text; printing it raw is log injection. See ./safe-log.ts.
+import { logSafe } from "./safe-log.js";
+
 // A tool set is bound to one user id, because a Cortadel client is. That is the safety property:
 // the user id is not part of any tool's input schema, so no instruction hidden in a document can
 // talk the model into reading somebody else's memories. For a multi-tenant server, build one of
@@ -45,7 +48,7 @@ const stored = await generateText({
   prompt: "I've moved the team's standup to 10:15 and we're dropping the Wednesday one entirely.",
 });
 
-console.log("stored:", stored.text);
+console.log("stored:", logSafe(stored.text));
 console.log(
   "tool calls:",
   stored.steps.flatMap((step) => step.toolCalls.map((call) => call.toolName)),
@@ -60,4 +63,4 @@ const recalled = await generateText({
   prompt: "When is standup?",
 });
 
-console.log("recalled:", recalled.text);
+console.log("recalled:", logSafe(recalled.text));

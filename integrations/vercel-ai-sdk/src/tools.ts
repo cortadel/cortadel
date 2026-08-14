@@ -168,7 +168,10 @@ function messageOf(error: unknown): string {
  */
 export function cortadelTools(options: CortadelToolsOptions): CortadelToolSet {
   const resolver = new ClientResolver(options);
-  const userId = resolver.resolveUserId(undefined) as string;
+  // No per-request override exists here — a tool set is bound to one user id — so the resolver is
+  // asked for the configured one. Its constructor has already rejected a config that has neither a
+  // `userId` nor a client to take one from, which is what the cast records.
+  const userId = resolver.resolveUserId() as string;
   const client: CortadelMemoryClient = resolver.resolve(userId);
 
   const searchOptions = options.search ?? {};

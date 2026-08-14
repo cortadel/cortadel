@@ -91,7 +91,20 @@ function defaultOnError(error: unknown, context: CortadelErrorContext): void {
   console.warn(`[cortadel/mastra] ${context.operation} failed: ${message}`);
 }
 
-/** Cheap non-cryptographic hash, used only to spot an identical repeat turn. */
+/**
+ * Cheap non-cryptographic hash, used only to spot an identical repeat turn.
+ *
+ * It walks UTF-16 **code units** on purpose, and `charCodeAt` is the right call
+ * here rather than `codePointAt`. FNV-1a is defined over a stream of small
+ * words — one mixing round per word — so feeding it 16-bit units gives an
+ * astral character (emoji, CJK ext.) two rounds of avalanche instead of one,
+ * and never XORs bits above 16 that the 32-bit variant's prime was not chosen
+ * to diffuse. Splitting a surrogate pair loses nothing, because every unit is
+ * consumed: two different strings still produce two different unit streams.
+ * Collision quality is the one property that matters — a collision here would
+ * make an unrelated turn look like a duplicate and drop it — so the code-unit
+ * walk is the better hash, not merely the incumbent one.
+ */
 function fnv1a(value: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < value.length; i += 1) {
@@ -339,8 +352,8 @@ export class CortadelMemoryProcessor implements Processor {
   #query(args: { messageList?: unknown; messages?: readonly unknown[] }): string {
     const list = args.messageList as { getLatestUserContent?: () => string | null } | undefined;
     try {
-      const latest = list?.getLatestUserContent?.();
-      if (latest && latest.trim()) return latest.trim();
+      const latest = list?.getLatestUserContent?.()?.trim();
+      if (latest) return latest;
     } catch {
       // Fall through to reading the raw messages.
     }

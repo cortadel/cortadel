@@ -46,10 +46,11 @@ def report_memory_failure(exc: BaseException) -> None:
 
 
 def build_crew() -> tuple[Crew, CortadelMemory]:
+    # Servers that enforce auth also want an api_key argument here; leaving it
+    # off falls back to $CORTADEL_API_KEY.
     memory = CortadelMemory(
         base_url=BASE_URL,
         user_id=USER_ID,
-        # api_key="...",            # only needed when the server enforces auth
         rerank="cross_encoder",     # let Cortadel rerank with its cross-encoder
         dedupe_window=50,           # don't re-inject facts recalled a moment ago
         on_error=report_memory_failure,

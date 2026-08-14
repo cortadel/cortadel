@@ -62,10 +62,50 @@ describe("sanitizeDiscriminator", () => {
 
   it("trims leading and trailing separators", () => {
     expect(sanitizeDiscriminator("--abc--")).toBe("abc");
+    // Dots are edge separators too, and are not collapsed in the interior.
+    expect(sanitizeDiscriminator("..a.-.b..")).toBe("a.-.b");
+    expect(sanitizeDiscriminator(".-.-.")).toBe("");
+    expect(sanitizeDiscriminator("-")).toBe("");
+    expect(sanitizeDiscriminator("")).toBe("");
   });
 
   it("caps very long opaque ids", () => {
-    expect(sanitizeDiscriminator("x".repeat(500)).length).toBe(96);
+    expect(sanitizeDiscriminator("x".repeat(500))).toHaveLength(96);
+  });
+
+  it("stays linear on a separator run that cannot reach either end", () => {
+    // Regression pin for a ReDoS. This used to be
+    // `.replace(/^[-.]+|[-.]+$/g, "")`, which is quadratic: a leading non-
+    // separator defeats the `^` alternative, so every offset inside the run
+    // falls through to `[-.]+$`, matches to the end of the run and backtracks
+    // all of it away against a `$` that can never match. The payload survives
+    // the two earlier replaces untouched (`.` is in the safe class, and there
+    // is no `--` to collapse), and the length cap is applied only afterwards,
+    // so an opaque provider-supplied sender id could stall the event loop.
+    const payload = `a${".".repeat(200_000)}a`;
+
+    const startedAt = performance.now();
+    const result = sanitizeDiscriminator(payload);
+    const elapsedMs = performance.now() - startedAt;
+
+    // Unchanged apart from the cap: nothing to strip at either end.
+    expect(result).toBe(`a${".".repeat(95)}`);
+    // The old pattern needed ~8s here and grew with the square of the input;
+    // a linear scan needs well under a millisecond. The budget is loose enough
+    // not to flake on a loaded CI box and still three orders of magnitude
+    // below the quadratic behaviour it guards against.
+    expect(elapsedMs).toBeLessThan(1_000);
+  });
+
+  it("stays linear on alternating separators, which survive the `--` collapse", () => {
+    const payload = `a${".-".repeat(100_000)}a`;
+
+    const startedAt = performance.now();
+    const result = sanitizeDiscriminator(payload);
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(result).toBe(`a${".-".repeat(47)}.`);
+    expect(elapsedMs).toBeLessThan(1_000);
   });
 });
 

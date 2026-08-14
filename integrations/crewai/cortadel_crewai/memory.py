@@ -137,8 +137,13 @@ class CortadelMemory(Memory):
         ),
     )
 
+    # `_recent_ids` needs PrivateAttr for its factory (a mutable default). A
+    # plain default says the same thing for `_owns_client` — pydantic wraps any
+    # annotated underscore attribute in a PrivateAttr itself — and this way the
+    # `bool` annotation describes the value actually assigned rather than the
+    # ModelPrivateAttr descriptor that PrivateAttr(...) returns.
     _recent_ids: Deque[str] = PrivateAttr(default_factory=deque)
-    _owns_client: bool = PrivateAttr(default=False)
+    _owns_client: bool = False
 
     def model_post_init(self, __context: Any) -> None:
         """Wire up the Cortadel client after pydantic validation."""

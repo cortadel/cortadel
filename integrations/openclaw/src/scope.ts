@@ -9,6 +9,33 @@ import type { CortadelRecallScope, TurnIdentity } from "./types.js";
 /** Longest discriminator we append before truncating, keeping ids readable in the dashboard. */
 const MAX_DISCRIMINATOR = 96;
 
+/** Separators that are legal inside a discriminator but never at either end. */
+function isEdgeSeparator(char: string): boolean {
+  return char === "-" || char === ".";
+}
+
+/**
+ * Strip leading and trailing `-`/`.` in one linear scan.
+ *
+ * Deliberately not a regex. The obvious spelling — `/^[-.]+|[-.]+$/` — is
+ * quadratic: on `"a" + ".".repeat(n) + "a"` the leading `a` defeats the `^`
+ * alternative at every offset, so each of the n offsets inside the run falls
+ * through to `[-.]+$`, which consumes the rest of the run and then backtracks
+ * all of it away against a `$` that can never match. Measured on V8, the time
+ * quadrupled for every doubling of the input: 160k chars blocked the event loop
+ * for 5.6s. `value` here is an opaque provider-supplied id and the length cap is
+ * applied *after* this, so that was a reachable denial of service. Two index
+ * walks are O(n) by construction and need no reasoning about backtracking.
+ */
+function trimEdgeSeparators(value: string): string {
+  let start = 0;
+  let end = value.length;
+  // `charAt` (not `[i]`) so this stays correct under `noUncheckedIndexedAccess`.
+  while (start < end && isEdgeSeparator(value.charAt(start))) start += 1;
+  while (end > start && isEdgeSeparator(value.charAt(end - 1))) end -= 1;
+  return value.slice(start, end);
+}
+
 /**
  * Reduce an OpenClaw identifier to something safe to embed in a user id.
  *
@@ -19,13 +46,12 @@ const MAX_DISCRIMINATOR = 96;
  * the id stays greppable in logs and the dashboard.
  */
 export function sanitizeDiscriminator(value: string): string {
-  const cleaned = value
+  const collapsed = value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^[-.]+|[-.]+$/g, "");
-  return cleaned.slice(0, MAX_DISCRIMINATOR);
+    .replace(/-{2,}/g, "-");
+  return trimEdgeSeparators(collapsed).slice(0, MAX_DISCRIMINATOR);
 }
 
 /**

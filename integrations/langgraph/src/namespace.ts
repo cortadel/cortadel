@@ -39,7 +39,9 @@ const PLACEHOLDER = /^\{(\w+)\}$/;
 /** Normalise a namespace-ish value to an array of labels. */
 export function asNamespace(value: NamespaceLike): string[] {
   if (typeof value === "string") return [value];
-  return value.map((label) => String(label));
+  // `String` takes a single argument, so the extra `(index, array)` arguments `map` supplies are
+  // ignored — this is not the `["1","2"].map(parseInt)` trap.
+  return value.map(String);
 }
 
 /**
@@ -99,10 +101,10 @@ export function resolveNamespace(
     else resolved[index] = String(configurable[key]);
   }
   if (missing.length > 0) {
+    const quoted = missing.map((name) => `"${name}"`).join(", ");
     throw new Error(
-      `Namespace [${labels.join(", ")}] could not be resolved: missing ` +
-        `${missing.map((name) => `"${name}"`).join(", ")} in config.configurable. ` +
-        `Invoke with config={ configurable: { ${missing[0]}: "..." } }.`,
+      `Namespace [${labels.join(", ")}] could not be resolved: missing ${quoted} in ` +
+        `config.configurable. Invoke with config={ configurable: { ${missing[0]}: "..." } }.`,
     );
   }
   return resolved;

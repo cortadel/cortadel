@@ -138,9 +138,17 @@ function readRequestOptions(providerOptions: unknown): RequestOptions {
  *
  * `ai@7`'s V4 spec made `finishReason` an object (`{ unified, raw }`); V3 and earlier used a bare
  * string, and `wrapLanguageModel` still accepts those models. Handle both.
+ *
+ * The parameter is `unknown`, not a result shape, because both call sites sit outside every `try`
+ * in this file — one reads a provider's result, the other a stream part. Narrowing here rather than
+ * trusting the declared type is what stops a provider that hands back `undefined` throwing from a
+ * place nothing can report: an unreadable finish reason degrades to "no finish reason".
  */
-function unifiedFinishReason(result: { finishReason: unknown }): string | undefined {
-  const reason = result.finishReason;
+function unifiedFinishReason(result: unknown): string | undefined {
+  if (result == null || typeof result !== "object") {
+    return undefined;
+  }
+  const reason = (result as { finishReason?: unknown }).finishReason;
   if (typeof reason === "string") {
     return reason;
   }
@@ -151,11 +159,20 @@ function unifiedFinishReason(result: { finishReason: unknown }): string | undefi
   return undefined;
 }
 
-/** FNV-1a, salted with the input length. Keeps the persistence dedupe set small and bounded. */
+const utf8 = new TextEncoder();
+
+/**
+ * FNV-1a, salted with the input length. Keeps the persistence dedupe set small and bounded.
+ *
+ * Folded over UTF-8 bytes, which is what FNV-1a is actually defined on — and what stops an emoji
+ * or any other astral character being hashed as two stray UTF-16 halves. The digest never leaves
+ * this process (it is only ever a `Set` key), so all that is asked of it is that equal turns hash
+ * equal and unequal ones rarely collide.
+ */
 function fingerprint(value: string): string {
   let hash = 0x811c9dc5;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
+  for (const byte of utf8.encode(value)) {
+    hash ^= byte;
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return `${value.length.toString(36)}:${hash.toString(36)}`;
@@ -371,6 +388,38 @@ export function cortadelMemory(options: CortadelMemoryOptions): LanguageModelMid
     });
   }
 
+  /**
+   * Stores one finished turn: build the client, start the write, settle it per `awaitPersist`.
+   *
+   * Shared by `wrapGenerate` and `wrapStream` because both halves have to do exactly this, and a
+   * drift between them would mean streamed turns are remembered differently from generated ones.
+   *
+   * The two texts arrive as thunks, not strings, so that reading them happens *inside* the `try`
+   * below. Passed as plain arguments they would be evaluated at the call site, outside every
+   * catch in this file, and a provider handing back a malformed result — `content: undefined`,
+   * say — would abort the model call: precisely the fatal memory failure this integration exists
+   * to prevent. Wrapping the call in an outer `try` is not the equivalent fix, because `report`
+   * rethrows under `throwOnError`, so the outer catch would report the same failure a second time.
+   */
+  async function persistTurn(
+    userId: string,
+    sessionId: string | undefined,
+    userText: () => string,
+    replyText: () => string,
+  ): Promise<void> {
+    let pending: Promise<void> | undefined;
+    try {
+      const client = resolver.resolve(userId);
+      pending = persist(client, userId, sessionId, userText(), replyText());
+    } catch (error) {
+      // Synchronous failures only: constructing the client, or reading the turn's text out of a
+      // malformed prompt or result. `pending` stays undefined, so the settle below is a no-op —
+      // keeping the two apart is what stops one failure being reported twice.
+      report(error, { phase: "persist", userId });
+    }
+    await settlePersist(pending, userId);
+  }
+
   return {
     async transformParams({ params }) {
       const request = readRequestOptions(params.providerOptions);
@@ -381,12 +430,19 @@ export function cortadelMemory(options: CortadelMemoryOptions): LanguageModelMid
         return params;
       }
 
-      const query = lastUserText(params.prompt);
-      if (!query) {
-        return params;
-      }
-
       try {
+        // Reading the query belongs *inside* the try: `params.prompt` is provider-shaped data, and
+        // a malformed message throws while reading it. Outside, that throw would escape
+        // `transformParams` uncaught — no `onError`, `throwOnError: false` bypassed, and the model
+        // call aborted before it was ever made. A prompt this middleware cannot read is a recall
+        // failure like any other, so it degrades the same way: report, then search nothing.
+        const query = lastUserText(params.prompt);
+        if (!query) {
+          // Distinct from the above: the prompt read fine and simply holds no text to search for
+          // (an image-only turn). Nothing failed, so nothing is reported.
+          return params;
+        }
+
         const client = resolver.resolve(userId);
         const hits = await recall(
           client,
@@ -409,37 +465,24 @@ export function cortadelMemory(options: CortadelMemoryOptions): LanguageModelMid
     },
 
     async wrapGenerate({ doGenerate, params }) {
+      // The result is handed back exactly as the model produced it: this middleware remembers the
+      // turn, it never rewrites it. Only the memory side effect is conditional.
       const result = await doGenerate();
 
       const request = readRequestOptions(params.providerOptions);
       const userId = resolver.resolveUserId(request.userId);
       const enabled = request.persist ?? persistEnabled;
 
-      if (!enabled || userId == null) {
-        return result;
-      }
-      if (unifiedFinishReason(result) === "tool-calls") {
-        // Mid-loop: the model asked for a tool, so this turn is not finished yet.
-        return result;
-      }
-
-      let pending: Promise<void> | undefined;
-      try {
-        const client = resolver.resolve(userId);
-        pending = persist(
-          client,
+      // A finish reason of "tool-calls" is mid-loop: the model asked for a tool, so this turn is
+      // not finished yet and there is nothing complete to remember.
+      if (enabled && userId != null && unifiedFinishReason(result) !== "tool-calls") {
+        await persistTurn(
           userId,
           request.sessionId ?? options.sessionId,
-          lastUserText(params.prompt),
-          assistantText(result.content as LanguageModelGenerateResult["content"]),
+          () => lastUserText(params.prompt),
+          () => assistantText(result.content as LanguageModelGenerateResult["content"]),
         );
-      } catch (error) {
-        // Synchronous failures only (client construction); the write itself settles below, so
-        // keeping the two apart is what stops a single failure being reported twice.
-        report(error, { phase: "persist", userId });
-        return result;
       }
-      await settlePersist(pending, userId);
 
       return result;
     },
@@ -460,11 +503,14 @@ export function cortadelMemory(options: CortadelMemoryOptions): LanguageModelMid
 
       const capture = new TransformStream<LanguageModelStreamPart, LanguageModelStreamPart>({
         transform(part, controller) {
-          const typed = part as { type: string; delta?: unknown; finishReason?: unknown };
+          // `?? {}` because a throw in here errors the stream the consumer is already reading —
+          // a memory tap must never be able to do that, and a null part is the provider's problem
+          // to fail on downstream, not ours. The part itself is enqueued exactly as it arrived.
+          const typed = (part ?? {}) as { type?: unknown; delta?: unknown };
           if (typed.type === "text-delta" && typeof typed.delta === "string") {
             text += typed.delta;
           } else if (typed.type === "finish") {
-            finishReason = unifiedFinishReason(typed as { finishReason: unknown });
+            finishReason = unifiedFinishReason(part);
           }
           controller.enqueue(part);
         },
@@ -472,21 +518,12 @@ export function cortadelMemory(options: CortadelMemoryOptions): LanguageModelMid
           if (finishReason === "tool-calls") {
             return;
           }
-          let pending: Promise<void> | undefined;
-          try {
-            const client = resolver.resolve(userId);
-            pending = persist(
-              client,
-              userId,
-              request.sessionId ?? options.sessionId,
-              lastUserText(params.prompt),
-              text.trim(),
-            );
-          } catch (error) {
-            report(error, { phase: "persist", userId });
-            return;
-          }
-          await settlePersist(pending, userId);
+          await persistTurn(
+            userId,
+            request.sessionId ?? options.sessionId,
+            () => lastUserText(params.prompt),
+            () => text.trim(),
+          );
         },
       });
 

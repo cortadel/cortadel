@@ -154,7 +154,8 @@ export class FakeCortadelClient implements CortadelMemoryClient {
 export class RecordingLogger {
   readonly warnings: string[] = [];
   warn(message: string, ...args: unknown[]): void {
-    this.warnings.push([message, ...args.map((arg) => String(arg))].join(" "));
+    // `String` takes a single argument, so `map`'s extra `(index, array)` arguments are ignored.
+    this.warnings.push([message, ...args.map(String)].join(" "));
   }
 }
 

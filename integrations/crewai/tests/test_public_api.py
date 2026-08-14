@@ -95,6 +95,68 @@ def test_does_not_import_the_private_generated_transport() -> None:
         assert "_generated" not in path.read_text(encoding="utf-8"), path
 
 
+def test_inert_storage_satisfies_the_crewai_storage_protocol() -> None:
+    """The ``storage`` slot is duck-typed, so nothing else checks this.
+
+    ``InertStorage`` declares its methods variadic instead of restating
+    ``StorageBackend``'s parameter lists, so this test is what pins the
+    contract: ``isinstance`` against the ``runtime_checkable`` protocol fails
+    the moment CrewAI adds a member we do not stub, and every method is called
+    with the exact keyword shape ``crewai.memory.unified_memory`` uses,
+    asserting it reports "nothing stored locally" rather than raising.
+    """
+    import asyncio
+    from datetime import datetime, timezone
+
+    from crewai.memory.storage.backend import StorageBackend
+    from crewai.memory.types import MemoryRecord
+
+    from cortadel_crewai._inert import InertStorage
+
+    storage = InertStorage()
+    assert isinstance(storage, StorageBackend)
+
+    record = MemoryRecord(id="e2e-crewai-inert", content="ignored")
+
+    assert storage.save([record]) is None
+    assert (
+        storage.search(
+            [0.1],
+            scope_prefix="/a",
+            categories=["c"],
+            metadata_filter={"k": 1},
+            limit=3,
+            min_score=0.0,
+        )
+        == []
+    )
+    assert (
+        storage.delete(
+            scope_prefix="/a",
+            categories=None,
+            record_ids=["e2e-crewai-inert"],
+            older_than=datetime.now(timezone.utc),
+            metadata_filter=None,
+        )
+        == 0
+    )
+    assert storage.update(record) is None
+    assert storage.get_record("e2e-crewai-inert") is None
+    assert storage.list_records(scope_prefix="/a", limit=10, offset=0) == []
+    assert storage.get_scope_info("/a").path == "/a"
+    assert storage.list_scopes("/") == []
+    assert storage.list_categories(scope_prefix="/a") == {}
+    assert storage.count(scope_prefix=None) == 0
+    assert storage.reset(scope_prefix=None) is None
+    assert storage.close() is None
+
+    # StorageBackend declares these three async and callers await them, so they
+    # must stay awaitable however trivial the body is.
+    assert asyncio.run(storage.asave([record])) is None
+    assert asyncio.run(storage.asearch([0.1], limit=2)) == []
+    assert asyncio.run(storage.adelete(record_ids=["e2e-crewai-inert"])) == 0
+
+
 def test_constructing_memory_builds_no_local_vector_store(tmp_path: pathlib.Path) -> None:
     """A fresh interpreter: CortadelMemory must not pull in LanceDB, must not
     need an LLM key, and must not write ./.crewai into the caller's cwd.

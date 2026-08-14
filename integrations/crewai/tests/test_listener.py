@@ -79,8 +79,12 @@ def test_raise_on_error_propagates(broken_client: BrokenCortadelClient) -> None:
     from cortadel import CortadelError
 
     listener = CortadelConversationListener(client=broken_client, raise_on_error=True)
+    event = make_event()
+
+    # Only record_task() is inside the block, so the test cannot pass because
+    # the fixture happened to blow up while building the event.
     with pytest.raises(CortadelError):
-        listener.record_task(make_event())
+        listener.record_task(event)
 
 
 def test_on_error_callback_observes_swallowed_failures(

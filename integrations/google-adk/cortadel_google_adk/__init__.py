@@ -36,6 +36,7 @@ from ._convert import MEMORY_AUTHOR
 from .memory_service import DEFAULT_APP_NAME
 from .memory_service import DEFAULT_BASE_URL
 from .memory_service import DEFAULT_TOP_K
+from .memory_service import CortadelMemoryOptions
 from .memory_service import CortadelMemoryService
 from .plugin import CortadelMemoryPlugin
 from .tools import cortadel_memory_tools
@@ -45,6 +46,7 @@ from .tools import make_search_memory_tool
 __version__ = "0.1.0"
 
 __all__ = [
+    "CortadelMemoryOptions",
     "CortadelMemoryPlugin",
     "CortadelMemoryService",
     "DEFAULT_APP_NAME",

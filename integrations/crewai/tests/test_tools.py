@@ -167,10 +167,12 @@ def test_raise_on_error_tool_propagates_errors(
 ) -> None:
     from cortadel import CortadelError
 
+    tool = CortadelSearchMemoryTool(client=broken_client, raise_on_error=True)
+
+    # Only _run() is inside the block: constructing the tool must not be what
+    # raises, or this would still pass with the search path never reached.
     with pytest.raises(CortadelError):
-        CortadelSearchMemoryTool(client=broken_client, raise_on_error=True)._run(
-            query="q"
-        )
+        tool._run(query="q")
 
 
 def test_cortadel_tools_forwards_error_options(

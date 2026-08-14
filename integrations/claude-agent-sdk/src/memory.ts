@@ -318,7 +318,7 @@ export class CortadelMemory {
     const next: Options = { ...options };
 
     if (tools) {
-      next.mcpServers = { ...(options.mcpServers ?? {}), [this.serverName]: this.mcpServer };
+      next.mcpServers = { ...options.mcpServers, [this.serverName]: this.mcpServer };
       const allowed = [...(options.allowedTools ?? [])];
       for (const name of this.allowedTools) {
         if (!allowed.includes(name)) allowed.push(name);

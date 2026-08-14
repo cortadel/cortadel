@@ -135,29 +135,47 @@ agent = LlmAgent(name="assistant", model="gemini-2.0-flash", tools=cortadel_memo
 
 ## Configuration
 
-`CortadelMemoryService(base_url, **options)`:
+`CortadelMemoryService(base_url, ...)` — the keywords that shape a turn:
 
 | Option | Type | Default | Meaning |
 |---|---|---|---|
 | `base_url` | `str \| None` | `$CORTADEL_BASE_URL`, else `http://localhost:3001` | Cortadel server URL. |
 | `user_id` | `str \| None` | `None` | Pins **all** memory to one Cortadel user, ignoring the ADK session's user. For single-user agents or a shared knowledge base. Leave `None` to scope per ADK user. |
 | `api_key` | `str \| None` | `$CORTADEL_API_KEY` | Bearer token. Omit when the server runs with auth disabled. |
-| `app_name` | `str` | `"cortadel-google-adk"` | App name Cortadel records for access logging on searches. This is *Cortadel's* app name — unrelated to ADK's `app_name`, which arrives per call. |
 | `top_k` | `int` | `5` | Max hits per search (1–50). Below the Cortadel SDK's own default of 10 because the dominant caller here is *automatic injection* — ADK's `preload_memory` searches before **every** model call — and each hit is prompt budget spent every turn. The same knob serves this package's explicit `search_memory` tool; raise it if that is your main path. |
 | `search_mode` | `str` | `"hybrid"` | `hybrid`, `text` or `vector`. |
 | `rerank` | `str \| None` | `None` | `"cross_encoder"` to rerank with Cortadel's local cross-encoder. |
 | `memory_type` | `str \| None` | `None` | Restrict to `episodic`, `semantic` or `procedural`. |
 | `scope_recall_to_session` | `bool` | `False` | Make this package's `search_memory` tool pin recall to the current ADK session. Off by default — cross-session recall is the point. |
+| `raise_on_error` | `bool` | `False` | Propagate Cortadel failures to the caller. Off by default: a memory outage degrades the agent to no-memory rather than taking the run down. `True` re-raises `CortadelError`. |
+| `on_error` | `(BaseException) -> None \| None` | `None` | Called with the exception behind **every** failed Cortadel call, swallowed or re-raised. With no observer, a swallowed failure is logged as a warning instead. |
+| `user_id_resolver` | `(app_name, user_id) -> str` | `None` | Maps ADK's scope to a Cortadel user id. Overrides `user_id`. |
+| `options` | `CortadelMemoryOptions \| None` | `None` | The set-once half, below. |
+
+`options=CortadelMemoryOptions(...)` — client wiring you pick once, plus the ingestion defaults
+(each of which `add_session_to_memory` / `add_events_to_memory` can override per call through
+`custom_metadata`):
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `app_name` | `str` | `"cortadel-google-adk"` | App name Cortadel records for access logging on searches. This is *Cortadel's* app name — unrelated to ADK's `app_name`, which arrives per call. |
 | `is_agent_memory` | `bool` | `False` | Extract facts about the *assistant* instead of the user. |
 | `project` | `str \| None` | `None` | Cortadel project scope stamped on ingested conversations. |
 | `tags` | `Sequence[str] \| None` | `None` | Tags stamped on every extracted fact. |
-| `raise_on_error` | `bool` | `False` | Propagate Cortadel failures to the caller. Off by default: a memory outage degrades the agent to no-memory rather than taking the run down. `True` re-raises `CortadelError`. |
-| `on_error` | `(BaseException) -> None \| None` | `None` | Called with the exception behind **every** failed Cortadel call, swallowed or re-raised. With no observer, a swallowed failure is logged as a warning instead. |
 | `timeout` | `float` | `100.0` | Per-client HTTP timeout, in seconds. |
-| `user_id_resolver` | `(app_name, user_id) -> str` | `None` | Maps ADK's scope to a Cortadel user id. Overrides `user_id`. |
 | `client_factory` | `(user_id) -> CortadelClient` | `None` | Builds clients yourself; overrides `base_url`/`api_key`/`app_name`/`timeout`. Mainly a test seam. |
 | `max_clients` | `int` | `128` | LRU cap on pooled per-user clients. |
 | `dedupe_sessions` | `int` | `256` | How many session ids to track for delta ingestion. |
+
+```python
+from cortadel_google_adk import CortadelMemoryOptions, CortadelMemoryService
+
+memory = CortadelMemoryService(
+    "http://localhost:3001",
+    top_k=8,
+    options=CortadelMemoryOptions(project="atlas", tags=["adk"], timeout=30.0),
+)
+```
 
 `CortadelMemoryPlugin(service=None, *, name, persist=True, inject=False, inject_template, close_service=None)`.
 With `service=None` it borrows the runner's `memory_service` when that is a `CortadelMemoryService`.

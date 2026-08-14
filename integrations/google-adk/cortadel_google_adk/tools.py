@@ -32,6 +32,7 @@ from __future__ import annotations
 from typing import Any
 from typing import Optional
 
+from google.adk.memory.memory_entry import MemoryEntry
 from google.adk.tools import FunctionTool
 
 # Imported at runtime (not under TYPE_CHECKING) on purpose: ADK finds the
@@ -96,22 +97,9 @@ def make_search_memory_tool(service: CortadelMemoryService) -> FunctionTool:
         response = await _search(service, session.app_name, session.user_id, session.id, query)
         memories: list[dict[str, Any]] = []
         for entry in response.memories:
-            text = memory_entry_text(entry)
-            if not text:
-                continue
-            item: dict[str, Any] = {"text": text}
-            metadata = entry.custom_metadata or {}
-            for out_key, meta_key in (
-                ("score", "rrf_score"),
-                ("categories", "categories"),
-                ("memory_type", "memory_type"),
-                ("gist", "gist"),
-            ):
-                if metadata.get(meta_key) is not None:
-                    item[out_key] = metadata[meta_key]
-            if entry.timestamp:
-                item["timestamp"] = entry.timestamp
-            memories.append(item)
+            item = _entry_to_hit(entry)
+            if item is not None:
+                memories.append(item)
         return {"memories": memories}
 
     return FunctionTool(search_memory)
@@ -165,6 +153,33 @@ def make_add_memories_tool(service: CortadelMemoryService) -> FunctionTool:
         return result
 
     return FunctionTool(add_memories)
+
+
+def _entry_to_hit(entry: MemoryEntry) -> Optional[dict[str, Any]]:
+    """Flattens one ``MemoryEntry`` into the shape the model reads.
+
+    Returns ``None`` for an entry with no usable text, which the caller drops:
+    a hit the model cannot read is worse than no hit, because it still spends
+    context. Metadata keys the server did not compute are left out entirely
+    rather than sent as nulls.
+    """
+    text = memory_entry_text(entry)
+    if not text:
+        return None
+
+    item: dict[str, Any] = {"text": text}
+    metadata = entry.custom_metadata or {}
+    for out_key, meta_key in (
+        ("score", "rrf_score"),
+        ("categories", "categories"),
+        ("memory_type", "memory_type"),
+        ("gist", "gist"),
+    ):
+        if metadata.get(meta_key) is not None:
+            item[out_key] = metadata[meta_key]
+    if entry.timestamp:
+        item["timestamp"] = entry.timestamp
+    return item
 
 
 async def _search(

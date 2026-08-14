@@ -202,10 +202,13 @@ class TestErrorHandling:
         self, failing_registry: ClientRegistry
     ) -> None:
         toolset, _ = make_toolset(failing_registry, raise_on_error=True)
+        search = fn(toolset, "search_memory")
+        add = fn(toolset, "add_memories")
+        ctx = any_ctx()
         with pytest.raises(CortadelError):
-            await fn(toolset, "search_memory")(any_ctx(), "q")
+            await search(ctx, "q")
         with pytest.raises(CortadelError):
-            await fn(toolset, "add_memories")(any_ctx(), "fact")
+            await add(ctx, "fact")
 
     async def test_on_error_still_fires_before_the_re_raise(
         self, failing_registry: ClientRegistry
@@ -213,6 +216,8 @@ class TestErrorHandling:
         # The two knobs compose: observe first, then decide whether the run dies.
         seen: list[Exception] = []
         toolset, _ = make_toolset(failing_registry, on_error=seen.append, raise_on_error=True)
+        search = fn(toolset, "search_memory")
+        ctx = any_ctx()
         with pytest.raises(CortadelError) as caught:
-            await fn(toolset, "search_memory")(any_ctx(), "q")
+            await search(ctx, "q")
         assert seen == [caught.value]

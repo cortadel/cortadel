@@ -308,7 +308,8 @@ class CortadelMemory(AbstractCapability[AgentDepsT]):
             # `all_messages()` a multi-turn conversation would re-send its whole history on
             # every turn, and Cortadel would spend the dedup pipeline rejecting it.
             messages = chat_messages_from(result.new_messages())
-        except Exception as exc:  # noqa: BLE001 - persistence must never fail the run
+        # Persistence must never fail the run.
+        except Exception as exc:  # noqa: BLE001
             self._backend.report(exc)
             return result
         if not messages:

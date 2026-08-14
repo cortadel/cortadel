@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { generateText, stepCountIs, streamText, tool, wrapLanguageModel } from "ai";
+import type { LanguageModelMiddleware } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { z } from "zod";
 
@@ -7,6 +8,7 @@ import { cortadelMemory } from "../src/index.js";
 import {
   FakeCortadelClient,
   TEST_USER,
+  emptyUsage,
   hit,
   textResult,
   textStreamResult,
@@ -471,6 +473,301 @@ describe("per-request control via providerOptions", () => {
 
     expect(fake.searchCalls[0]?.options?.sessionId).toBe("per-request");
     expect(fake.conversationCalls[0]?.options?.sessionId).toBe("per-request");
+  });
+});
+
+/*
+ * The tests below drive the middleware hooks directly instead of going through `generateText` /
+ * `streamText`, because they feed in payloads no conforming provider produces. Routed through the
+ * SDK, the SDK itself would reject them downstream — which would prove nothing about the
+ * middleware, the thing under test. The casts are the point: they stand in for the misbehaving
+ * provider.
+ *
+ * They do run the hooks in the order `wrapLanguageModel` runs them, though — `transformParams`
+ * first, then the wrapper, fed the params `transformParams` returned. Driving a wrapper on its own
+ * is what let a crash hide here once already: the same malformed prompt these stream tests use
+ * aborts the run one hook earlier, in recall, and a test that skips that hook never sees it.
+ */
+type TransformParamsArgs = Parameters<NonNullable<LanguageModelMiddleware["transformParams"]>>[0];
+type WrapGenerateArgs = Parameters<NonNullable<LanguageModelMiddleware["wrapGenerate"]>>[0];
+type WrapStreamArgs = Parameters<NonNullable<LanguageModelMiddleware["wrapStream"]>>[0];
+
+/** The params a hook was called with, in the only shape these tests assert on. */
+type CallParams = { prompt: unknown; providerOptions?: unknown };
+
+/** A well-formed single-turn prompt. */
+const goodPrompt = [{ role: "user", content: [{ type: "text", text: "Hello" }] }];
+
+/** A prompt whose latest user message has no `content` array to read text out of. */
+const malformedPrompt = [{ role: "user", content: undefined }];
+
+/** A well-formed turn that simply carries no text: an image-only question. */
+const imageOnlyPrompt = [
+  { role: "user", content: [{ type: "file", mediaType: "image/png", data: "iVBORw0KGgo=" }] },
+];
+
+/** A finished generation with no `content` array — the shape that broke the safety net. */
+const malformedResult = { content: undefined, finishReason: "stop", usage: {} };
+
+/** The parts of a complete, well-behaved text stream. */
+function streamParts(text: string): unknown[] {
+  return [
+    { type: "text-delta", id: "t1", delta: text },
+    { type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage: emptyUsage },
+  ];
+}
+
+/** Calls `transformParams` — the recall hook, and the first thing every model call runs. */
+async function callTransform(
+  middleware: LanguageModelMiddleware,
+  prompt: unknown,
+  providerOptions?: unknown,
+  type: "generate" | "stream" = "generate",
+): Promise<CallParams> {
+  const params = await middleware.transformParams!({
+    type,
+    params: { prompt, providerOptions },
+    model: {},
+  } as unknown as TransformParamsArgs);
+  return params as unknown as CallParams;
+}
+
+/** Runs the chain for a non-streaming call: `transformParams`, then `wrapGenerate`. */
+async function callGenerate(
+  middleware: LanguageModelMiddleware,
+  prompt: unknown,
+  result: unknown,
+  providerOptions?: unknown,
+): Promise<{ result: unknown; params: CallParams; modelCalled: boolean }> {
+  const params = await callTransform(middleware, prompt, providerOptions);
+  let modelCalled = false;
+  const out = await middleware.wrapGenerate!({
+    doGenerate: async () => {
+      modelCalled = true;
+      return result;
+    },
+    doStream: async () => ({ stream: new ReadableStream() }),
+    params,
+    model: {},
+  } as unknown as WrapGenerateArgs);
+  return { result: out, params, modelCalled };
+}
+
+/** Runs the chain for a streaming call and drains it, returning the parts that came through. */
+async function callStream(
+  middleware: LanguageModelMiddleware,
+  prompt: unknown,
+  parts: unknown[],
+  providerOptions?: unknown,
+): Promise<{ seen: unknown[]; params: CallParams }> {
+  const params = await callTransform(middleware, prompt, providerOptions, "stream");
+  const { stream } = await middleware.wrapStream!({
+    doGenerate: async () => ({ content: [], finishReason: "stop", usage: emptyUsage }),
+    doStream: async () => ({
+      stream: new ReadableStream({
+        start(controller) {
+          for (const part of parts) {
+            controller.enqueue(part);
+          }
+          controller.close();
+        },
+      }),
+    }),
+    params,
+    model: {},
+  } as unknown as WrapStreamArgs);
+
+  const reader = (stream as ReadableStream<unknown>).getReader();
+  const seen: unknown[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      return { seen, params };
+    }
+    seen.push(value);
+  }
+}
+
+describe("malformed input degrades like any other memory failure", () => {
+  // Every read of provider-shaped data has to happen *inside* a guard — the prompt on the way in,
+  // the result on the way out. As bare expressions those reads sit outside every catch in the
+  // middleware, so `content: undefined` throws straight out of the hook: the model call aborts,
+  // `onError` never fires and `throwOnError: false` is bypassed — the exact failure this package
+  // promises cannot happen. Every other test here uses a well-behaved mock, so nothing else can
+  // catch it, and it has to be pinned at *both* hooks: recall reads the prompt one call earlier
+  // than persistence ever runs, so a crash there aborts the run before the persist net exists.
+
+  it("still calls the model, with untouched params, when the prompt cannot be read", async () => {
+    const fake = new FakeCortadelClient();
+    const errors: Array<{ phase: string; userId: string }> = [];
+    const middleware = cortadelMemory({
+      client: fake,
+      userId: TEST_USER,
+      awaitPersist: true,
+      onError: (_error, context) => errors.push(context),
+    });
+
+    // Persistence off, so the one report can only have come from recall.
+    const { result, params, modelCalled } = await callGenerate(
+      middleware,
+      malformedPrompt,
+      textResult("ok"),
+      { cortadel: { persist: false } },
+    );
+
+    // The call reached the model at all — recall used to abort the run before this point.
+    expect(modelCalled).toBe(true);
+    expect(result).toMatchObject({ content: [{ type: "text", text: "ok" }] });
+    // ...and reached it with the caller's own prompt: no injected block, no copy.
+    expect(params.prompt).toBe(malformedPrompt);
+    // Reported once, as the recall failure it is. Nothing was searched.
+    expect(errors).toEqual([{ phase: "recall", userId: TEST_USER }]);
+    expect(fake.searchCalls).toHaveLength(0);
+  });
+
+  it("propagates an unreadable prompt when throwOnError is set, like any recall failure", async () => {
+    const fake = new FakeCortadelClient();
+    const errors: Array<{ phase: string; userId: string }> = [];
+    const middleware = cortadelMemory({
+      client: fake,
+      userId: TEST_USER,
+      awaitPersist: true,
+      throwOnError: true,
+      onError: (_error, context) => errors.push(context),
+    });
+
+    await expect(callTransform(middleware, malformedPrompt)).rejects.toThrow(TypeError);
+    expect(errors).toEqual([{ phase: "recall", userId: TEST_USER }]);
+  });
+
+  it("hands back a malformed generation untouched and reports the failure", async () => {
+    const fake = new FakeCortadelClient();
+    const errors: Array<{ phase: string; userId: string }> = [];
+    const middleware = cortadelMemory({
+      client: fake,
+      userId: TEST_USER,
+      awaitPersist: true,
+      onError: (_error, context) => errors.push(context),
+    });
+
+    const { result } = await callGenerate(middleware, goodPrompt, malformedResult);
+
+    // The run survived, and the caller still holds exactly what the provider produced.
+    expect(result).toBe(malformedResult);
+    // Reported once — a single failure reaching onError twice is its own bug.
+    expect(errors).toEqual([{ phase: "persist", userId: TEST_USER }]);
+    expect(fake.conversationCalls).toHaveLength(0);
+  });
+
+  it("propagates a malformed generation when throwOnError is set, like any persist failure", async () => {
+    const fake = new FakeCortadelClient();
+    const errors: Array<{ phase: string; userId: string }> = [];
+    const middleware = cortadelMemory({
+      client: fake,
+      userId: TEST_USER,
+      awaitPersist: true,
+      throwOnError: true,
+      onError: (_error, context) => errors.push(context),
+    });
+
+    await expect(callGenerate(middleware, goodPrompt, malformedResult)).rejects.toThrow(TypeError);
+    expect(errors).toEqual([{ phase: "persist", userId: TEST_USER }]);
+  });
+
+  it("lets a streamed turn finish when the prompt cannot be read, and reports both halves", async () => {
+    // One unreadable prompt, read twice: by recall on the way in and by persistence on the way
+    // out. Both degrade, both report, and the consumer still gets every part of the stream.
+    const fake = new FakeCortadelClient();
+    const errors: Array<{ phase: string; userId: string }> = [];
+    const middleware = cortadelMemory({
+      client: fake,
+      userId: TEST_USER,
+      awaitPersist: true,
+      onError: (_error, context) => errors.push(context),
+    });
+
+    const { seen } = await callStream(middleware, malformedPrompt, streamParts("Streamed reply."));
+
+    // Every part reached the consumer; the stream closed rather than erroring.
+    expect(seen).toHaveLength(2);
+    expect(errors).toEqual([
+      { phase: "recall", userId: TEST_USER },
+      { phase: "persist", userId: TEST_USER },
+    ]);
+    expect(fake.searchCalls).toHaveLength(0);
+    expect(fake.conversationCalls).toHaveLength(0);
+  });
+
+  it("errors the stream when throwOnError is set", async () => {
+    // Recall is switched off for this one so the unreadable prompt reaches the *stream's* flush.
+    // With it on, the chain rightly rejects a hook earlier (the test above this pair) and the
+    // stream — the thing under test here — would never be built at all.
+    const fake = new FakeCortadelClient();
+    const errors: Array<{ phase: string; userId: string }> = [];
+    const middleware = cortadelMemory({
+      client: fake,
+      userId: TEST_USER,
+      awaitPersist: true,
+      throwOnError: true,
+      onError: (_error, context) => errors.push(context),
+    });
+
+    await expect(
+      callStream(middleware, malformedPrompt, streamParts("Streamed reply."), {
+        cortadel: { recall: false },
+      }),
+    ).rejects.toThrow(TypeError);
+    expect(errors).toEqual([{ phase: "persist", userId: TEST_USER }]);
+  });
+
+  it("keeps a stream flowing through a null part", async () => {
+    // A stream part is provider-shaped data too, and the capture tap reads `part.type` outside any
+    // catch — inside a TransformStream, where a throw errors the stream the consumer is already
+    // reading. Nothing to report here: the part is passed through for the SDK to reject downstream.
+    const fake = new FakeCortadelClient();
+    const errors: Array<{ phase: string; userId: string }> = [];
+    const middleware = cortadelMemory({
+      client: fake,
+      userId: TEST_USER,
+      awaitPersist: true,
+      onError: (_error, context) => errors.push(context),
+    });
+
+    const { seen } = await callStream(middleware, goodPrompt, [
+      null,
+      ...streamParts("Streamed reply."),
+    ]);
+
+    expect(seen).toEqual([null, ...streamParts("Streamed reply.")]);
+    expect(errors).toEqual([]);
+    // The rest of the stream was still captured and remembered.
+    expect(fake.conversationCalls[0]?.messages[1]).toEqual({
+      role: "assistant",
+      content: "Streamed reply.",
+    });
+  });
+});
+
+describe("a turn with nothing to search for is not a failure", () => {
+  it("skips the search silently and leaves the prompt alone", async () => {
+    // An image-only question is well-formed; there is just no text to query Cortadel with. Its
+    // early return now lives inside the same `try` that catches an unreadable prompt, so this
+    // pins the difference between the two: nothing to search is silent, unable to read is
+    // reported. No onError here on purpose — `console.warn` is the fallback report channel, so a
+    // silent skip has to trip neither.
+    const fake = new FakeCortadelClient();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const middleware = cortadelMemory({ client: fake, userId: TEST_USER, awaitPersist: true });
+
+    try {
+      const params = await callTransform(middleware, imageOnlyPrompt);
+
+      expect(params.prompt).toBe(imageOnlyPrompt);
+      expect(fake.searchCalls).toHaveLength(0);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

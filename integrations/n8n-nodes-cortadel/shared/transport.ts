@@ -45,12 +45,30 @@ export interface CortadelRequestOptions {
 	qs?: Record<string, string | number | boolean | undefined>;
 }
 
+const SLASH_CHAR_CODE = '/'.charCodeAt(0);
+
+/**
+ * Strips every trailing `/` in one backward pass.
+ *
+ * Deliberately *not* `value.replace(/\/+$/, '')`. That pattern is unanchored, so the
+ * engine retries it from each position in turn: on a long run of slashes that is not
+ * at the end (`'http://h/' + '/'.repeat(n) + 'a'`) every start position inside the run
+ * matches `\/+` greedily, fails `$`, and backtracks the whole run — quadratic in the
+ * run length (measured: 0.9 ms at n=2_000, 906 ms at n=64_000). This walk is O(n) and
+ * returns the same string for every input.
+ */
+export function stripTrailingSlashes(value: string): string {
+	let end = value.length;
+	while (end > 0 && value.charCodeAt(end - 1) === SLASH_CHAR_CODE) end--;
+	return end === value.length ? value : value.slice(0, end);
+}
+
 /** Reads `baseUrl` from the credential and normalises away any trailing slash. */
 export async function getCortadelBaseUrl(ctx: CortadelRequestContext): Promise<string> {
 	const credentials = await ctx.getCredentials(CORTADEL_CREDENTIALS);
 	const raw = credentials?.baseUrl;
 	const base = typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : DEFAULT_BASE_URL;
-	return base.replace(/\/+$/, '');
+	return stripTrailingSlashes(base);
 }
 
 /** `true` for `{}` — but not for arrays, `Date`s, or anything with own keys. */

@@ -21,6 +21,9 @@ import { generateText, wrapLanguageModel } from "ai";
 
 import { cortadelMemory } from "@cortadel/vercel-ai-provider";
 
+// Model output is untrusted text; printing it raw is log injection. See ./safe-log.ts.
+import { logSafe } from "./safe-log.js";
+
 const baseUrl = process.env.CORTADEL_BASE_URL ?? "http://localhost:3001";
 
 // One middleware instance, reused for every call. It caches a client per user id internally.
@@ -47,7 +50,7 @@ const first = await generateText({
   model,
   prompt: "Remember that I always deploy on Fridays and I prefer metric units.",
 });
-console.log("1:", first.text);
+console.log("1:", logSafe(first.text));
 
 // Give the background extraction pipeline a moment to distill the turn into facts.
 await new Promise((resolve) => setTimeout(resolve, 5_000));
@@ -57,7 +60,7 @@ const second = await generateText({
   model,
   prompt: "When do I usually ship, and what units should you answer in?",
 });
-console.log("2:", second.text);
+console.log("2:", logSafe(second.text));
 
 // --- Multi-tenant: override the user per request. ------------------------------------------
 // Works because this middleware was built with `baseUrl` rather than a pre-built `client`; it
@@ -67,4 +70,4 @@ const other = await generateText({
   prompt: "What do you remember about me?",
   providerOptions: { cortadel: { userId: "e2e-vercel-ai-demo-other", sessionId: "session-1" } },
 });
-console.log("3 (different user, should know nothing):", other.text);
+console.log("3 (different user, should know nothing):", logSafe(other.text));
