@@ -16,15 +16,26 @@ see `CONTRIBUTING.md#releasing`. Nothing in this file changes how they work.
 
 ---
 
-## What must exist before the first tag
+## Setup status
 
-The whole checklist, in one place. One row needs work; two do not.
+**All twelve packages published `0.1.0` on 2026-08-14.** Every prerequisite below is satisfied and
+proven by a real release; this table is now a record of what the pipeline depends on, not a to-do
+list. The one outstanding item is §1.4, and it has a deadline — see the note under the table.
 
-| Registry | What the workflow needs | Status | Do this |
+| Registry | What the workflow needs | Status | Reference |
 | --- | --- | --- | --- |
-| **npm** (8 packages) | the **`NPM_TOKEN_INTEGRATIONS`** repository secret, minted *All Packages / Read and write* | **Missing — you must create it.** `gh secret list` on `cortadel/cortadel` shows `NPM_TOKEN` and `PYPI_TOKEN` but **no** `NPM_TOKEN_INTEGRATIONS`. `NPM_TOKEN` is the SDK's narrower secret and is **not** a substitute. | [§1.2](#12-phase-1--mint-the-bootstrap-token--one-time-per-registry) |
+| **npm** (8 packages) | the **`NPM_TOKEN_INTEGRATIONS`** repository secret, minted *All Packages / Read and write* with **Bypass 2FA** | **Configured and used.** Bypass 2FA is not optional: the account enforces 2FA on writes, and without that flag the publish fails `EOTP: This operation requires a one-time password` — which is exactly how the first attempt failed. `NPM_TOKEN` is the SDK's narrower secret and is **not** a substitute. | [§1.2](#12-phase-1--mint-the-bootstrap-token--one-time-per-registry) |
 | **PyPI** (3 packages) | the **`PYPI_TOKEN`** repository secret, **account-scoped** | **Already configured — nothing to do.** The secret exists, and `publish-pypi` uses it exactly as `python.yml` does for the `cortadel` SDK. No trusted publisher is registered on pypi.org and none is wanted. | [§2](#2-pypi--nothing-to-configure) |
 | **NuGet** (1 package) | nothing — the existing policy, whose *Workflow file* is `dotnet.yml`, is reused | **Already configured — nothing to do.** The policy that publishes `Cortadel.Sdk` is owner-scoped, so it also covers `Cortadel.AgentFramework`; the package publishes from `dotnet.yml` for exactly that reason. | [§3](#3-nuget--why-the-net-package-publishes-from-dotnetyml) |
+
+> **⚠ Outstanding, with a deadline: finish [§1.4](#14-phase-3--attach-a-trusted-publisher-to-each-package--one-time-per-package).**
+> `NPM_TOKEN_INTEGRATIONS` is a bypass-2FA granular token, and **npm is withdrawing direct
+> publishing from that token class in January 2027** (the deprecation notice appears in the publish
+> job's own log). The token was only ever a bootstrap — npm cannot attach a trusted publisher to a
+> package that does not yet exist. All eight now exist, so §1.4 attaches per-package publishers and
+> §1.5 deletes the secret, after which npm releases carry no stored credential at all. Until then it
+> is an All-Packages read-write credential that also reaches `@cortadel/sdk`, usable by anyone who
+> can push an `integration-*-v*` tag.
 
 Nothing else is a prerequisite. Everything else in this file is either the per-release procedure, or
 optional hardening explicitly labelled as such.

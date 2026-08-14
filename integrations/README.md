@@ -49,8 +49,8 @@ That is the whole answer to "why is CrewAI Python but LangGraph TypeScript?" —
 | **Pydantic AI** | `cortadel-pydantic-ai` | Python | An `AbstractCapability` that recalls, persists, and contributes a memory toolset | [`pydantic-ai/`](./pydantic-ai) |
 | **Microsoft Agent Framework** | `Cortadel.AgentFramework` | .NET (`net8.0`) | An `AIContextProvider` (`ProvideAIContextAsync` / `StoreAIContextAsync`) plus native `AIFunction` tools | [`microsoft-agent-framework/`](./microsoft-agent-framework) |
 
-All twelve are at `0.1.0` and **not yet published** — the install commands in each README are the
-ones that will work once they are.
+All twelve are **published at `0.1.0`** (npm ×8, PyPI ×3, NuGet ×1), so the install command in each
+package's README works as written. Every npm package carries a Sigstore provenance attestation.
 
 ## How a package is laid out
 
@@ -271,11 +271,11 @@ Adding a thirteenth package needs no change to the release wiring: the trigger i
 the publish jobs resolve everything from the manifest on disk. It does need a matrix leg — without one
 its tag is rejected, and `matrix-coverage` would have failed the PR long before that.
 
-Maintainers: the one-time registry-side setup is in
-[`.github/RELEASING.md`](../.github/RELEASING.md) — the npm bootstrap token and, after the first
-release, its trusted publishers; plus the nuget.org policy. **PyPI needs nothing**: it publishes
-with the same account-scoped `PYPI_TOKEN` the SDK already uses. None of the rest can be done from a
-workflow file, and nothing publishes until it is.
+Maintainers: the registry-side setup is done — all three registries published `0.1.0` on
+2026-08-14. The runbook is [`.github/RELEASING.md`](../.github/RELEASING.md). One follow-up is
+still outstanding and is **time-bound**: npm's bootstrap token should be replaced with per-package
+trusted publishers (§1.4) and then deleted, because npm is withdrawing direct publishing from
+bypass-2FA tokens in January 2027.
 
 ## Traps
 

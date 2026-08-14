@@ -28,10 +28,10 @@ All of them talk to a running Cortadel server: the hosted service at `https://ap
 your own (`docker compose up` → `http://localhost:3001`, see [Self-hosting](/self-hosting/)).
 
 :::note
-**Status — `0.1.0`, in this repo, not yet on the registries.** Every package below is versioned
-`0.1.0` and lives in
+**Status — published at `0.1.0`.** Every package below went live on its registry on 2026-08-14
+(npm ×8, PyPI ×3, NuGet ×1) and its source lives in
 [`integrations/`](https://github.com/cortadel/cortadel/tree/main/integrations) — the install
-commands are the ones that will work, but nothing is published to npm, PyPI or NuGet yet. Each
+commands work as written, and every npm package carries a Sigstore provenance attestation. Each
 package ships an offline test suite that drives the real host framework (fake model, stubbed
 Cortadel client); none is exercised against a live Cortadel server in CI, so wire-level behaviour
 rests on the [SDKs](/sdk-python/) and their own conformance suites.
