@@ -271,10 +271,11 @@ Adding a thirteenth package needs no change to the release wiring: the trigger i
 the publish jobs resolve everything from the manifest on disk. It does need a matrix leg — without one
 its tag is rejected, and `matrix-coverage` would have failed the PR long before that.
 
-Maintainers: the one-time registry-side setup (the npm bootstrap token and trusted publishers, the
-PyPI pending publishers, the nuget.org policy) is in
-[`.github/RELEASING.md`](../.github/RELEASING.md). None of it can be done from a workflow file, and
-nothing publishes until it is.
+Maintainers: the one-time registry-side setup is in
+[`.github/RELEASING.md`](../.github/RELEASING.md) — the npm bootstrap token and, after the first
+release, its trusted publishers; plus the nuget.org policy. **PyPI needs nothing**: it publishes
+with the same account-scoped `PYPI_TOKEN` the SDK already uses. None of the rest can be done from a
+workflow file, and nothing publishes until it is.
 
 ## Traps
 

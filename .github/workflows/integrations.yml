@@ -38,10 +38,12 @@ name: Integrations
 #
 # RELEASING. The publish jobs an earlier revision of this header promised ("those get added with the
 # first release, together with their own per-package tag prefix") are now at the bottom of this file:
-# release-plan, publish-npm, publish-pypi and publish-nuget. The maintainer-side registry
-# configuration they depend on — none of which can be done from a workflow file — is in
-# .github/RELEASING.md; until that is done, a release tag runs the gates and then fails at the
-# registry call.
+# release-plan, publish-npm, publish-pypi and publish-nuget. The maintainer-side setup they depend on
+# — none of which can be done from a workflow file — is in .github/RELEASING.md; until it is done, a
+# release tag runs the gates and then fails at the registry call. It is not uniform across the three:
+# npm needs a repository secret that does not exist yet, NuGet needs a trusted-publishing policy
+# naming this file, and PyPI needs NOTHING — its credential, the account-scoped PYPI_TOKEN secret, is
+# already configured (see the auth-styles note below).
 #
 # Tag grammar: `integration-<directory-slug>-v<version>`, e.g. integration-langgraph-v0.1.0. The slug
 # is the directory under integrations/, never the registry package name — integrations/vercel-ai-sdk
@@ -70,13 +72,31 @@ name: Integrations
 # dispatching this workflow against one. That is why the phase-4 removal in .github/RELEASING.md
 # §1.5 is a deadline and not housekeeping: this token's scope is bounded only by how long it exists.
 #
-# The three publish jobs deliberately use two different auth styles, which reads like an oversight
-# unless stated: PyPI and NuGet authenticate with OIDC trusted publishing and hold no secret, while
-# npm authenticates with a stored token. That is not a preference — npm trusted publishing cannot
-# bootstrap a package that does not exist ("Package must exist" is a documented prerequisite;
-# npm/cli#8544 is open), so the *first* publish of all eight npm packages must be token-authenticated
-# and OIDC can only take over from the second release onward. publish-npm carries the exact two-line
-# edit that completes that migration.
+# PYPI_TOKEN's blast radius is stated here too, because it follows from the very property that makes
+# it the right credential: an account-scoped PyPI token can upload to *any* project the account owns,
+# `cortadel` (the SDK python.yml releases under this same secret) included. That is inherent — a
+# project-scoped token cannot create the three projects that do not exist yet — and it is the
+# strongest argument for the trusted-publishing follow-up noted below, not a reason to narrow the
+# token today.
+#
+# The three publish jobs use two different auth styles, which reads like an oversight unless stated:
+# npm and PyPI authenticate with a stored API token, and NuGet alone uses OIDC trusted publishing.
+#
+# PyPI is a settled decision, not a stopgap. This repository publishes to PyPI with the
+# account-scoped PYPI_TOKEN repository secret — the same secret and the same mechanism python.yml
+# already uses to release the `cortadel` SDK. Account-scoped is the load-bearing word: all three
+# Python packages here are brand new, and only an account-scoped token can create a project that does
+# not exist yet (a project-scoped token provably cannot — Warehouse's ProjectName/ProjectID caveat
+# verifiers reject any context outside the projects they enumerate). No trusted publisher is
+# configured on pypi.org and none is wanted, so PyPI needs no registry-side setup at all before the
+# first tag. Possible follow-up, deliberately NOT implemented here: once the three projects exist,
+# migrating them to PyPI trusted publishing would remove the stored token and turn on PEP 740
+# attestations.
+#
+# npm's token, by contrast, IS a stopgap: npm trusted publishing cannot bootstrap a package that does
+# not exist ("Package must exist" is a documented prerequisite; npm/cli#8544 is open), so the *first*
+# publish of all eight npm packages must be token-authenticated and OIDC can only take over from the
+# second release onward. publish-npm carries the exact two-line edit that completes that migration.
 #
 # Every leg's exact command chain below was executed locally against the committed lockfiles, on
 # the same interpreter/runtime the matrix pins. That is what the per-leg version choices are based
@@ -124,12 +144,19 @@ on:
 # Least privilege, workflow-wide default: the twelve test matrices and matrix-coverage only check out
 # the tree and run each package's own suite — they read no repository state, comment on nothing, and
 # publish nothing. The four release-path jobs at the bottom of this file are the only exceptions, and
-# each raises its own `permissions:` block to exactly what its registry mechanism needs (`id-token:
-# write` for OIDC/provenance) rather than widening this default for everyone.
+# each states its own `permissions:` block holding exactly what its registry mechanism needs, rather
+# than widening this default for everyone. Only two of them need anything beyond the default:
+# publish-npm (`id-token: write`, for the Sigstore provenance attestation) and publish-nuget
+# (`id-token: write`, for the NuGet/login OIDC exchange). publish-pypi authenticates with an API
+# token and performs no OIDC exchange at all, so it keeps a plain `contents: read`.
 #
-# `secrets.*` appears exactly once in this file — publish-npm's NODE_AUTH_TOKEN, which npm's
-# "package must exist" rule makes unavoidable for a first publish, and which is scheduled for removal
-# (see that job). Everything else is OIDC. The trigger is plain `pull_request`, never
+# `secrets.*` appears exactly twice in this file, both times on a publish job: publish-npm's
+# NODE_AUTH_TOKEN (NPM_TOKEN_INTEGRATIONS — npm's "package must exist" rule makes it unavoidable for
+# a first publish, and it is scheduled for removal; see that job) and publish-pypi's PYPI_TOKEN, the
+# account-scoped token this repository already publishes the `cortadel` SDK with in python.yml.
+# publish-nuget is the only one that stores nothing. (A grep for `secrets\.` finds a third hit,
+# `secrets.token_hex(16)` in release-plan's inline Python — that is the stdlib module, not a GitHub
+# secret, and it never leaves the runner.) The trigger is plain `pull_request`, never
 # `pull_request_target` (banned repo-wide and enforced by .github/scripts/check-diff-supply-chain.sh),
 # so a fork PR still gets no secrets and a read-only token; and no publish job below can fire from a
 # `pull_request` event at all, because they all depend on release-plan, which only runs on a tag ref.
@@ -1505,7 +1532,7 @@ jobs:
           exit 1
 
   publish-pypi:
-    name: publish ${{ needs.release-plan.outputs.package-name }} to PyPI (trusted publishing)
+    name: publish ${{ needs.release-plan.outputs.package-name }} to PyPI
     needs: [release-plan, matrix-coverage, python]
     if: needs.release-plan.outputs.toolchain == 'python'
     concurrency:
@@ -1514,29 +1541,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      id-token: write   # required for the PyPI trusted-publishing OIDC exchange
+      # NO `id-token: write`, and its absence is the point rather than an oversight. This job
+      # authenticates to PyPI with the PYPI_TOKEN API token (see the publish step), so nothing here
+      # ever performs an OIDC exchange: pypa/gh-action-pypi-publish only takes its trusted-publishing
+      # path when `user` is __token__ AND `password` is empty, and a non-empty password also
+      # force-disables the PEP 740 attestation step that would otherwise want an OIDC identity. This
+      # job therefore mints no token, signs nothing, and needs no privilege beyond reading the tree.
+      # (publish-npm and publish-nuget above/below still hold `id-token: write` — they genuinely use
+      # it, for Sigstore provenance and the NuGet/login exchange respectively.)
       contents: read
-    # No `environment:` block, and this is a deliberate choice rather than an omission.
-    #
-    # A GitHub Environment with required reviewers is the usual way to add a human gate to a PyPI
-    # trusted publisher, and PyPI's own form offers an optional "Environment name" field for it. It
-    # is not used here because a mismatch in EITHER direction — configured on PyPI but absent from
-    # this job, or set here and blank on PyPI — is a hard failure reported as `invalid-publisher` /
-    # `invalid-pending-publisher`, an error whose text says nothing whatsoever about environments.
-    # python.yml's publish-pypi records this repo's own version of that trap ("a protection rule with
-    # no environment to satisfy it never resolves"). So the safe encoding is: no environment here,
-    # and PyPI's "Environment name" field left BLANK when the pending publishers are registered.
-    # .github/RELEASING.md documents adding one as optional hardening — and that both sides must
-    # change in the same commit.
-    #
-    # Unlike python.yml's publish-pypi, this job stores NO token. That is the substantive difference
-    # and the reason it is worth stating: `cortadel` 1.0.0 already exists on PyPI, which is exactly
-    # the situation in which the existing PYPI_TOKEN is most likely to have been minted scoped to
-    # that project — and a project-scoped token provably cannot create a new project (Warehouse's
-    # ProjectName/ProjectID caveat verifiers reject any context outside the projects they enumerate).
-    # Worse, Warehouse checks the macaroon's permission AFTER create_project runs, so a failed
-    # project-scoped attempt can leave an empty project record squatting the name. Trusted publishing
-    # sidesteps the question entirely: the credential is minted per run and expires in ~15 minutes.
+    # No `environment:` block, and this is a deliberate choice rather than an omission — but note the
+    # reason is now purely GitHub-side. With token authentication there is no registry-side
+    # "Environment name" field to keep in agreement, because there is no publisher registered on
+    # pypi.org at all; an Environment here would be exactly one thing, a human approval gate.
+    # It is still left off, because this repository has already been bitten by the other half of that
+    # trap: python.yml's publish-pypi records a job pinned to an environment that did not exist ("a
+    # protection rule with no environment to satisfy it never resolves"). .github/RELEASING.md §5
+    # documents adding one as optional hardening.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -1606,18 +1627,35 @@ jobs:
           print(f"dist/ carries version {version}: {', '.join(artifacts)}")
           PY
 
-      # Same pinned action python.yml uses — it is the same action in both auth modes. The
-      # difference is what is ABSENT: no `user:` and no `password:`, which is what makes the action
-      # take the trusted-publishing path and mint a short-lived token from the OIDC identity of this
-      # job. packages-dir is repo-root-relative (like python.yml's `sdk/python/dist`), not relative
-      # to any working-directory. skip-existing keeps a retried run idempotent after an infra flake.
+      # pypa/gh-action-pypi-publish's own documented non-Trusted-Publishing mode, and deliberately
+      # the same action, the same pinned SHA and the same inputs python.yml's publish-pypi uses to
+      # release the `cortadel` SDK: __token__ as the username, an API token as the password.
       #
-      # Switching to trusted publishing also turns on PEP 740 attestations by default, which the
-      # token path cannot produce. That is a benefit; it is called out because it visibly changes
-      # what appears on the project page and should not be mistaken for a misconfiguration.
+      # The token is the account-scoped PYPI_TOKEN repository secret, which already exists — this job
+      # does not create or rotate it (the repo owner provisions it), and PyPI needs no other
+      # registry-side setup before the first tag. Account-scoped is what makes this work at all here:
+      # all three Python packages are brand new, and creating a project that does not exist yet is
+      # precisely what a project-scoped token cannot do. See .github/RELEASING.md §2.
+      #
+      # Two consequences of the token path, read out of the action's own twine-upload.sh at the SHA
+      # pinned below rather than assumed:
+      #   * the OIDC exchange is skipped outright — `TRUSTED_PUBLISHING` is true only when
+      #     `user` is __token__ AND `password` is empty, so a non-empty password sends the script
+      #     down the "user-provided API token" branch and never runs oidc-exchange.py. That is why
+      #     this job carries no `id-token: write`.
+      #   * PEP 740 attestations are force-disabled (`if ! "${TRUSTED_PUBLISHING}"` sets
+      #     INPUT_ATTESTATIONS=false, because attestations currently require trusted publishing),
+      #     regardless of the `attestations` input's own `true` default. So no attestation appears on
+      #     the project page. That is the token path working as designed, not a misconfiguration —
+      #     and it is the one thing the trusted-publishing follow-up in this file's header would buy.
+      #
+      # packages-dir is repo-root-relative (like python.yml's `sdk/python/dist`), not relative to any
+      # working-directory. skip-existing keeps a retried run idempotent after an infra flake.
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
           packages-dir: integrations/${{ needs.release-plan.outputs.slug }}/dist
           skip-existing: true
 
@@ -1638,9 +1676,10 @@ jobs:
     # executes the package — it packs and pushes it — so the roll-forward is not needed, and leaving
     # it out keeps the reason it exists elsewhere legible.
     #
-    # No `environment:` block, for the same reason publish-pypi has none: this job's nuget.org
-    # trusted-publishing policy must leave its Environment field empty, and the two have to agree or
-    # the OIDC exchange 401s.
+    # No `environment:` block — and here, unlike publish-pypi above, there IS a registry side to keep
+    # in agreement: this job's nuget.org trusted-publishing policy must leave its Environment field
+    # empty, because the two have to match or the OIDC exchange 401s. Adding an environment is
+    # therefore a two-sided change; .github/RELEASING.md §5 spells it out.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
