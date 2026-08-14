@@ -279,20 +279,20 @@ Already using an agent framework? Twelve first-party packages wire Cortadel into
 
 | Framework | Package | Language | What you get |
 |---|---|---|---|
-| **Claude Agent SDK** | [`@cortadel/claude-agent-sdk`](integrations/claude-agent-sdk) | TypeScript | In-process MCP tools + `UserPromptSubmit` / `Stop` hooks |
-| **DeepAgents** | [`@cortadel/deepagents`](integrations/deepagents) | TypeScript | `AgentMiddleware` recall/persist + native tools |
-| **LangGraph** | [`@cortadel/langgraph`](integrations/langgraph) | TypeScript | `BaseStore`, memory tools, recall/persist nodes |
-| **Mastra** | [`@cortadel/mastra`](integrations/mastra) | TypeScript | `Processor` recall/persist + `createTool` tools |
-| **n8n** | [`n8n-nodes-cortadel`](integrations/n8n-nodes-cortadel) | TypeScript | `ai_memory` sub-node + six-operation action node |
-| **OpenAI Agents SDK** | [`@cortadel/openai-agents`](integrations/openai-agents) | TypeScript | `Session`, recall input filter, function tools |
-| **OpenClaw** | [`@cortadel/openclaw`](integrations/openclaw) | TypeScript | Memory corpus supplement, tools, recall/capture hooks |
-| **Vercel AI SDK** | [`@cortadel/vercel-ai-provider`](integrations/vercel-ai-sdk) | TypeScript | `LanguageModelMiddleware` recall/persist + tools |
-| **CrewAI** | [`cortadel-crewai`](integrations/crewai) | Python | Drop-in `crewai.Memory`, crew tools, task listener |
-| **Google ADK** | [`cortadel-google-adk`](integrations/google-adk) | Python | `BaseMemoryService`, auto-persist plugin, tools |
-| **Pydantic AI** | [`cortadel-pydantic-ai`](integrations/pydantic-ai) | Python | `AbstractCapability` — recall, persist, toolset |
-| **Microsoft Agent Framework** | [`Cortadel.AgentFramework`](integrations/microsoft-agent-framework) | .NET | `AIContextProvider` + native `AIFunction` tools |
+| **[Claude Agent SDK](docs/integrations/claude-agent-sdk.md)** | [`@cortadel/claude-agent-sdk`](integrations/claude-agent-sdk) | TypeScript | In-process MCP tools + `UserPromptSubmit` / `Stop` hooks |
+| **[DeepAgents](docs/integrations/deepagents.md)** | [`@cortadel/deepagents`](integrations/deepagents) | TypeScript | `AgentMiddleware` recall/persist + native tools |
+| **[LangGraph](docs/integrations/langgraph.md)** | [`@cortadel/langgraph`](integrations/langgraph) | TypeScript | `BaseStore`, memory tools, recall/persist nodes |
+| **[Mastra](docs/integrations/mastra.md)** | [`@cortadel/mastra`](integrations/mastra) | TypeScript | `Processor` recall/persist + `createTool` tools |
+| **[n8n](docs/integrations/n8n-nodes-cortadel.md)** | [`n8n-nodes-cortadel`](integrations/n8n-nodes-cortadel) | TypeScript | `ai_memory` sub-node + six-operation action node |
+| **[OpenAI Agents SDK](docs/integrations/openai-agents.md)** | [`@cortadel/openai-agents`](integrations/openai-agents) | TypeScript | `Session`, recall input filter, function tools |
+| **[OpenClaw](docs/integrations/openclaw.md)** | [`@cortadel/openclaw`](integrations/openclaw) | TypeScript | Memory corpus supplement, tools, recall/capture hooks |
+| **[Vercel AI SDK](docs/integrations/vercel-ai-sdk.md)** | [`@cortadel/vercel-ai-provider`](integrations/vercel-ai-sdk) | TypeScript | `LanguageModelMiddleware` recall/persist + tools |
+| **[CrewAI](docs/integrations/crewai.md)** | [`cortadel-crewai`](integrations/crewai) | Python | Drop-in `crewai.Memory`, crew tools, task listener |
+| **[Google ADK](docs/integrations/google-adk.md)** | [`cortadel-google-adk`](integrations/google-adk) | Python | `BaseMemoryService`, auto-persist plugin, tools |
+| **[Pydantic AI](docs/integrations/pydantic-ai.md)** | [`cortadel-pydantic-ai`](integrations/pydantic-ai) | Python | `AbstractCapability` — recall, persist, toolset |
+| **[Microsoft Agent Framework](docs/integrations/microsoft-agent-framework.md)** | [`Cortadel.AgentFramework`](integrations/microsoft-agent-framework) | .NET | `AIContextProvider` + native `AIFunction` tools |
 
-All twelve are **published at `0.1.0`** — eight on npm, three on PyPI, one on NuGet — and every npm package carries a Sigstore provenance attestation. Install commands, quickstarts, and each package's known limits: [Integrations](docs/integrations.md).
+All twelve are **published at `0.1.0`** — eight on npm, three on PyPI, one on NuGet — and every npm package carries a Sigstore provenance attestation. Each framework name above links to that package's documentation page — install command, runnable quickstart, every configuration option and its honest limits; the package name links to its source. The index of all twelve, and the configuration vocabulary they share, is [Integrations](docs/integrations.md).
 
 ## How it *works*
 

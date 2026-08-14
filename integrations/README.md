@@ -11,8 +11,10 @@ npm, [`cortadel`](https://pypi.org/project/cortadel/) on PyPI,
 [`Cortadel.Sdk`](https://www.nuget.org/packages/Cortadel.Sdk) on NuGet) exactly the way a
 third-party package would.
 
-The user-facing version of this page — install commands, what each one does, and its known limits —
-is [`docs/integrations.md`](../docs/integrations.md). This page is for people **writing** one.
+The user-facing version of this page is [`docs/integrations.md`](../docs/integrations.md) — the
+index — plus one page per package under [`docs/integrations/`](../docs/integrations), carrying that
+package's install command, quickstart, configuration table and known limits. This page is for people
+**writing** one.
 
 ## Three languages: 8 TypeScript, 3 Python, 1 .NET
 
@@ -36,18 +38,18 @@ That is the whole answer to "why is CrewAI Python but LangGraph TypeScript?" —
 
 | Framework | Package | Language | What you get | Folder |
 |---|---|---|---|---|
-| **Claude Agent SDK** | `@cortadel/claude-agent-sdk` | TypeScript | Memory tools via an in-process MCP server, plus `UserPromptSubmit` / `Stop` hooks | [`claude-agent-sdk/`](./claude-agent-sdk) |
-| **DeepAgents** | `@cortadel/deepagents` | TypeScript | An `AgentMiddleware` that recalls and persists, plus native tools | [`deepagents/`](./deepagents) |
-| **LangGraph** | `@cortadel/langgraph` | TypeScript | A `BaseStore` implementation, memory tools, and recall/persist graph nodes | [`langgraph/`](./langgraph) |
-| **Mastra** | `@cortadel/mastra` | TypeScript | A `Processor` that recalls and persists, plus `createTool` memory tools | [`mastra/`](./mastra) |
-| **n8n** | `n8n-nodes-cortadel` | TypeScript | A Cortadel Memory sub-node for the AI Agent's `ai_memory` port, and a six-operation action node | [`n8n-nodes-cortadel/`](./n8n-nodes-cortadel) |
-| **OpenAI Agents SDK** | `@cortadel/openai-agents` | TypeScript | A `Session` implementation, recall via `callModelInputFilter`, and function tools | [`openai-agents/`](./openai-agents) |
-| **OpenClaw** | `@cortadel/openclaw` | TypeScript | A memory corpus supplement, two agent tools, and recall/capture hooks | [`openclaw/`](./openclaw) |
-| **Vercel AI SDK** | `@cortadel/vercel-ai-provider` | TypeScript | A `LanguageModelMiddleware` that recalls and persists, plus AI SDK tools | [`vercel-ai-sdk/`](./vercel-ai-sdk) |
-| **CrewAI** | `cortadel-crewai` | Python | A drop-in `crewai.Memory`, native crew tools, and a task-completed listener | [`crewai/`](./crewai) |
-| **Google ADK** | `cortadel-google-adk` | Python | A `BaseMemoryService` (so ADK's own `load_memory` / `preload_memory` work), an auto-persist plugin, and tools | [`google-adk/`](./google-adk) |
-| **Pydantic AI** | `cortadel-pydantic-ai` | Python | An `AbstractCapability` that recalls, persists, and contributes a memory toolset | [`pydantic-ai/`](./pydantic-ai) |
-| **Microsoft Agent Framework** | `Cortadel.AgentFramework` | .NET (`net8.0`) | An `AIContextProvider` (`ProvideAIContextAsync` / `StoreAIContextAsync`) plus native `AIFunction` tools | [`microsoft-agent-framework/`](./microsoft-agent-framework) |
+| **[Claude Agent SDK](../docs/integrations/claude-agent-sdk.md)** | `@cortadel/claude-agent-sdk` | TypeScript | Memory tools via an in-process MCP server, plus `UserPromptSubmit` / `Stop` hooks | [`claude-agent-sdk/`](./claude-agent-sdk) |
+| **[DeepAgents](../docs/integrations/deepagents.md)** | `@cortadel/deepagents` | TypeScript | An `AgentMiddleware` that recalls and persists, plus native tools | [`deepagents/`](./deepagents) |
+| **[LangGraph](../docs/integrations/langgraph.md)** | `@cortadel/langgraph` | TypeScript | A `BaseStore` implementation, memory tools, and recall/persist graph nodes | [`langgraph/`](./langgraph) |
+| **[Mastra](../docs/integrations/mastra.md)** | `@cortadel/mastra` | TypeScript | A `Processor` that recalls and persists, plus `createTool` memory tools | [`mastra/`](./mastra) |
+| **[n8n](../docs/integrations/n8n-nodes-cortadel.md)** | `n8n-nodes-cortadel` | TypeScript | A Cortadel Memory sub-node for the AI Agent's `ai_memory` port, and a six-operation action node | [`n8n-nodes-cortadel/`](./n8n-nodes-cortadel) |
+| **[OpenAI Agents SDK](../docs/integrations/openai-agents.md)** | `@cortadel/openai-agents` | TypeScript | A `Session` implementation, recall via `callModelInputFilter`, and function tools | [`openai-agents/`](./openai-agents) |
+| **[OpenClaw](../docs/integrations/openclaw.md)** | `@cortadel/openclaw` | TypeScript | A memory corpus supplement, two agent tools, and recall/capture hooks | [`openclaw/`](./openclaw) |
+| **[Vercel AI SDK](../docs/integrations/vercel-ai-sdk.md)** | `@cortadel/vercel-ai-provider` | TypeScript | A `LanguageModelMiddleware` that recalls and persists, plus AI SDK tools | [`vercel-ai-sdk/`](./vercel-ai-sdk) |
+| **[CrewAI](../docs/integrations/crewai.md)** | `cortadel-crewai` | Python | A drop-in `crewai.Memory`, native crew tools, and a task-completed listener | [`crewai/`](./crewai) |
+| **[Google ADK](../docs/integrations/google-adk.md)** | `cortadel-google-adk` | Python | A `BaseMemoryService` (so ADK's own `load_memory` / `preload_memory` work), an auto-persist plugin, and tools | [`google-adk/`](./google-adk) |
+| **[Pydantic AI](../docs/integrations/pydantic-ai.md)** | `cortadel-pydantic-ai` | Python | An `AbstractCapability` that recalls, persists, and contributes a memory toolset | [`pydantic-ai/`](./pydantic-ai) |
+| **[Microsoft Agent Framework](../docs/integrations/microsoft-agent-framework.md)** | `Cortadel.AgentFramework` | .NET (`net8.0`) | An `AIContextProvider` (`ProvideAIContextAsync` / `StoreAIContextAsync`) plus native `AIFunction` tools | [`microsoft-agent-framework/`](./microsoft-agent-framework) |
 
 All twelve are **published at `0.1.0`** (npm ×8, PyPI ×3, NuGet ×1), so the install command in each
 package's README works as written. Every npm package carries a Sigstore provenance attestation.
@@ -175,9 +177,9 @@ never at the framework boundary, which is the half worth proving. Cover tool reg
 shape, the retrieve→inject path, the persist-after-turn path, user-id scoping, and error
 propagation.
 
-**Honest limits.** Every package here documents what it cannot do (see the "Limits" paragraphs in
-[`docs/integrations.md`](../docs/integrations.md)). A framework concept with no Cortadel equivalent
-gets written down, not papered over.
+**Honest limits.** Every package here documents what it cannot do — in its own README, and in the
+**Known limits** section of its page under [`docs/integrations/`](../docs/integrations). A framework
+concept with no Cortadel equivalent gets written down, not papered over.
 
 ## Canonical option names
 
@@ -201,7 +203,7 @@ which, and why that is deliberate.
 | Recall only from the current session/thread | `scopeRecallToSession` / `scope_recall_to_session` / `ScopeRecallToSession` | `bool` | `false` / `False` |
 | …when there are genuinely more than two scopes | `recallScope` / `recall_scope` | enum | document every value |
 | Model-facing tool names | `search_memory`, `add_memories` | — | plural on add, matching Cortadel's own MCP surface; `snake_case` in every language, because the *model* reads them |
-| Label recorded on writes and in access logs | `appName` / `app_name` / `AppName` | `str` | the integration's **own published package name** (`@cortadel/langgraph`, `cortadel-crewai`, `Cortadel.AgentFramework`) |
+| Label recorded on searches and on `add` writes — the conversation API takes no app field, so auto-captured facts carry none | `appName` / `app_name` / `AppName` | `str` | the integration's **own published package name** (`@cortadel/langgraph`, `cortadel-crewai`, `Cortadel.AgentFramework`) |
 
 Rules that come with the table:
 
@@ -304,7 +306,9 @@ bypass-2FA tokens in January 2027.
 
 ## See also
 
-- [`docs/integrations.md`](../docs/integrations.md) — the user-facing page these packages appear on.
+- [`docs/integrations.md`](../docs/integrations.md) — the user-facing index these packages appear
+  on, and [`docs/integrations/`](../docs/integrations) — one published page per package. Both are
+  mirrored into `website/src/content/docs/`; `.github/scripts/check-docs-mirror.mjs` gates the pair.
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — PR workflow, commit conventions, CI.
 - [`.github/RELEASING.md`](../.github/RELEASING.md) — the maintainer runbook for releasing these
   twelve packages: the one-time registry setup, the tag → package → registry table, and what is not
