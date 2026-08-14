@@ -312,13 +312,15 @@ Auth differs per registry, deliberately, and only one of the three is OIDC:
 
 | Registry | Auth | Why |
 | --- | --- | --- |
-| NuGet | OIDC trusted publishing (`NuGet/login`) — no stored secret | a nuget.org policy is owner-wide and creates new package IDs on first push, so there is nothing to bootstrap |
+| NuGet | OIDC trusted publishing (`NuGet/login`) — no stored secret. **Publishes from `dotnet.yml`, not `integrations.yml`** | a nuget.org policy is bound to one workflow *filename*, and this repo's is bound to `dotnet.yml`. Publishing the .NET integration from `integrations.yml` fails the token exchange with `Workflow mismatch for policy 'cortadel': expected 'dotnet.yml'`, so that one job lives in `dotnet.yml` instead. See [`RELEASING.md`](.github/RELEASING.md) §3.2 for the move-back path once a second policy exists |
 | PyPI | the `PYPI_TOKEN` repository secret — the same **account-scoped** token `python.yml` publishes the `cortadel` SDK with | account-scoped is what lets it create the three brand-new projects; a project-scoped token cannot create a project at all. No trusted publisher is configured on pypi.org and none is wanted |
 | npm | the `NPM_TOKEN_INTEGRATIONS` secret, **temporarily** | npm trusted publishing cannot bootstrap a package that does not yet exist, so the first publish of each package has to be token-authenticated. `publish-npm` carries the exact edit that removes the token afterwards |
 
-**Maintainers: two of the three registries need a human to configure something before the first tag** —
-npm's `NPM_TOKEN_INTEGRATIONS` secret (which does not exist yet) and a nuget.org trusted-publishing
-policy naming `integrations.yml`. PyPI needs nothing; its token is already configured. The checklist
+**Maintainers: one thing still needs a human before the npm tags** — an `NPM_TOKEN_INTEGRATIONS`
+secret whose token was created with npm's **Bypass 2FA** option. Without it the publish fails
+`EOTP: This operation requires a one-time password`, because the account enforces 2FA on writes and
+that flag can only be set when the token is minted. PyPI and NuGet need nothing: PyPI's
+account-scoped token is already configured, and NuGet works from `dotnet.yml` (above). The checklist
 is at the top of **[`.github/RELEASING.md`](.github/RELEASING.md)**, followed by the step-by-step
 procedure and what to do when a release goes wrong (short version: all three registries are
 append-only and none lets a version be reused, so you fix forward).
