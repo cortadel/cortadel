@@ -291,22 +291,45 @@ jobs:
       # hatchling requests it through the dynamic get_requires_for_build_editable() hook above, and
       # without it this step fails with "ModuleNotFoundError: No module named 'editables'".
       #
-      # The step is still here rather than dropped: replacing it with `-o pythonpath=.` on the
-      # pytest step also clears the finding but buys nothing (an editable install's whole effect on
-      # sys.path is a .pth holding this one directory, so the import resolves to the same file —
-      # measured on google-adk, 78 passed, identical module path), and installing the built wheel
-      # by path instead would make pytest import from site-packages rather than the tree under
-      # review, since pytest puts only tests/ on sys.path here.
-      - run: uv pip install --no-deps --no-build --no-build-isolation -e .
+      # There is deliberately NO `uv pip install -e .` step here. The local package reaches the
+      # tests through PYTHONPATH instead (below), which is equivalent: an editable install's entire
+      # effect on sys.path is a .pth file holding this one directory, so either way the import
+      # resolves to the tree under review rather than to a copy in site-packages. Installing the
+      # built wheel by path would NOT be equivalent: pytest puts only tests/ on sys.path here, so
+      # the import would come from site-packages and the tests would stop exercising the tree.
+      #
+      # Two details that both have to be right, and were each found by running the legs rather than
+      # by reasoning about them:
+      #   * It must be the PYTHONPATH *environment variable*, not pytest's `-o pythonpath=.` ini
+      #     option. That option only populates the pytest process's own sys.path, and
+      #     crewai's tests/test_public_api.py spawns a subprocess
+      #     (`subprocess.run([sys.executable, "-c", ...])`) which does not inherit it —
+      #     ModuleNotFoundError: No module named 'cortadel_crewai'.
+      #   * It must be ABSOLUTE. A relative `.` is resolved against each process's own cwd at
+      #     interpreter start, and that same subprocess runs with `cwd=tmp_path`, so a relative
+      #     entry points at the temp directory and the import fails there too.
+      #
+      # Dropping the step is what finally clears SonarCloud githubactions:S8544. The substance was
+      # already fixed by --no-build-isolation above, but the rule matches the shape of a
+      # `uv pip install <target>` line rather than measuring what it resolves, so the finding
+      # survived the fix. Removing the command removes the surface, and costs nothing.
+      #
+      # `--group build` above is still required: `uv build` at the end of this job runs the same
+      # PEP 517 backend and needs hatchling + editables present rather than resolved from the index.
 
       # tests/ explicitly, even though all three already set `testpaths = ["tests"]` — the path is
       # passed so this step documents its own scope rather than relying on config a reader of this
       # file might not have open. Two of the three (crewai, pydantic-ai) also set
       # `filterwarnings = ["error"]`, so a new DeprecationWarning out of the framework fails the
       # leg; that is deliberate on the packages' part and is left alone here.
-      # --no-sync: the venv is already fully synced by the two steps above, so uv never
-      # re-resolves or re-installs; this step only ever runs pytest.
+      # --no-sync: the venv is already fully synced by the step above, so uv never re-resolves or
+      # re-installs; this step only ever runs pytest.
+      # PYTHONPATH replaces the editable install — see the block above for why it is an env var and
+      # why it is absolute. Set on the step rather than the job so it applies to exactly the process
+      # that needs it.
       - run: uv run --no-sync --no-build --locked pytest tests -q
+        env:
+          PYTHONPATH: ${{ github.workspace }}/integrations/${{ matrix.slug }}
 
       # `uv build`, not python.yml's `uv run --with build python -m build`: that file uses the
       # literal `build` tool because its own task specified it, and pays for an ephemeral overlay
