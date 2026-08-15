@@ -5,7 +5,7 @@
 
 import { basename } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { cfg, readStdin, api, truncate } from './lib.mjs';
+import { cfg, readStdin, apiDetailed, truncate, logEvent } from './lib.mjs';
 
 /**
  * Extract the plain text of a transcript entry. `.message.content` is either
@@ -41,23 +41,41 @@ function uuidOf(entry) {
   return typeof entry?.uuid === 'string' && entry.uuid ? entry.uuid : undefined;
 }
 
+/** Record why this invocation stored nothing, then bail. See lib.mjs's logEvent(). */
+function skip(reason, detail = {}) {
+  logEvent('Stop', 'skip', { reason, ...detail });
+}
+
 async function main() {
   const c = cfg();
-  if (!c) return;
+  if (!c) {
+    skip(process.env.CORTADEL_HOOKS_DISABLE === '1' ? 'hooks-disabled' : 'no-config');
+    return;
+  }
 
   const input = await readStdin();
-  if (!input) return;
+  if (!input) {
+    skip('no-stdin');
+    return;
+  }
 
   // Recursion guard: we are being invoked because a Stop hook already ran.
-  if (input.stop_hook_active) return;
+  if (input.stop_hook_active) {
+    skip('recursion-guard');
+    return;
+  }
 
   const transcriptPath = input.transcript_path;
-  if (!transcriptPath || typeof transcriptPath !== 'string') return;
+  if (!transcriptPath || typeof transcriptPath !== 'string') {
+    skip('no-transcript-path');
+    return;
+  }
 
   let raw;
   try {
     raw = await readFile(transcriptPath, 'utf8');
   } catch {
+    skip('transcript-unreadable');
     return;
   }
 
@@ -88,7 +106,10 @@ async function main() {
       break;
     }
   }
-  if (assistantIdx < 0) return;
+  if (assistantIdx < 0) {
+    skip('no-assistant-text');
+    return;
+  }
 
   // … and the last user entry with non-empty text BEFORE it. Prefer the last
   // HUMAN turn; only if no human text-bearing turn exists fall back to the
@@ -115,13 +136,19 @@ async function main() {
     userText = fallbackText;
     userUuid = fallbackUuid;
   }
-  if (!userText) return;
+  if (!userText) {
+    skip('no-user-text');
+    return;
+  }
 
   const user = truncate(userText, 4000);
   const assistant = truncate(assistantText, Math.max(0, c.captureMaxChars - 4000));
 
   // Skip trivial/tool-only exchanges.
-  if (!user || !assistant || user.length + assistant.length < 80) return;
+  if (!user || !assistant || user.length + assistant.length < 80) {
+    skip('trivial-exchange', { userChars: user.length, assistantChars: assistant.length });
+    return;
+  }
 
   const body = {
     user_id: c.userId,
@@ -135,10 +162,27 @@ async function main() {
     tags: ['claude-code'],
   };
 
-  // Ignore the response entirely — {"no_facts_extracted":true} is normal.
-  await api(c, 'POST', '/api/v1/memories/from-conversation', {
+  // The response never changes what this hook DOES — it stays silent either way —
+  // but it is the only place the difference between "stored 3 facts", "the
+  // extractor found nothing", and "the server said 401" is visible, so record it.
+  // `{"no_facts_extracted":true}` is a normal, healthy outcome, not an error.
+  const started = Date.now();
+  const res = await apiDetailed(c, 'POST', '/api/v1/memories/from-conversation', {
     body,
     timeoutMs: 110000,
+  });
+  const ms = Date.now() - started;
+
+  if (!res.ok) {
+    logEvent('Stop', 'error', { error: res.error, status: res.status, ms });
+    return;
+  }
+  const stored = Array.isArray(res.data?.results) ? res.data.results.length : 0;
+  logEvent('Stop', stored > 0 ? 'stored' : 'no-facts', {
+    stored,
+    ms,
+    userChars: user.length,
+    assistantChars: assistant.length,
   });
 }
 

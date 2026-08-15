@@ -57,7 +57,7 @@ Claude Code `userConfig` schema and this table:
 | `base_url` | yes | no | `https://app.cortadel.ai` | Base URL of the Cortadel server to use. No trailing slash. |
 | `user_id` | yes | no | — | The user id your API key was minted for. It is a **path segment** in the MCP URL, so it must be URL-safe, and it must match the key's user or the server responds 403. |
 | `api_key` | yes | yes | — | API key for your user. **Hosted** (`https://app.cortadel.ai`): the dashboard there issues keys. **Self-hosted**: mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
-| `client_name` | no | no | `claude-code` | Label for this client. Becomes the `{clientName}` path segment of the MCP endpoint (`<base_url>/mcp/{client_name}/{user_id}`) **and** the `app_name` the hooks record on every memory they write or search — the two must agree, and this one setting keeps them that way. |
+| `client_name` | no | no | `claude-code` | Label for this client. Becomes the `{clientName}` path segment of the MCP endpoint (`<base_url>/mcp/{client_name}/{user_id}`) and the `app_name` the `UserPromptSubmit` hook sends on its *search* requests, which the server uses for access logging only. It is **not** recorded on memories the hooks capture — see [MCP tool naming](#mcp-tool-naming). |
 
 ### Hosted vs self-hosted
 
@@ -83,9 +83,10 @@ is still a path segment of the same URL shape:
 `cortadel-plugin/scripts/lib.mjs`'s `cfg()` is the single place this resolution happens;
 see that file's `readOption()` for the exact precedence.
 
-Five more environment-variable-only options exist beyond the four `userConfig` fields above
-(`CORTADEL_RECALL_TOPK`, `CORTADEL_MIN_PROMPT_CHARS`, `CORTADEL_RECALL_RERANK`,
-`CORTADEL_CAPTURE_MAX_CHARS`, `CORTADEL_HOOKS_DISABLE`) — see
+Seven more environment-variable-only options exist beyond the four `userConfig` fields above
+(`CORTADEL_RECALL_TOPK`, `CORTADEL_RECALL_MIN_SCORE`, `CORTADEL_MIN_PROMPT_CHARS`,
+`CORTADEL_RECALL_RERANK`, `CORTADEL_CAPTURE_MAX_CHARS`, `CORTADEL_HOOKS_DISABLE`,
+`CORTADEL_HOOKS_LOG`) — see
 [`cortadel-plugin/README.md`](https://github.com/cortadel/cortadel/blob/main/cortadel-plugin/README.md#configuration-environment-variables)
 for the full table.
 
@@ -134,28 +135,43 @@ tool-use output) and exposes all eight Cortadel MCP tools — `add_memories`, `a
 ${user_config.base_url}/mcp/${user_config.client_name}/${user_config.user_id}
 ```
 
-`client_name` is what the *server* sees as the calling app's name (the `{clientName}` path
-segment — see [MCP integration](mcp.md)) and, independently, what the *hooks* stamp on the
-memories they write via `UserPromptSubmit`'s `app_name` field. Because both read the same
-`client_name` value, memories written by the hooks and memories written through the MCP tools
-show up under one consistent app label instead of two.
+`client_name` is what the *server* sees as the calling app's name — the `{clientName}` path
+segment (see [MCP integration](mcp.md)), and the `app_name` field the `UserPromptSubmit` hook
+sends on its search requests, where the spec defines it as "application name for access logging".
+It does **not** filter search results, and it is **not** stamped on memories the hooks capture:
+the capture endpoint (`POST /api/v1/memories/from-conversation`) has no `app_name` field at all,
+so `app_name` on a stored memory reflects whatever wrote it — the MCP server, an SDK, or the
+dashboard.
 
 ## Troubleshooting
 
 The hooks are deliberately silent on failure, so "nothing happens" is the main failure mode.
-Check connectivity directly:
+Start with the bundled diagnostic, which resolves the same config the hooks use, checks health,
+auth, and a live read, and reports every check rather than stopping at the first failure:
 
 ```bash
-curl -H "Authorization: Bearer $CORTADEL_API_KEY" \
-  "$CORTADEL_URL/api/v1/memories?user_id=$CORTADEL_USER_ID&size=1"
+node "<plugin-dir>/scripts/doctor.mjs"     # or run the /doctor skill inside Claude Code
 ```
+
+It exits 0 when everything passes, 1 otherwise, and never prints your API key. Crucially it reads
+the config Claude Code persisted on disk as well as the environment — a marketplace install
+resolves **nothing** from the environment of an ordinary shell, because `CLAUDE_PLUGIN_OPTION_*`
+is injected into hook *subprocesses* only.
 
 - **401** — missing/invalid API key.
 - **403** — the key is valid but `user_id` doesn't match the user the key was minted for.
 - **No memories injected** — prompt too short (`CORTADEL_MIN_PROMPT_CHARS`, default 10), a
-  slash/`!` command, an empty search result, or the request exceeded its budget.
+  slash/`!` command, an empty search result, everything below `CORTADEL_RECALL_MIN_SCORE`, or the
+  request exceeded its budget.
 - **Stop captures "nothing"** — tool-only or trivial (<80 chars combined) exchanges are skipped;
-  `{"no_facts_extracted":true}` from the server is a normal outcome, not an error.
+  `{"no_facts_extracted":true}` from the server is a normal outcome, not an error. Conversations
+  *about* tooling, debugging sessions, and facts already in the store all legitimately extract
+  nothing — a healthy install can genuinely capture zero facts for a whole session.
+- **"Is it even running?"** — set `CORTADEL_HOOKS_LOG` to a file path. Each hook then appends one
+  JSON line per invocation recording its outcome (`stored`/`no-facts`/`error`/`skip`, with the
+  status code or guard reason), which is the only way to tell "the extractor found nothing" apart
+  from "the server said 401" — both are silent otherwise. It records outcomes and counts only,
+  never prompt text, memory content, or the key.
 - **`claude plugin validate` fails after editing the plugin** — you likely hand-edited a generated
   file. `cortadel-plugin/.claude-plugin/plugin.json`, `cortadel-plugin/.codex-plugin/plugin.json`,
   `.claude-plugin/marketplace.json`, and `.agents/plugins/marketplace.json` are all generated by

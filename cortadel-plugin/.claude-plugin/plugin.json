@@ -1,7 +1,7 @@
 {
   "name": "cortadel-memory",
   "description": "Ambient Cortadel memory: push-recall on every prompt, session bootstrap, auto-capture on stop.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Cortadel",
     "url": "https://cortadel.ai"
@@ -40,7 +40,7 @@
     "client_name": {
       "type": "string",
       "title": "Client name",
-      "description": "Label for this client. Becomes the {clientName} path segment of the MCP endpoint and the app_name recorded on memories the hooks capture, so the hooks and the MCP server agree on the app label.",
+      "description": "Label for this client. Becomes the {clientName} path segment of the MCP endpoint, and the app_name the UserPromptSubmit hook sends on search requests, which the server uses for access logging only. It is not recorded on memories the hooks capture — the capture endpoint has no app_name field.",
       "default": "claude-code",
       "required": false
     }
