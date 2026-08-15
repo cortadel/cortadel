@@ -1,6 +1,12 @@
 // Shared library for the cortadel-memory Claude Code plugin hooks.
 // Zero dependencies, Node 18+ (built-in fetch). Everything fails open:
 // any error path yields null / empty output so hooks can exit 0 silently.
+//
+// Failing open is deliberate, but it is also blinding: on its own it makes a
+// healthy install and a dead one produce the identical observable (nothing).
+// logEvent() below is the escape hatch — opt-in, outcome-only, never on stdout.
+
+import { appendFileSync, renameSync, rmSync, statSync } from 'node:fs';
 
 // This plugin's env vars were renamed MEMFORGE_* -> CORTADEL_* with NO
 // backward-compatible fallback: the old names are never read as working
@@ -80,16 +86,30 @@ export function cfg() {
     return Number.isFinite(n) && n > 0 ? n : dflt;
   };
 
+  // Non-negative float, for the recall relevance floor. Unlike num() this
+  // accepts 0 (the default, meaning "no floor"), so it cannot be folded in.
+  const rate = (v, dflt) => {
+    const n = Number.parseFloat(v);
+    return Number.isFinite(n) && n >= 0 ? n : dflt;
+  };
+
   return {
     url: url.replace(/\/+$/, ''),
     apiKey,
     userId,
-    // Also the {clientName} path segment of the MCP endpoint (packaging/plugin.metadata.json's
-    // mcp.urlTemplate) — the hooks and the MCP server must agree on this label.
+    // The {clientName} path segment of the MCP endpoint (packaging/plugin.metadata.json's
+    // mcp.urlTemplate), and the app_name sent on search requests — which the spec defines as
+    // "application name for access logging". It does NOT filter results, and it is NOT recorded
+    // on captured memories: AddConversationRequest has no app_name field at all.
     clientName: readOption(env, 'client_name') || 'claude-code',
     topK: num(readEnv(env, 'CORTADEL_RECALL_TOPK'), 3),
     minPromptChars: num(readEnv(env, 'CORTADEL_MIN_PROMPT_CHARS'), 10),
     rerank: readEnv(env, 'CORTADEL_RECALL_RERANK') || undefined,
+    // Relevance floor for push-recall. Default 0 keeps the previous behaviour
+    // exactly — inject whatever the server ranks in the top k, however weak the
+    // match. Raise it when unrelated memories keep surfacing: RRF scores on this
+    // endpoint run roughly 0.3–0.8, so 0.4 is a reasonable first try.
+    minScore: rate(readEnv(env, 'CORTADEL_RECALL_MIN_SCORE'), 0),
     // Floor 8000: the Stop capture reserves 4000 chars for the user turn, so
     // anything lower would leave the assistant turn a zero/ellipsis budget.
     captureMaxChars: Math.max(8000, num(readEnv(env, 'CORTADEL_CAPTURE_MAX_CHARS'), 16000)),
@@ -112,9 +132,21 @@ export async function readStdin() {
 
 /**
  * Minimal fetch wrapper: Bearer auth, JSON in/out, AbortController budget.
- * Returns parsed JSON on 2xx, null on ANY failure (non-2xx, abort, network).
+ * Reports the OUTCOME rather than collapsing it — the shape is
+ * `{ ok, status, data, error }`:
+ *
+ * - `{ ok: true,  status: 200, data }`            — 2xx with a parsed JSON body
+ * - `{ ok: false, status: 401, error: 'http' }`   — reached the server, it said no
+ * - `{ ok: false, status: null, error: 'abort' }` — exceeded the timeout budget
+ * - `{ ok: false, status: null, error: 'network'|'parse' }`
+ *
+ * Never throws. `api()` below flattens this back to the fail-open contract every
+ * caller already relies on; anything that needs to tell "no results" apart from
+ * "no server" (the Stop capture's outcome log, the doctor skill) uses this.
  */
-export async function api(config, method, path, { body, query, timeoutMs = 10000 } = {}) {
+export async function apiDetailed(config, method, path, { body, query, timeoutMs = 10000 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const url = new URL(config.url + path);
     if (query) {
@@ -122,25 +154,97 @@ export async function api(config, method, path, { body, query, timeoutMs = 10000
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
       }
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(url, {
+      method,
+      headers: {
+        authorization: `Bearer ${config.apiKey}`,
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      signal: controller.signal,
+    });
+    if (!res.ok) return { ok: false, status: res.status, data: null, error: 'http' };
+
+    // The body read MUST stay inside this try, with the timer still armed: a
+    // server that sends headers and then stalls mid-body would otherwise hang
+    // here forever, and the Stop hook runs async with nothing supervising it.
+    let data;
     try {
-      const res = await fetch(url, {
-        method,
-        headers: {
-          authorization: `Bearer ${config.apiKey}`,
-          ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
-        },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-        signal: controller.signal,
-      });
-      if (!res.ok) return null;
-      return await res.json();
-    } finally {
-      clearTimeout(timer);
+      data = await res.json();
+    } catch (e) {
+      // An abort during the body read is a timeout, not a malformed payload.
+      return {
+        ok: false,
+        status: res.status,
+        data: null,
+        error: e?.name === 'AbortError' ? 'abort' : 'parse',
+      };
     }
+    return { ok: true, status: res.status, data, error: null };
+  } catch (e) {
+    return { ok: false, status: null, data: null, error: e?.name === 'AbortError' ? 'abort' : 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Fail-open wrapper over apiDetailed(): parsed JSON on 2xx, null on ANY failure
+ * (non-2xx, abort, network, unparseable body). This is the contract the hooks'
+ * happy paths are written against — a null here always means "produce no output".
+ */
+export async function api(config, method, path, opts = {}) {
+  const res = await apiDetailed(config, method, path, opts);
+  return res.ok ? res.data : null;
+}
+
+/**
+ * Append one JSON line describing a hook invocation's outcome to the file named
+ * by `CORTADEL_HOOKS_LOG`. Unset (the default) makes this a no-op, so the hooks
+ * stay exactly as silent as before unless someone opts in.
+ *
+ * This exists because every hook fails open by design: without it, "captured 3
+ * facts", "server said 401", and "the extractor found nothing" are all the same
+ * observable — silence — which makes a healthy install indistinguishable from a
+ * broken one.
+ *
+ * Deliberately records only outcomes and counts: never prompt text, memory
+ * content, or the API key. Never throws and never writes to stdout, so a bad
+ * path or an unwritable file degrades to the previous silent behaviour.
+ *
+ * The file is rotated to `<path>.1` once it exceeds LOG_MAX_BYTES, keeping at
+ * most two generations — this log is opt-in but, once on, is appended to on
+ * every single prompt.
+ */
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+export function logEvent(hook, outcome, detail = {}) {
+  try {
+    const target = process.env.CORTADEL_HOOKS_LOG;
+    if (!target) return;
+
+    // Rotate before appending. UserPromptSubmit writes a line on EVERY prompt, so
+    // a log left enabled for months would otherwise grow without bound on the
+    // user's disk. One stat per invocation, and only when logging is on at all.
+    try {
+      if (statSync(target).size > LOG_MAX_BYTES) {
+        const rotated = target + '.1';
+        rmSync(rotated, { force: true }); // Windows renameSync will not clobber
+        renameSync(target, rotated);
+      }
+    } catch {
+      // no file yet, or a path we cannot stat — let appendFileSync decide
+    }
+
+    const line = JSON.stringify({
+      ts: new Date().toISOString(),
+      hook,
+      outcome,
+      ...detail,
+    });
+    appendFileSync(target, line + '\n');
   } catch {
-    return null;
+    // logging is best-effort — never let it affect the hook
   }
 }
 

@@ -25,6 +25,11 @@ data-flow statement: [`docs/plugin.md`](../../docs/plugin.md).
 input — every failure path exits 0 with no output. The plugin can slow a prompt
 down by at most its request budget, but it can never break a Claude Code session.
 
+Failing open is also blinding: on its own it makes "stored 3 facts", "the extractor found
+nothing", and "the server said 401" produce the identical observable — silence. Set
+`CORTADEL_HOOKS_LOG` to tell them apart, and run [`scripts/doctor.mjs`](#diagnostics) to check the
+install end to end.
+
 ## Install
 
 ### Via marketplace (recommended)
@@ -62,16 +67,18 @@ manual run). Missing **any** of the first three leaves all hooks silent no-ops:
 | `base_url` | `CLAUDE_PLUGIN_OPTION_BASE_URL` | `CORTADEL_URL` | yes | Base URL of the Cortadel server to use. Defaults to the hosted service, `https://app.cortadel.ai`; replace with your own origin (e.g. `http://localhost:3001`) to self-host instead. No trailing slash. |
 | `user_id` | `CLAUDE_PLUGIN_OPTION_USER_ID` | `CORTADEL_USER_ID` | yes | The user id the key was minted for — must match, or the server returns 403. Also the MCP `{userId}` path segment. |
 | `api_key` | `CLAUDE_PLUGIN_OPTION_API_KEY` | `CORTADEL_API_KEY` | yes | API key for your user. **Hosted**: the `https://app.cortadel.ai` dashboard issues keys. **Self-hosted**: mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
-| `client_name` | `CLAUDE_PLUGIN_OPTION_CLIENT_NAME` | `CORTADEL_CLIENT_NAME` | no (default `claude-code`) | The MCP `{clientName}` path segment **and** the `app_name` the hooks stamp on memories — kept in sync by reading this one value for both. |
+| `client_name` | `CLAUDE_PLUGIN_OPTION_CLIENT_NAME` | `CORTADEL_CLIENT_NAME` | no (default `claude-code`) | The MCP `{clientName}` path segment, and the `app_name` `UserPromptSubmit` sends on *search* requests — which the spec defines as "application name for access logging". It does **not** filter results, and it is **not** stamped on captured memories: `AddConversationRequest` has no `app_name` field. |
 
 `scripts/lib.mjs`'s `cfg()`/`readOption()` implements this precedence.
 
-Five more environment-variable-only options (not `userConfig` — set via `CORTADEL_*` regardless
+Seven more environment-variable-only options (not `userConfig` — set via `CORTADEL_*` regardless
 of install method):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `CORTADEL_RECALL_TOPK` | `3` | Memories injected per prompt |
+| `CORTADEL_RECALL_MIN_SCORE` | `0` (no floor) | Drop injected memories scoring below this. Search always returns its top *k* however weak the match, so at the default a prompt with nothing relevant still gets the *k* least-irrelevant memories injected every turn. RRF scores run roughly 0.3–0.8; `0.4` is a reasonable first try. Unscored results are never dropped. |
+| `CORTADEL_HOOKS_LOG` | unset | Path to a file each hook appends one JSON line to per invocation, recording its outcome (`stored`/`no-facts`/`injected`/`error`/`skip`) plus the status code or guard reason. **The only way to tell a healthy install from a broken one** — see [Diagnostics](#diagnostics). Records outcomes and counts only: never prompt text, memory content, or the API key. |
 | `CORTADEL_MIN_PROMPT_CHARS` | `10` | Prompts shorter than this are skipped (also skipped: `/` slash commands and `!` shell prompts) |
 | `CORTADEL_RECALL_RERANK` | unset | **Only set this (`cross_encoder`) on deployments with the GPU rerank endpoint** (`MEMFORGE_Rerank__HttpEndpoint`, a server-side setting). Unset = raw RRF, ~1 s p50. CPU cross-encoder rerank takes 6–10 s and must never run on the prompt path. |
 | `CORTADEL_CAPTURE_MAX_CHARS` | `16000` | Char cap for the captured exchange (user side capped at 4000 of it) |
@@ -100,11 +107,36 @@ working after an upgrade, check stderr for this message and rename your env vars
 rename diagnostic only applies to the `CORTADEL_*` tier — `CLAUDE_PLUGIN_OPTION_*` has no legacy
 counterpart to detect.
 
-## Skill
+## Skills
 
 `skills/cortadel/` — the Cortadel Agent Skill, shipped once here as the single copy both hosts'
 manifests point at (`cortadel-plugin/.claude-plugin/plugin.json`'s default `./skills/`
-path and `.codex-plugin/plugin.json`'s explicit `skills` field).
+path and `.codex-plugin/plugin.json`'s explicit `skills` field) — alongside six verb skills
+(`remember`, `recall`, `forget`, `history`, `reconcile`, `doctor`).
+
+## Diagnostics
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.mjs"   # or the /doctor skill inside Claude Code
+```
+
+Resolves config, then checks server health, auth, and a live read — reporting **every** check
+rather than stopping at the first failure. Exits 0 if all pass, 1 otherwise. It never prints the
+API key.
+
+Unlike the hooks it deliberately does **not** fail open, and unlike a hand-rolled `curl` check it
+reads config from disk as well as the environment. That matters more than it sounds: Claude Code
+injects `CLAUDE_PLUGIN_OPTION_*` into hook *subprocesses* only, so for a marketplace install an
+ordinary shell — including the one a skill runs commands in — resolves **nothing** from the
+environment and a naive diagnostic reports a perfectly healthy install as unconfigured. The script
+also reads what Claude Code persisted: non-sensitive options in `pluginConfigs`
+(`~/.claude/settings.json`) and the key in `pluginSecrets` (`~/.claude/.credentials.json`).
+
+**When every check passes but no memories appear**, that is usually correct behaviour, not a
+fault: the Stop hook's server-side extractor legitimately finds no durable facts in
+meta-conversation, debugging sessions, or content already stored. Set `CORTADEL_HOOKS_LOG` and
+re-run to see which it is — `Stop:no-facts×4` and `Stop:error(401)×4` are the same silence
+without it.
 
 ## Privacy
 
@@ -116,8 +148,10 @@ statement: [`docs/plugin.md#data-flow--privacy`](../../docs/plugin.md#data-flow-
 
 ## Troubleshooting
 
-Hooks are deliberately silent, so "nothing happens" is the failure symptom.
-Check with `curl`:
+Hooks are deliberately silent, so "nothing happens" is the failure symptom. Run
+[`scripts/doctor.mjs`](#diagnostics) first — it answers most of the list below in one shot. The
+raw equivalent, if you want to check one thing by hand (note this only works when the
+`CORTADEL_*` variables are actually set in your shell, which a marketplace install does *not* do):
 
 ```
 curl -H "Authorization: Bearer $CORTADEL_API_KEY" "$CORTADEL_URL/api/v1/memories?user_id=$CORTADEL_USER_ID&size=1"
@@ -132,7 +166,10 @@ curl -H "Authorization: Bearer $CORTADEL_API_KEY" "$CORTADEL_URL/api/v1/memories
   aborts and stays silent by design).
 - **Stop captures "nothing"** — tool-only or trivial (<80 chars combined)
   exchanges are skipped; `{"no_facts_extracted":true}` from the server is a
-  normal outcome, not an error.
+  normal outcome, not an error. Conversations *about* tooling, debugging sessions,
+  and facts already in the store all legitimately extract nothing, so a healthy
+  install can capture zero facts across a whole session. `CORTADEL_HOOKS_LOG`
+  distinguishes that from a failing write.
 - **Everything used to work and now doesn't, right after an upgrade** — check
   stderr for the `[cortadel-memory] MEMFORGE_* is set, but ...` diagnostic
   described above; your env vars likely still use the retired `MEMFORGE_*` names.
