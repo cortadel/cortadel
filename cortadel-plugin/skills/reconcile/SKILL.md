@@ -30,8 +30,10 @@ returns rather than assuming a field shape — report what actually came back.
 node "${CLAUDE_PLUGIN_ROOT}/scripts/reconcile.mjs" run
 ```
 
-Add `--dry-run` if the user wants to see what *would* merge without changing anything. This starts
-an async job and returns immediately — it does not block until the run finishes.
+Two optional narrowing flags — pass them only when the user actually asked, never guess:
+`--limit N` caps how many candidate pairs the run judges, and `--types PERSON,ORG` restricts it to
+those entity types. There is **no** dry-run mode on this endpoint. The call starts an async job and
+returns immediately; it does not block until the run finishes.
 
 If the user just wants to see what's already queued from a previous run, skip to Step 3.
 
@@ -61,8 +63,12 @@ Unlike the previous MCP-based version of this skill, review is **not** read-only
 can act on a suggestion:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/reconcile.mjs" approve <suggestionId>
-node "${CLAUDE_PLUGIN_ROOT}/scripts/reconcile.mjs" reject  <suggestionId>
+# --winner is REQUIRED and must be one of the suggestion's two entities — it is the one KEPT.
+node "${CLAUDE_PLUGIN_ROOT}/scripts/reconcile.mjs" approve <suggestionId> --winner <entityId>
+
+# --note is REQUIRED: the server rejects an empty reason with 400, because the note is the
+# corpus this feature exists to collect. Use the user's actual reason, not a placeholder.
+node "${CLAUDE_PLUGIN_ROOT}/scripts/reconcile.mjs" reject <suggestionId> --note "<why they differ>"
 ```
 
 Merges are reversible server-side (`POST /api/v1/entities/merges/{loserId}/unmerge`), but **always
