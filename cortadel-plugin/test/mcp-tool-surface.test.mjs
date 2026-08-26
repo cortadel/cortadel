@@ -88,3 +88,30 @@ test('the folded tool names are not presented as MCP tools anywhere in the plugi
 
   assert.deepEqual(offenders, [], `folded tools presented as callable:\n  ${offenders.join('\n  ')}`);
 });
+
+// The two checks above are name-based, so they miss the form the drift actually took in prose:
+// "exposes eight tools" above an eight-row table, with every row a real-looking tool name. No
+// mcp__ prefix, no `tool(` call — invisible to both. A wrong COUNT is the tell, so assert on it.
+test('no plugin file claims an MCP tool count other than two', () => {
+  const COUNTS = /\b(one|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:\w+\s+){0,2}tools\b/gi;
+  const offenders = [];
+
+  for (const file of [...walk(SKILLS_DIR), join(PLUGIN_ROOT, 'README.md')]) {
+    const rel = file.slice(PLUGIN_ROOT.length + 1).replace(/\\/g, '/');
+    readFileSync(file, 'utf8')
+      .split(/\r?\n/)
+      .forEach((line, i) => {
+        // Only lines actually talking about the MCP surface — "three tools" about something else
+        // (an integration's own toolset, a hook's steps) is none of this test's business.
+        if (!/\bMCP\b|\bcortadel\b/i.test(line)) return;
+        // Explaining the history is the point ("six earlier tools were folded on 2026-08-21"), so
+        // only PRESENT-tense claims count. Past-tense markers exempt the line.
+        if (/\b(was|were|used to|earlier|until|no longer|folded|previously|removed|retired)\b/i.test(line)) return;
+        for (const [match] of line.matchAll(COUNTS)) {
+          offenders.push(`${rel}:${i + 1} says "${match.trim()}" — the MCP surface is exactly two`);
+        }
+      });
+  }
+
+  assert.deepEqual(offenders, [], `wrong MCP tool count:\n  ${offenders.join('\n  ')}`);
+});

@@ -79,8 +79,8 @@ Do not proceed without an explicit affirmative reply that names what's being del
 
 ### Step 3 — Delete
 
-Only after confirmation, call REST `Memories_BulkDelete` — there is no MCP delete tool (the eight
-`cortadel` MCP tools have no delete operation):
+Only after confirmation, call REST `Memories_BulkDelete` — there is no MCP delete tool (the two
+`cortadel` MCP tools, `add_memories` and `search_memory`, have no delete operation):
 
 ```bash
 curl -X DELETE "$CORTADEL_URL/api/v1/memories" \

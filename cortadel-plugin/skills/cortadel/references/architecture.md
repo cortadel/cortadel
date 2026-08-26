@@ -51,11 +51,13 @@ similar-but-opposite facts (e.g., a preference and its negation) don't collapse 
 
 A separate, later-stage process merges duplicate entities and supersedes stale ones. It's
 described as **reversible and human-in-the-loop** (`README.md`) — an LLM judge proposes merges,
-some are auto-approved, and the rest sit in a review queue. Three MCP tools drive this from an
-agent: `reconcile_memories` (kick off a run), `reconcile_status` (poll it), and
-`list_merge_suggestions` (review pending duplicate-entity suggestions) — see `docs/mcp.md`. There
-is no equivalent REST endpoint in `spec/openapi.json`; reconciliation is reachable via MCP (and
-presumably the dashboard), not the public REST/SDK surface.
+some are auto-approved, and the rest sit in a review queue. This is driven over **REST**, not MCP —
+it was exposed as three MCP tools until 2026-08-21, when the MCP surface was folded to two.
+`EntitiesController` (`[Route("api/v1/entities")]`) carries the routes: `POST`/`GET`/`DELETE
+/api/v1/entities/reconcile` to start, poll and cancel a run, `GET /api/v1/entities/suggestions` to
+review the queue, `POST /api/v1/entities/suggestions/{id}/approve|reject` to act on one, and
+`POST /api/v1/entities/merges/{loserId}/unmerge` to reverse a merge. The plugin's `reconcile` skill
+drives these through `scripts/reconcile.mjs`.
 
 ## Bi-Temporal Data Model
 
@@ -110,24 +112,21 @@ provider (see `references/api-reference.md`).
 
 ## MCP Surface
 
-The MCP endpoint (`http://<host>:3001/mcp/{clientName}`, no `/sse` segment) exposes eight
-tools and no MCP resources or prompts (`docs/mcp.md`):
+The MCP endpoint (`http://<host>:3001/mcp/{clientName}`, no `/sse` segment) exposes exactly **two**
+tools and no MCP resources or prompts (`docs/mcp.md`). Six earlier tools were folded into them on
+2026-08-21; the capabilities did not go away, they moved.
 
 | Tool | What it does |
 |---|---|
-| `add_memories` | Store one or more memories (intent-aware: remember / forget / resolve). |
-| `add_conversation` | Distill atomic facts from a transcript and store them. |
-| `search_memory` | Hybrid search (BM25 + vector + RRF, optional rerank). |
-| `get_skill` | Retrieve a learned procedural skill. |
-| `add_media` | Ingest an image/document (multimodal). |
-| `reconcile_memories` | Kick off entity reconciliation (merge/supersede duplicates). |
-| `reconcile_status` | Poll a running reconciliation. |
-| `list_merge_suggestions` | Review pending duplicate-entity suggestions. |
+| `add_memories` | Store one or more memories (intent-aware: remember / forget / resolve). Each item in the array is auto-classified — plain text, a `"role: content"` conversation turn distilled into atomic facts, or an image URL / data-URI / base64. |
+| `search_memory` | Hybrid search (BM25 + vector + RRF, optional rerank), or chronological browse with no query. Procedural queries inline the top learned skill as `primary_skill`; `ids: ["skill:<id>"]` expands one. |
 
-Some of this surface — `get_skill`, `add_media`, and the reconciliation tools — has **no REST/SDK
-equivalent** in `spec/openapi.json`. The seven REST operations cover create/list/get/delete/search
-for plain memories and conversation ingestion only; multimodal ingestion, skill retrieval, and
-reconciliation are MCP-only today. Pick MCP over the SDK when you need one of these.
+| Folded tool | Reach it now via |
+|---|---|
+| `add_conversation` | `add_memories` — `"role: content"` items |
+| `add_media` | `add_memories` — image URL / data-URI / base64 items |
+| `get_skill` | `search_memory` — `primary_skill`, or `ids: ["skill:<id>"]` |
+| `reconcile_memories` · `reconcile_status` · `list_merge_suggestions` | REST on `/api/v1/entities/*` — never MCP |
 
 ## Data Flow Summary
 
@@ -151,8 +150,10 @@ Read (synchronous, zero LLM calls unless expand_query is set):
 
 ## What's Not in the Public Contract
 
-Communities (hierarchical Louvain clustering, per `README.md`'s comparison table), the dashboard
-UI, and the reconciliation review flow beyond the three MCP tools above are part of the product but
-have no corresponding operation in `spec/openapi.json`. If you're integrating purely against the
-REST API or an SDK, treat those as out of reach; they're reachable via MCP or the dashboard, not
-the typed client surface documented in `references/sdk-guide.md`.
+Communities (hierarchical Louvain clustering, per `README.md`'s comparison table) and the dashboard
+UI are part of the product but have no corresponding operation in `spec/openapi.json`. If you're
+integrating purely against a typed SDK, treat those as out of reach.
+
+Reconciliation is **not** in that category: it is fully REST-reachable on `/api/v1/entities/*`
+(see Entity Reconciliation above). It is simply absent from `spec/openapi.json` and therefore from
+the generated SDKs, so call it directly rather than assuming it is unavailable.
