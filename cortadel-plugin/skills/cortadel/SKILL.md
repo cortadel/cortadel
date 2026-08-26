@@ -78,8 +78,9 @@ either way:
 }
 ```
 
-Eight tools, no MCP resources or prompts: `add_memories`, `add_conversation`, `search_memory`,
-`get_skill`, `add_media`, `reconcile_memories`, `reconcile_status`, `list_merge_suggestions`. See
+Two tools, no MCP resources or prompts: `add_memories` and `search_memory`. Conversation turns
+(`"role: content"`) and media (image URL / data-URI / base64) are items inside `add_memories`;
+learned skills come back from `search_memory`. Entity reconciliation is REST, not MCP. See
 `references/architecture.md` for what each does. For Claude Code specifically, this repo also ships
 a zero-dependency hooks plugin (`cortadel-plugin`) that auto-recalls on each prompt and
 auto-captures at the end of a turn.
@@ -88,7 +89,7 @@ auto-captures at the end of a turn.
 
 Seven public operations (`spec/openapi.json`): health check, create/list/get/delete a memory,
 search, and distill-a-conversation. All three SDKs are thin, typed wrappers over the same seven
-calls, published at `1.0.0`:
+calls, published at `1.1.0`:
 
 | Language | Install | Client |
 |---|---|---|
@@ -173,7 +174,7 @@ trust and marketing copy:
 - **SDK `SearchOptions`/`ListOptions` are a strict subset of the wire request.** All three SDKs'
   `search()` only expose `top_k`, `mode`, `session_id`, `rerank`, `memory_type` — the wire-level
   `expand_query`, `include_faded`, `include_session_arm`, and `token_budget` exist in
-  `SearchMemoriesRequest` but aren't reachable through any `1.0.0` SDK. Same story for `list()`'s
+  `SearchMemoriesRequest` but aren't reachable through any `1.1.0` SDK. Same story for `list()`'s
   `as_of` temporal filter. Call the REST API directly for any of these five fields.
 - **`HealthResult.Checks` (.NET) silently drops undeclared check keys.** The OpenAPI contract marks
   the checks map and each check `additionalProperties: false`, so the Kiota-generated type the .NET

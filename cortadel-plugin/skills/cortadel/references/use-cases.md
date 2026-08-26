@@ -37,7 +37,7 @@ URL is `<base_url>/mcp/{clientName}`, where `<base_url>` is either the hosted se
 
 `clientName` (`claude` above) becomes the memory's app name, and is the only path segment — the
 key alone selects whose memories you see. Once connected, the agent calls `search_memory` before
-answering and `add_memories`/`add_conversation` after — durable recall across sessions with zero
+answering and `add_memories` after — durable recall across sessions with zero
 glue code. For Claude Code specifically, this repo also ships a zero-dependency hooks plugin
 (`cortadel-plugin`, package `cortadel-memory`) that automates exactly this push/recall
 loop — see its own README for setup.

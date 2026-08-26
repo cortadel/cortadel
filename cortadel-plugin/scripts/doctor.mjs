@@ -14,50 +14,11 @@
 //
 // Prints no secret values, ever — only whether each one resolved, and from where.
 
-import { readFileSync, existsSync, statSync, openSync, readSync, closeSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { apiDetailed } from './lib.mjs';
-
-const PLUGIN_PREFIX = 'cortadel-memory@';
-
-/** Parse a JSON file, or return null (missing/unreadable/malformed all behave the same here). */
-function readJson(p) {
-  try {
-    return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Config Claude Code persisted when the plugin was installed from a marketplace:
- * non-sensitive options in the settings file's `pluginConfigs`, sensitive ones in
- * `.credentials.json`'s `pluginSecrets`, both keyed `<plugin>@<marketplace>`. The
- * marketplace half varies with how the user added it, so match on the prefix.
- */
-function readInstalledConfig() {
-  const home = homedir();
-  const out = { options: {}, apiKey: undefined, source: null };
-
-  for (const p of [join(home, '.claude', 'settings.json'), join(home, '.claude', 'settings.local.json')]) {
-    const cfgs = readJson(p)?.pluginConfigs;
-    if (!cfgs) continue;
-    const key = Object.keys(cfgs).find((k) => k.startsWith(PLUGIN_PREFIX));
-    if (key && cfgs[key]?.options) {
-      out.options = cfgs[key].options;
-      out.source = p;
-      break;
-    }
-  }
-
-  const secrets = readJson(join(home, '.claude', '.credentials.json'))?.pluginSecrets;
-  if (secrets) {
-    const key = Object.keys(secrets).find((k) => k.startsWith(PLUGIN_PREFIX));
-    if (key && secrets[key]?.api_key) out.apiKey = secrets[key].api_key;
-  }
-  return out;
-}
+// Shared with reconcile.mjs — see plugin-config.mjs for why skill-invoked scripts cannot rely on
+// the CLAUDE_PLUGIN_OPTION_* env vars the hooks get.
+import { readInstalledConfig, resolve } from './plugin-config.mjs';
 
 /**
  * Last `count` lines of a file, reading only the final 64 KiB rather than the
@@ -82,29 +43,6 @@ function tailLines(file, count, window = 64 * 1024) {
     text = nl === -1 ? '' : text.slice(nl + 1);
   }
   return text.split(/\r?\n/).filter(Boolean).slice(-count);
-}
-
-const ENV_FALLBACK = {
-  base_url: 'CORTADEL_URL',
-  user_id: 'CORTADEL_USER_ID',
-  api_key: 'CORTADEL_API_KEY',
-  client_name: 'CORTADEL_CLIENT_NAME',
-};
-
-/**
- * Resolve one option across all three tiers, reporting which one won. Same
- * precedence the hooks use (lib.mjs readOption), with the installed-config tier
- * appended underneath — it is the only tier readable from outside a hook process.
- */
-function resolve(option, installed) {
-  const pluginVar = `CLAUDE_PLUGIN_OPTION_${option.toUpperCase()}`;
-  if (process.env[pluginVar]) return { value: process.env[pluginVar], from: pluginVar };
-  const envVar = ENV_FALLBACK[option];
-  if (process.env[envVar]) return { value: process.env[envVar], from: envVar };
-  if (option === 'api_key' && installed.apiKey) return { value: installed.apiKey, from: '~/.claude/.credentials.json' };
-  const v = installed.options?.[option];
-  if (v) return { value: String(v), from: (installed.source || 'installed config').replace(homedir(), '~') };
-  return { value: undefined, from: null };
 }
 
 const rows = [];
@@ -135,6 +73,23 @@ if (missing.length) {
     'PASS',
     `base_url=${baseUrl.value} user_id=${userId.value} client_name=${clientName.value || 'claude (default)'} api_key=<resolved> ` +
       `[from ${[...new Set([baseUrl.from, userId.from, apiKey.from])].join(', ')}]`
+  );
+}
+
+// The inline MCP server's url is a LITERAL (packaging/plugin.metadata.json's mcp.urlTemplate):
+// Claude Desktop and claude.ai copy mcpServers[].url verbatim without substituting plugin options,
+// so it cannot be templated from base_url without breaking those surfaces. That means a self-hosted
+// base_url moves the HOOKS but not MCP, and the two would then write to different servers. Silent
+// split-brain is the worst outcome, so say it plainly.
+const HOSTED_ORIGIN = 'https://app.cortadel.ai';
+if (!missing.length && String(baseUrl.value).replace(/\/+$/, '') !== HOSTED_ORIGIN) {
+  record(
+    'Hooks/MCP target agreement',
+    'WARN',
+    `base_url=${baseUrl.value} but the inline MCP server is pinned to ${HOSTED_ORIGIN}/mcp/claude — ` +
+      'the hooks and the MCP tools are talking to DIFFERENT servers. Self-hosting? Add your own MCP ' +
+      `server too: claude mcp add --transport http cortadel-local ${String(baseUrl.value).replace(/\/+$/, '')}/mcp/claude ` +
+      '--header "Authorization: Bearer <your-key>"'
   );
 }
 

@@ -73,21 +73,37 @@ test('base_url default has no trailing slash', () => {
 test('mcp.urlTemplate references only declared userConfig option keys', () => {
   const declared = new Set(Object.keys(meta.userConfig));
   const placeholderRe = /\$\{user_config\.([A-Za-z_]\w*)\}/g;
-  const referenced = [...meta.mcp.urlTemplate.matchAll(placeholderRe)].map((m) => m[1]);
-  assert.ok(referenced.length > 0, 'urlTemplate should reference at least one user_config placeholder');
-  for (const key of referenced) {
+  for (const [, key] of meta.mcp.urlTemplate.matchAll(placeholderRe)) {
     assert.ok(declared.has(key), `mcp.urlTemplate references undeclared user_config key "${key}"`);
   }
 });
 
-test('mcp.urlTemplate matches the documented <base_url>/mcp/<client_name> shape', () => {
-  assert.equal(meta.mcp.urlTemplate, '${user_config.base_url}/mcp/${user_config.client_name}');
+test('mcp.urlTemplate is the literal hosted endpoint', () => {
+  assert.equal(meta.mcp.urlTemplate, 'https://app.cortadel.ai/mcp/claude');
+});
+
+// THE load-bearing rule. Claude Desktop and claude.ai consume the same plugin.json as Claude Code,
+// but they perform NO ${user_config.*} substitution: their manifest reader copies mcpServers[].url
+// verbatim into the connector dialog, which validates it with a bare startsWith("https"). A url
+// beginning with '${' therefore fails as "URL must start with 'https'" — which is exactly the bug
+// users hit. Any placeholder ANYWHERE in the url reintroduces it, so the url must stay fully literal.
+test('mcp.urlTemplate contains no placeholder of any kind', () => {
+  assert.ok(
+    !meta.mcp.urlTemplate.includes('${'),
+    'the MCP url must be literal: Claude Desktop / claude.ai copy it verbatim without substituting ' +
+      'plugin options, so any ${...} makes the connector fail its https check'
+  );
+});
+
+test('mcp.urlTemplate starts with https:// so every Claude surface accepts it', () => {
+  assert.ok(meta.mcp.urlTemplate.startsWith('https://'), 'connector dialogs require an https URL');
 });
 
 // The rules below are the reason this file exists. The previous revision asserted only the
 // exact string above, so when the server dropped the user-id path segment (2026-08-21) the
 // literal and the assertion were simply wrong together and nothing failed. These assert the
 // INVARIANT instead: no user identity in the URL, exactly one segment after /mcp/.
+// (The url later became fully literal — see the placeholder rule above — but these still hold.)
 test('mcp.urlTemplate never carries a user identity segment', () => {
   assert.ok(
     !/user_id/.test(meta.mcp.urlTemplate),
