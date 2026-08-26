@@ -399,9 +399,9 @@ jobs:
         with:
           version: 10
       # registry-url makes setup-node write an .npmrc that reads the auth token from
-      # $NODE_AUTH_TOKEN — the publish step below sets that from the NPM_TOKEN repo secret. This is
-      # the standard actions/setup-node mechanism and works for `pnpm publish` the same way it does
-      # for `npm publish`, since pnpm honors the same .npmrc.
+      # $NODE_AUTH_TOKEN — the publish step below sets that from a repo secret. This is the standard
+      # actions/setup-node mechanism and works for `pnpm publish` the same way it does for
+      # `npm publish`, since pnpm honors the same .npmrc.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '20.x'
@@ -421,7 +421,35 @@ jobs:
       # (clean tree, tracked branch) would otherwise reject — the checkout itself, and the
       # build/generation-drift/conformance-base gates in `needs:`, are what vouch for this commit
       # instead.
+      #
+      # STOPGAP, WITH A DEADLINE. This reads NPM_TOKEN_INTEGRATIONS, not NPM_TOKEN.
+      #
+      # NPM_TOKEN cannot publish: `pnpm publish` returns `EOTP: This operation requires a one-time
+      # password`, which is how sdk-ts-v1.1.0 failed and why @cortadel/sdk@1.0.0 carries no
+      # provenance attestation (it was published by hand). The account's second factor is a WebAuthn
+      # security key, not TOTP, so there is no `--otp=<code>` to pass from CI.
+      #
+      # Measured 2026-08-26, and the result is narrower than "the token lacks bypass-2FA": with
+      # NPM_TOKEN, `npm dist-tag add` SUCCEEDS while `npm dist-tag rm` returns `403 Granular access
+      # tokens that bypass two-factor authentication may not perform this action`
+      # (gh.io/npm-gat-bypass2fa-deprecation). So it IS a bypass-2FA token, and npm is already
+      # withdrawing that bypass action by action — publish among them.
+      #
+      # NPM_TOKEN_INTEGRATIONS is the SAME token class. It published all eight integration packages
+      # on 2026-08-14, so it worked twelve days ago, but nothing guarantees npm has not tightened
+      # publish for it too. This switch is therefore a one-attempt stopgap, not a fix: if it also
+      # returns EOTP, the answer is trusted publishing and there is no third credential to try.
+      # It is also the wrong long-term answer on its own terms — an All-Packages read-write
+      # credential reachable by anyone who can push a release tag, with direct publishing from this
+      # token class withdrawn entirely in January 2027.
+      #
+      # REPLACE THIS with a trusted publisher on @cortadel/sdk (npmjs.com -> package settings ->
+      # GitHub Actions, org cortadel, repo cortadel, workflow typescript.yml), which needs no stored
+      # credential at all. That was impossible until 1.0.0 shipped, because trusted publishing is
+      # configured from package settings and the package has to exist first. It exists now.
+      # Note when doing it: OIDC trusted publishing wants npm CLI >= 11.5.1, so this step likely
+      # becomes `npm publish` rather than `pnpm publish`. See .github/RELEASING.md §1.4.
       - name: Publish to npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_INTEGRATIONS }}
         run: pnpm publish --access public --provenance --no-git-checks
