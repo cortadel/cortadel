@@ -54,21 +54,27 @@ Claude Code `userConfig` schema and this table:
 
 | Option | Required | Sensitive | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `base_url` | yes | no | `https://app.cortadel.ai` | Base URL of the Cortadel server to use. No trailing slash. |
+| `base_url` | yes | no | `https://app.cortadel.ai` | Base URL the **hooks** use for their REST calls. No trailing slash. The inline MCP server does **not** follow this — its URL is pinned literal; see [Hosted vs self-hosted](#hosted-vs-self-hosted). |
 | `user_id` | yes | no | — | The user id your API key was minted for. Used by the **hooks** in their REST payloads — it is **not** part of the MCP URL, which carries no user segment. It must match the key's user or the server responds 403. |
 | `api_key` | yes | yes | — | API key for your user. **Hosted** (`https://app.cortadel.ai`): the dashboard there issues keys. **Self-hosted**: mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
-| `client_name` | no | no | `claude` | Label for this client. Becomes the sole `{clientName}` path segment of the MCP endpoint (`<base_url>/mcp/{clientName}`, so the default resolves to `<base_url>/mcp/claude`) and the `app_name` the `UserPromptSubmit` hook sends on its *search* requests, which the server uses for access logging only. It is **not** recorded on memories the hooks capture — see [MCP tool naming](#mcp-tool-naming). |
+| `client_name` | no | no | `claude` | The `app_name` the `UserPromptSubmit` hook sends on its *search* requests, which the server uses for access logging only. It does **not** filter results and is **not** recorded on memories the hooks capture — see [MCP tool naming](#mcp-tool-naming). The MCP endpoint's own `{clientName}` segment is fixed at `claude` in the pinned URL. |
 
 ### Hosted vs self-hosted
 
-`base_url` is the only thing that changes between the two — everything else about the plugin
-(hooks, MCP tools, `user_id`/`client_name` semantics) is identical either way — only the origin in
-front of the same `/mcp/{clientName}` path differs:
-
 - **Hosted** (default) — leave `base_url` at `https://app.cortadel.ai`, the live Cortadel service.
-  Get an API key from its dashboard.
-- **Self-hosted** — replace `base_url` with your own server's origin, e.g. `http://localhost:3001`
-  for a local `docker compose up` (see [Self-hosting](self-hosting.md)), no trailing slash.
+  Get an API key from its dashboard. Hooks and MCP both talk to it; nothing else to do.
+- **Self-hosted** — set `base_url` to your own server's origin, e.g. `http://localhost:3001` for a
+  local `docker compose up` (see [Self-hosting](self-hosting.md)), no trailing slash.
+
+  `base_url` moves the **hooks** only. The inline MCP server stays pinned to the hosted URL for the
+  Desktop/claude.ai reason above, so a self-hosted `base_url` alone leaves hooks and MCP writing to
+  **different servers**. Add your own MCP server alongside it:
+
+  ```bash
+  claude mcp add --transport http cortadel-local http://localhost:3001/mcp/claude     --header "Authorization: Bearer <your-key>"
+  ```
+
+  `/plugin` → doctor warns when `base_url` and the pinned MCP URL disagree, so this is not silent.
 
 ### Two ways to set these
 
@@ -127,13 +133,18 @@ gated by this variable. To stop everything, disable or uninstall the plugin via 
 ## MCP tool naming
 
 The inline MCP server is named `cortadel` in `mcpServers` (visible as `mcp__cortadel__<tool>` in
-tool-use output) and exposes all eight Cortadel MCP tools — `add_memories`, `add_conversation`,
-`search_memory`, `get_skill`, `add_media`, `reconcile_memories`, `reconcile_status`,
-`list_merge_suggestions`. Its URL is templated from your `userConfig`:
+tool-use output) and exposes the two Cortadel MCP tools, `add_memories` and `search_memory`. Its
+URL is a **literal**, not a template:
 
 ```
-${user_config.base_url}/mcp/${user_config.client_name}
+https://app.cortadel.ai/mcp/claude
 ```
+
+It is deliberately not templated from `base_url`. Claude Desktop and claude.ai consume this same
+`plugin.json`, but they perform no `${user_config.*}` substitution — they copy `mcpServers[].url`
+verbatim into the connector dialog, which validates it with `startsWith("https")`. A templated URL
+begins with `$` and fails there as *"URL must start with 'https'"*, which is exactly the bug this
+pinning fixes. Self-hosting? See [Hosted vs self-hosted](#hosted-vs-self-hosted).
 
 `client_name` is what the *server* sees as the calling app's name — the `{clientName}` path
 segment (see [MCP integration](mcp.md)), and the `app_name` field the `UserPromptSubmit` hook

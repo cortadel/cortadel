@@ -1,7 +1,7 @@
 {
   "name": "cortadel-memory",
   "displayName": "Cortadel Memory",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "pluginDir": "cortadel-plugin",
   "description": "Ambient Cortadel memory: push-recall on every prompt, session bootstrap, auto-capture on stop.",
   "author": { "name": "Cortadel", "url": "https://cortadel.ai" },
@@ -14,7 +14,7 @@
     "base_url": {
       "type": "string",
       "title": "Cortadel server URL",
-      "description": "Base URL of the Cortadel server to use. Defaults to the hosted service at https://app.cortadel.ai — get an API key from its dashboard. Self-hosting instead? Replace this with your own origin, e.g. http://localhost:3001 — no trailing slash.",
+      "description": "Base URL the HOOKS use for their REST calls (push-recall, session bootstrap, auto-capture). Defaults to the hosted service at https://app.cortadel.ai — get an API key from its dashboard. NOTE: the inline MCP server is pinned to the hosted URL and does NOT follow this setting, because Claude Desktop and claude.ai copy the MCP url verbatim without substituting plugin options. If you self-host, point this at your origin (e.g. http://localhost:3001, no trailing slash) AND add your own MCP server with `claude mcp add`, or the hooks and MCP will write to two different servers.",
       "default": "https://app.cortadel.ai",
       "required": true
     },
@@ -34,13 +34,13 @@
     "client_name": {
       "type": "string",
       "title": "Client name",
-      "description": "Label for this client. Becomes the sole {clientName} path segment of the MCP endpoint (<base_url>/mcp/{clientName}), and the app_name the UserPromptSubmit hook sends on search requests, which the server uses for access logging only. It is not recorded on memories the hooks capture — the capture endpoint has no app_name field.",
+      "description": "Label this client sends as app_name on the hooks' search requests, which the server uses for access logging only. It does not filter results and is not recorded on memories the hooks capture — the capture endpoint has no app_name field. The MCP endpoint's own {clientName} segment is fixed at `claude` in the pinned URL and does not follow this setting.",
       "default": "claude",
       "required": false
     }
   },
   "mcp": {
     "serverName": "cortadel",
-    "urlTemplate": "${user_config.base_url}/mcp/${user_config.client_name}"
+    "urlTemplate": "https://app.cortadel.ai/mcp/claude"
   }
 }

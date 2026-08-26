@@ -138,6 +138,23 @@ if (missing.length) {
   );
 }
 
+// The inline MCP server's url is a LITERAL (packaging/plugin.metadata.json's mcp.urlTemplate):
+// Claude Desktop and claude.ai copy mcpServers[].url verbatim without substituting plugin options,
+// so it cannot be templated from base_url without breaking those surfaces. That means a self-hosted
+// base_url moves the HOOKS but not MCP, and the two would then write to different servers. Silent
+// split-brain is the worst outcome, so say it plainly.
+const HOSTED_ORIGIN = 'https://app.cortadel.ai';
+if (!missing.length && String(baseUrl.value).replace(/\/+$/, '') !== HOSTED_ORIGIN) {
+  record(
+    'Hooks/MCP target agreement',
+    'WARN',
+    `base_url=${baseUrl.value} but the inline MCP server is pinned to ${HOSTED_ORIGIN}/mcp/claude — ` +
+      'the hooks and the MCP tools are talking to DIFFERENT servers. Self-hosting? Add your own MCP ' +
+      `server too: claude mcp add --transport http cortadel-local ${String(baseUrl.value).replace(/\/+$/, '')}/mcp/claude ` +
+      '--header "Authorization: Bearer <your-key>"'
+  );
+}
+
 if (process.env.CORTADEL_HOOKS_DISABLE === '1') {
   record('Hooks enabled', 'WARN', 'CORTADEL_HOOKS_DISABLE=1 — all three hooks are intentionally disabled');
 }
