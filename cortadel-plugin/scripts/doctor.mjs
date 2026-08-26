@@ -133,7 +133,7 @@ if (missing.length) {
   record(
     'Config resolution',
     'PASS',
-    `base_url=${baseUrl.value} user_id=${userId.value} client_name=${clientName.value || 'claude-code (default)'} api_key=<resolved> ` +
+    `base_url=${baseUrl.value} user_id=${userId.value} client_name=${clientName.value || 'claude (default)'} api_key=<resolved> ` +
       `[from ${[...new Set([baseUrl.from, userId.from, apiKey.from])].join(', ')}]`
   );
 }

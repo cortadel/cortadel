@@ -19,7 +19,7 @@ Concrete integration patterns, each grounded in the operations documented in
 ## 1. Zero-Code Agent Memory via MCP
 
 Give any MCP-capable client durable memory by pointing it at one URL — no SDK, no server code. The
-URL is `<base_url>/mcp/{clientName}/{userId}`, where `<base_url>` is either the hosted service at
+URL is `<base_url>/mcp/{clientName}`, where `<base_url>` is either the hosted service at
 `https://app.cortadel.ai` (get a key from its dashboard) or your own self-hosted server's origin
 (shown below):
 
@@ -28,15 +28,15 @@ URL is `<base_url>/mcp/{clientName}/{userId}`, where `<base_url>` is either the 
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "http://localhost:3001/mcp/claude/alice",
+      "url": "http://localhost:3001/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
 }
 ```
 
-`clientName` (`claude` above) becomes the memory's app name; `userId` (`alice`) is the memory
-namespace and must match the key's user. Once connected, the agent calls `search_memory` before
+`clientName` (`claude` above) becomes the memory's app name, and is the only path segment — the
+key alone selects whose memories you see. Once connected, the agent calls `search_memory` before
 answering and `add_memories`/`add_conversation` after — durable recall across sessions with zero
 glue code. For Claude Code specifically, this repo also ships a zero-dependency hooks plugin
 (`cortadel-plugin`, package `cortadel-memory`) that automates exactly this push/recall

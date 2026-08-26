@@ -80,10 +80,29 @@ test('mcp.urlTemplate references only declared userConfig option keys', () => {
   }
 });
 
-test('mcp.urlTemplate matches the documented <base_url>/mcp/<client_name>/<user_id> shape', () => {
+test('mcp.urlTemplate matches the documented <base_url>/mcp/<client_name> shape', () => {
+  assert.equal(meta.mcp.urlTemplate, '${user_config.base_url}/mcp/${user_config.client_name}');
+});
+
+// The rules below are the reason this file exists. The previous revision asserted only the
+// exact string above, so when the server dropped the user-id path segment (2026-08-21) the
+// literal and the assertion were simply wrong together and nothing failed. These assert the
+// INVARIANT instead: no user identity in the URL, exactly one segment after /mcp/.
+test('mcp.urlTemplate never carries a user identity segment', () => {
+  assert.ok(
+    !/user_id/.test(meta.mcp.urlTemplate),
+    'the MCP URL must not reference user_id — the server resolves identity from the Bearer ' +
+      'key, and a user id in the path leaks into access, proxy and browser-history logs'
+  );
+});
+
+test('mcp.urlTemplate has exactly one path segment after /mcp/', () => {
+  const tail = meta.mcp.urlTemplate.split('/mcp/')[1];
+  assert.ok(tail !== undefined, 'urlTemplate must contain a /mcp/ path');
   assert.equal(
-    meta.mcp.urlTemplate,
-    '${user_config.base_url}/mcp/${user_config.client_name}/${user_config.user_id}'
+    tail.split('/').length,
+    1,
+    `expected a single {clientName} segment after /mcp/, got "${tail}"`
   );
 });
 

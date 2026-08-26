@@ -207,7 +207,7 @@ always unauthenticated by design, for orchestrator health probes, and never retu
 Point any MCP-capable client at:
 
 ```
-<base_url>/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}
 ```
 
 `<base_url>` is either the hosted service at `https://app.cortadel.ai` (get a key from its
@@ -219,7 +219,7 @@ either way:
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "http://localhost:3001/mcp/claude/alice",
+      "url": "http://localhost:3001/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
@@ -247,8 +247,8 @@ The standard round trip is the same across every surface:
   immediately searchable.
 
 **403 on every request**
-- The `userId` in the client (or the MCP path segment) must match the user the API key was minted
-  for — a mismatch is rejected, not silently rescoped.
+- The `userId` you pass to a REST client must match the user the API key was minted for — a
+  mismatch is rejected, not silently rescoped. The MCP endpoint has no user id to mismatch.
 
 **Startup hard-fails on a dimension mismatch**
 - The vector index dimension is fixed at first run. Switching to an embedding model with a

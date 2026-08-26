@@ -61,25 +61,25 @@ Defined in `spec/openapi.json`. Every request/response field is `snake_case` on 
 One Streamable-HTTP endpoint, **no `/sse` segment**:
 
 ```
-<base_url>/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}
 ```
 
-`{clientName}` becomes the memory's app name; `{userId}` is the memory namespace and must match
-the API key's user (403 otherwise). Example (self-hosted):
+`{clientName}` becomes the memory's app name, and is the only path segment — the endpoint carries
+no user id, because identity comes from the API key. Example (self-hosted):
 
 ```json
 {
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "http://localhost:3001/mcp/claude/alice",
+      "url": "http://localhost:3001/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
 }
 ```
 
-For the hosted service, use `"url": "https://app.cortadel.ai/mcp/claude/alice"` instead — same
+For the hosted service, use `"url": "https://app.cortadel.ai/mcp/claude"` instead — same
 shape. Eight tools, no MCP resources or prompts: `add_memories`, `add_conversation`,
 `search_memory`, `get_skill`, `add_media`, `reconcile_memories`, `reconcile_status`,
 `list_merge_suggestions`. Full detail: `docs/mcp.md`.

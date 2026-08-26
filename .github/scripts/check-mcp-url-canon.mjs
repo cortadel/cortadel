@@ -1,0 +1,105 @@
+#!/usr/bin/env node
+// Fails the build if any file re-introduces a user identity into the MCP URL.
+//
+// The server removed the 3-segment /mcp/{clientName}/{userId} route on 2026-08-21 and now resolves
+// identity from the Bearer key alone. A user id in the path leaked into Serilog access logs,
+// reverse-proxy logs, OAuth discovery URLs and browser history — which is why it is gone and must
+// stay gone.
+//
+// This exists because the previous guard was packaging/test/metadata.test.mjs asserting the exact
+// URL string. That is a pin, not a guard: the literal and the assertion were authored together and
+// were wrong together, so the regression shipped green. Worse, the repo's other doc gates walk a
+// pinned file list that excluded cortadel-plugin/ and packaging/ — the two trees where the bug
+// actually lived, including the skill documents shipped to every user's disk.
+//
+// So this walks EVERYTHING (minus dependency and build output), and bans shapes rather than
+// pinning strings.
+//
+// Usage: node .github/scripts/check-mcp-url-canon.mjs
+
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
+
+const repoRoot = new URL('../..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+
+const SKIP_DIRS = new Set([
+  '.git', 'node_modules', '.venv', 'dist', 'bin', 'obj', '__pycache__',
+  '.mypy_cache', '.pytest_cache', '.astro', 'coverage',
+]);
+const SKIP_FILE_RE =
+  /(^|[.-])lock([.-]|$)|\.lock$|package-lock\.json$|pnpm-lock\.yaml$|uv\.lock$|\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|pdf|zip|nupkg)$/i;
+
+// A URL with TWO path segments after /mcp/. Segment chars cover literals (claude, alice),
+// placeholders ({clientName}, {userId}) and templates (${user_config.client_name}).
+// A single trailing segment is the canon and must NOT match; `](/mcp/)` (a Starlight docs route)
+// has no segments and must NOT match either.
+const TWO_SEGMENTS =
+  /\/mcp\/(\$\{[^}]+\}|\{[^}]+\}|[A-Za-z0-9_.-]+)\/(\$\{[^}]+\}|\{[^}]+\}|[A-Za-z0-9_.-]+)/;
+
+const BANNED_PHRASES = [
+  [
+    'per-user path segment',
+    'the MCP URL has no per-user segment; Codex is blocked by having no ${user_config.*} templating at all',
+  ],
+  ['${user_config.user_id}', 'the user id must never be templated into a URL'],
+];
+
+const offenders = [];
+
+function walk(absDir) {
+  for (const entry of readdirSync(absDir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      walk(join(absDir, entry.name));
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (SKIP_FILE_RE.test(entry.name)) continue;
+
+    const abs = join(absDir, entry.name);
+    if (statSync(abs).size > 2_000_000) continue;
+
+    const rel = relative(repoRoot, abs).split(sep).join('/');
+    if (rel === '.github/scripts/check-mcp-url-canon.mjs') continue; // this file names the shapes
+
+    let text;
+    try {
+      text = readFileSync(abs, 'utf8');
+    } catch {
+      continue;
+    }
+    if (text.includes('\u0000')) continue; // binary
+
+    text.split(/\r?\n/).forEach((line, i) => {
+      if (TWO_SEGMENTS.test(line)) {
+        offenders.push({
+          rel,
+          line: i + 1,
+          text: line.trim(),
+          why: 'two path segments after /mcp/ — the endpoint takes only {clientName}',
+        });
+      }
+      for (const [phrase, why] of BANNED_PHRASES) {
+        if (line.includes(phrase)) {
+          offenders.push({ rel, line: i + 1, text: line.trim(), why });
+        }
+      }
+    });
+  }
+}
+
+walk(repoRoot);
+
+if (offenders.length > 0) {
+  console.error(`MCP URL canon violated in ${offenders.length} place(s).\n`);
+  console.error('The MCP endpoint is <base_url>/mcp/{clientName} — exactly one path segment.');
+  console.error('Identity comes from the Bearer API key, never from the URL.\n');
+  for (const o of offenders) {
+    console.error(`  ${o.rel}:${o.line}`);
+    console.error(`    ${o.text.slice(0, 160)}`);
+    console.error(`    ^ ${o.why}\n`);
+  }
+  process.exit(1);
+}
+
+console.log('MCP URL canon OK — no user identity in any /mcp/ URL.');

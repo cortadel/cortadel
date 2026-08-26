@@ -107,7 +107,7 @@ test('cfg() parses defaults', () => {
   assert.equal(c.minPromptChars, 10);
   assert.equal(c.rerank, undefined);
   assert.equal(c.captureMaxChars, 16000);
-  assert.equal(c.clientName, 'claude-code', 'client_name defaults to claude-code, matching packaging/plugin.metadata.json');
+  assert.equal(c.clientName, 'claude', 'client_name defaults to claude, matching packaging/plugin.metadata.json');
 });
 
 test('cfg() respects overrides', () => {

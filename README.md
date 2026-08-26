@@ -152,7 +152,7 @@ API key from its dashboard.
 
 ```bash
 curl -O https://raw.githubusercontent.com/cortadel/cortadel/main/docker-compose.yml
-docker compose up   # dashboard http://localhost:3001 · REST /api/v1 · MCP /mcp/{client}/{userId}
+docker compose up   # dashboard http://localhost:3001 · REST /api/v1 · MCP /mcp/{client}
 ```
 
 Or just the server (bring your own graph DB + providers — see [Self-hosting](docs/self-hosting.md)):
@@ -161,17 +161,17 @@ Or just the server (bring your own graph DB + providers — see [Self-hosting](d
 docker run -p 3001:3001 ghcr.io/cortadel/cortadel:latest
 ```
 
-**2 · Connect an agent (no code)** — point any MCP client at `<base_url>/mcp/claude/alice`, e.g.
+**2 · Connect an agent (no code)** — point any MCP client at `<base_url>/mcp/claude`, e.g.
 self-hosted:
 
 ```
-http://localhost:3001/mcp/claude/alice
+http://localhost:3001/mcp/claude
 ```
 
 or hosted:
 
 ```
-https://app.cortadel.ai/mcp/claude/alice
+https://app.cortadel.ai/mcp/claude
 ```
 
 **…or use the .NET SDK:**
@@ -244,7 +244,7 @@ Full walkthrough: [Getting started](docs/getting-started.md) · [Python SDK refe
 
 ## MCP tools
 
-One Streamable-HTTP endpoint — `<base_url>/mcp/{clientName}/{userId}`, where `<base_url>` is
+One Streamable-HTTP endpoint — `<base_url>/mcp/{clientName}`, where `<base_url>` is
 either the hosted service (`https://app.cortadel.ai`) or your own self-hosted origin
 (`http://localhost:3001` below):
 
@@ -253,7 +253,7 @@ either the hosted service (`https://app.cortadel.ai`) or your own self-hosted or
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "http://localhost:3001/mcp/claude/alice",
+      "url": "http://localhost:3001/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }

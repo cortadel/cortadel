@@ -44,8 +44,9 @@ GET /api/v1/memories?user_id=alice&api_key=<token>
 ## User scoping
 
 A key is bound to a **userId**. Memories are namespaced per user, and the server rejects requests
-whose `user_id` (or MCP `{userId}` path segment) doesn't match the key's user. Always construct the
-client with the same `userId` the key was minted for.
+whose `user_id` doesn't match the key's user. Always construct the client with the same `userId`
+the key was minted for. The MCP endpoint carries no user segment at all — it resolves identity
+from the Bearer key alone.
 
 ## Health is always open
 

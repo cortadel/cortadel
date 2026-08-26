@@ -117,7 +117,7 @@ export function buildClaudePluginJson(meta) {
 /**
  * Codex plugin manifest — skills-only by owner decision. Codex's plugin format has no
  * user-config templating mechanism (no `${user_config.*}`-style substitution), so it cannot
- * express a self-hosted base URL with a per-user path segment the way Claude Code's inline
+ * express a configurable base URL or carry an API key the way Claude Code's inline
  * mcpServers can. Shipping an mcpServers/userConfig block here would silently not work, so this
  * manifest carries the skill only — no mcpServers, no hooks, no userConfig.
  */

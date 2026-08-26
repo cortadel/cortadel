@@ -8,11 +8,12 @@ Cursor, your own agent) can read and write memory with **no glue code**.
 A single Streamable-HTTP endpoint — there is **no `/sse` segment**:
 
 ```
-<base_url>/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}
 ```
 
-- `{clientName}` — a label for the calling app; it becomes the memory's **app name**.
-- `{userId}` — the memory namespace. It must match the user your API key was minted for.
+- `{clientName}` — a label for the calling app; it becomes the memory's **app name**. It is the
+  only path segment: the endpoint carries no user id, because the server resolves identity from
+  the API key.
 
 `<base_url>` is either of two things — the rest of this page (and the MCP shape itself) is
 identical either way:
@@ -25,21 +26,21 @@ identical either way:
 Example (self-hosted):
 
 ```
-http://localhost:3001/mcp/claude/alice
+http://localhost:3001/mcp/claude
 ```
 
 Example (hosted):
 
 ```
-https://app.cortadel.ai/mcp/claude/alice
+https://app.cortadel.ai/mcp/claude
 ```
 
 ## Authentication
 
 Same credentials as REST (see [Authentication](authentication.md)). Pass the key via the
-`Authorization: Bearer <token>` header, the `API_KEY` header, or `?api_key=<token>`. If the
-`{userId}` in the path doesn't match the key's user, the server returns 403. When auth is disabled,
-no credentials are needed.
+`Authorization: Bearer <token>` header, the `API_KEY` header, or `?api_key=<token>`. The key alone
+determines which user's memories the connection sees — there is no user id in the URL to disagree
+with it. When auth is disabled, no credentials are needed.
 
 Optional per-connection scoping: send a `Project` header to scope a connection to a project.
 
@@ -69,7 +70,7 @@ Self-hosted:
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "http://localhost:3001/mcp/claude/alice",
+      "url": "http://localhost:3001/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
@@ -83,7 +84,7 @@ Hosted — same shape, just point `url` at `https://app.cortadel.ai` instead:
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "https://app.cortadel.ai/mcp/claude/alice",
+      "url": "https://app.cortadel.ai/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
@@ -99,7 +100,7 @@ For Claude Code and Codex specifically, this repo ships a packaged plugin (`cort
 for Claude Code, a zero-dependency hooks plugin that auto-recalls on each prompt, bootstraps
 context at session start, and auto-captures at the end of a turn, plus this same MCP server wired
 in via inline `mcpServers`; for Codex, the `cortadel` skill only (Codex's plugin format can't
-template this configurable, per-user MCP URL — hosted or self-hosted):
+template a configurable base URL or carry an API key — hosted or self-hosted):
 
 ```
 /plugin marketplace add cortadel/cortadel

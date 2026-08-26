@@ -101,7 +101,7 @@ export function cfg() {
     // mcp.urlTemplate), and the app_name sent on search requests — which the spec defines as
     // "application name for access logging". It does NOT filter results, and it is NOT recorded
     // on captured memories: AddConversationRequest has no app_name field at all.
-    clientName: readOption(env, 'client_name') || 'claude-code',
+    clientName: readOption(env, 'client_name') || 'claude',
     topK: num(readEnv(env, 'CORTADEL_RECALL_TOPK'), 3),
     minPromptChars: num(readEnv(env, 'CORTADEL_MIN_PROMPT_CHARS'), 10),
     rerank: readEnv(env, 'CORTADEL_RECALL_RERANK') || undefined,
