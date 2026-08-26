@@ -262,12 +262,10 @@ either the hosted service (`https://app.cortadel.ai`) or your own self-hosted or
 
 | Tool | What it does |
 |---|---|
-| `add_memories` | Store memories (intent-aware: remember / forget / resolve). |
-| `add_conversation` | Distill atomic facts from a transcript and store them. |
-| `search_memory` | Hybrid search (BM25 + vector + RRF, optional rerank). |
-| `get_skill` | Retrieve a learned procedural skill. |
-| `reconcile_memories` · `reconcile_status` · `list_merge_suggestions` | Drive and review entity reconciliation. |
-| `add_media` | Ingest an image/document (multimodal). |
+| `add_memories` | Store memories (intent-aware: remember / forget / resolve). Items are auto-classified — plain text, a `"role: content"` conversation turn distilled into atomic facts, or an image URL / data-URI / base64. |
+| `search_memory` | Hybrid search (BM25 + vector + RRF, optional rerank) or chronological browse. Procedural queries inline the top learned skill as `primary_skill`. |
+
+Two tools only. Entity reconciliation is REST, not MCP: `/api/v1/entities/reconcile`.
 
 Works with **Claude Desktop · Cursor · Windsurf · VS Code · Claude Code** and any MCP-aware client. See [MCP integration](docs/mcp.md).
 

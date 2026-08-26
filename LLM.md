@@ -80,9 +80,12 @@ no user id, because identity comes from the API key. Example (self-hosted):
 ```
 
 For the hosted service, use `"url": "https://app.cortadel.ai/mcp/claude"` instead — same
-shape. Eight tools, no MCP resources or prompts: `add_memories`, `add_conversation`,
-`search_memory`, `get_skill`, `add_media`, `reconcile_memories`, `reconcile_status`,
-`list_merge_suggestions`. Full detail: `docs/mcp.md`.
+shape. Two tools, no MCP resources or prompts: `add_memories` and `search_memory`. The folded
+capabilities ride inside those two — `"role: content"` conversation turns and image
+URL/data-URI/base64 items go in the `add_memories` array (auto-classified per item), and learned
+skills come back from `search_memory` (top match inlined as `primary_skill`; `ids: ["skill:<id>"]`
+expands one). Entity reconciliation is REST only, never MCP: `/api/v1/entities/reconcile`. Full
+detail: `docs/mcp.md`.
 
 For Claude Code/Codex specifically, this repo also ships a packaged plugin
 (`cortadel-plugin/`, `cortadel-memory`) with push-recall/session-bootstrap/auto-capture

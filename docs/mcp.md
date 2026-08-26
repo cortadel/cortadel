@@ -46,16 +46,22 @@ Optional per-connection scoping: send a `Project` header to scope a connection t
 
 ## Tools
 
+**Exactly two tools.** Six earlier tools were folded into them on 2026-08-21; their capabilities
+did not go away, they moved.
+
 | Tool | What it does |
 |---|---|
-| `add_memories` | Store one or more memories (intent-aware: remember / forget / resolve). |
-| `add_conversation` | Distill atomic facts from a transcript and store them. |
-| `search_memory` | Hybrid search (BM25 + vector + RRF, optional rerank). |
-| `get_skill` | Retrieve a learned procedural skill. |
-| `add_media` | Ingest an image/document (multimodal). |
-| `reconcile_memories` | Kick off entity reconciliation (merge/supersede duplicates). |
-| `reconcile_status` | Poll a running reconciliation. |
-| `list_merge_suggestions` | Review pending duplicate-entity suggestions. |
+| `add_memories` | Store one or more memories (intent-aware: remember / forget / resolve). Every item in the `memories` array is auto-classified — plain text, a `"role: content"` conversation turn (distilled into atomic facts), or an image URL / data-URI / base64 (captured asynchronously). Mixed batches compose, and each kind reports its own result section. |
+| `search_memory` | Hybrid search (BM25 + vector + RRF, optional rerank), or chronological browse when you omit the query. Procedural queries inline the best-matching learned skill as `primary_skill`; `ids: ["skill:<id>"]` expands one. |
+
+Where the folded tools went:
+
+| Was | Now |
+|---|---|
+| `add_conversation` | `add_memories` — pass `"role: content"` turns in the array |
+| `add_media` | `add_memories` — pass an image URL / data-URI / base64 in the array |
+| `get_skill` | `search_memory` — `primary_skill`, or `ids: ["skill:<id>"]` to expand |
+| `reconcile_memories` · `reconcile_status` · `list_merge_suggestions` | Not MCP tools. Entity reconciliation is REST only: `POST`/`GET`/`DELETE /api/v1/entities/reconcile`, `GET /api/v1/entities/suggestions`. |
 
 Tools only — the server exposes no MCP resources or prompts.
 
