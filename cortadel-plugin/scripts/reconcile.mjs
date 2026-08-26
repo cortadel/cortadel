@@ -10,11 +10,11 @@
 // the way doctor.mjs does.
 //
 // Usage:
-//   node scripts/reconcile.mjs run [--scope <all|entities>] [--dry-run]
+//   node scripts/reconcile.mjs run [--limit N] [--types PERSON,ORG]
 //   node scripts/reconcile.mjs status
 //   node scripts/reconcile.mjs suggestions [--status pending|approved|rejected]
-//   node scripts/reconcile.mjs approve <suggestionId>
-//   node scripts/reconcile.mjs reject  <suggestionId>
+//   node scripts/reconcile.mjs approve <suggestionId> --winner <entityId>
+//   node scripts/reconcile.mjs reject  <suggestionId> --note "why they are not the same"
 //   node scripts/reconcile.mjs cancel
 //
 // Prints JSON on success so the model can read the result directly. Exits non-zero on failure with
@@ -25,12 +25,16 @@ import { resolveApiConfig } from './plugin-config.mjs';
 
 const USAGE = `usage: reconcile.mjs <run|status|suggestions|approve|reject|cancel> [options]
 
-  run [--dry-run]                 start reconciliation      POST   /api/v1/entities/reconcile
+  run [--limit N] [--types A,B]   start reconciliation      POST   /api/v1/entities/reconcile
   status                          poll the current run      GET    /api/v1/entities/reconcile/status
   cancel                          stop the current run      DELETE /api/v1/entities/reconcile
   suggestions [--status <s>]      list merge suggestions    GET    /api/v1/entities/suggestions
-  approve <suggestionId>          apply one merge           POST   /api/v1/entities/suggestions/<id>/approve
-  reject  <suggestionId>          dismiss one               POST   /api/v1/entities/suggestions/<id>/reject`;
+  approve <id> --winner <entity>  apply one merge           POST   /api/v1/entities/suggestions/<id>/approve
+  reject  <id> --note "<reason>"  dismiss one               POST   /api/v1/entities/suggestions/<id>/reject
+
+  --winner is REQUIRED on approve and must be one of the suggestion's two entities.
+  --note   is REQUIRED on reject: the server rejects an empty reason with 400, because the
+           note is the corpus the feature exists to collect.`;
 
 function fail(msg, code = 1) {
   console.error(msg);
@@ -73,8 +77,17 @@ const LONG = { timeoutMs: 120000 };
 async function main() {
   switch (command) {
     case 'run': {
+      // ReconcileRequest(UserId, Types?, Limit?) — there is no dry-run field on this endpoint.
       const body = { user_id: config.userId };
-      if (flag('dry-run') !== undefined) body.dry_run = true;
+      const limit = flag('limit');
+      if (limit !== undefined && limit !== true) body.limit = Number(limit);
+      const types = flag('types');
+      if (types !== undefined && types !== true) {
+        body.types = String(types)
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
+      }
       return apiDetailed(config, 'POST', '/api/v1/entities/reconcile', { body, ...LONG });
     }
     case 'status':
@@ -89,12 +102,30 @@ async function main() {
       return apiDetailed(config, 'GET', '/api/v1/entities/suggestions', {
         query: { user_id: config.userId, status: flag('status') ?? 'pending' },
       });
-    case 'approve':
-    case 'reject': {
+    case 'approve': {
+      // ApproveSuggestionRequest(UserId, WinnerId) — winner_id is required, and the server 400s
+      // unless it names one of the suggestion's two entities.
       const id = positional[0];
-      if (!id) fail(`${command} needs a suggestion id.\n\n${USAGE}`);
-      return apiDetailed(config, 'POST', `/api/v1/entities/suggestions/${encodeURIComponent(id)}/${command}`, {
-        body: { user_id: config.userId },
+      if (!id) fail(`approve needs a suggestion id.\n\n${USAGE}`);
+      const winner = flag('winner');
+      if (!winner || winner === true) {
+        fail('approve needs --winner <entityId> — the entity to KEEP, which must be one of the pair.');
+      }
+      return apiDetailed(config, 'POST', `/api/v1/entities/suggestions/${encodeURIComponent(id)}/approve`, {
+        body: { user_id: config.userId, winner_id: String(winner) },
+      });
+    }
+    case 'reject': {
+      // RejectSuggestionRequest(UserId, Note) — an empty note is a 400 by design: the note is the
+      // corpus this feature exists to collect.
+      const id = positional[0];
+      if (!id) fail(`reject needs a suggestion id.\n\n${USAGE}`);
+      const note = flag('note');
+      if (!note || note === true) {
+        fail('reject needs --note "<reason>" — the server requires a reason for every rejection.');
+      }
+      return apiDetailed(config, 'POST', `/api/v1/entities/suggestions/${encodeURIComponent(id)}/reject`, {
+        body: { user_id: config.userId, note: String(note) },
       });
     }
     default:
