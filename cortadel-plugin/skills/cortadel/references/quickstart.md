@@ -53,9 +53,10 @@ pip install cortadel
 
 ## Step 3: Construct a Client
 
-Every SDK call is scoped to the `userId`/`user_id` you construct the client with — memories are
-namespaced per user, and (when auth is on) the server rejects any request whose user doesn't match
-the API key.
+Every SDK call carries the `userId`/`user_id` you construct the client with, and memories are
+namespaced per user. When auth is on the server decides, not you: a mismatched `user_id` is
+rejected with 403 in a query string, and silently overwritten with the key's user in a request
+body. It is the namespace anchor only when auth is disabled.
 
 ### .NET (positional convenience constructor)
 ```csharp
@@ -247,8 +248,11 @@ The standard round trip is the same across every surface:
   immediately searchable.
 
 **403 on every request**
-- The `userId` you pass to a REST client must match the user the API key was minted for — a
-  mismatch is rejected, not silently rescoped. The MCP endpoint has no user id to mismatch.
+- The `userId` you pass to a REST client must match the user the API key was minted for. A
+  mismatch on a **query-string** `?user_id=` is what produces this 403. Note the asymmetry: the
+  same mismatch in a **request body** is NOT a 403 — it is silently rescoped to the key's user, so
+  a body-based call that "works" may still not be doing what you asked. The MCP endpoint has no
+  user id to mismatch.
 
 **Startup hard-fails on a dimension mismatch**
 - The vector index dimension is fixed at first run. Switching to an embedding model with a

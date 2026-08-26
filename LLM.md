@@ -79,6 +79,12 @@ no user id, because identity comes from the API key. Example (self-hosted):
 }
 ```
 
+Two REST facts that decide whether generated code works: `user_id` is **required on every REST
+call** even with a key (it is `[Required]`, and validation runs before identity scoping, so
+omitting it is a `400`), and when auth is on the server **overrides** it — a mismatch is a `403` in
+a query string (list, get) and a silent rescope to the key's user in a body (create, search,
+delete, conversation). It selects the namespace only when auth is disabled.
+
 For the hosted service, use `"url": "https://app.cortadel.ai/mcp/claude"` instead — same
 shape. Two tools, no MCP resources or prompts: `add_memories` and `search_memory`. The folded
 capabilities ride inside those two — `"role: content"` conversation turns and image

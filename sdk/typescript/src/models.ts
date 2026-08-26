@@ -17,7 +17,13 @@ export interface CortadelOptions {
   /** Base URL of the Cortadel server, e.g. "http://localhost:3001". */
   baseUrl: string;
 
-  /** User identifier that owns the memories (the namespace anchor). Required by the REST API. */
+  /**
+   * User identifier sent on every request. Required by the REST API — omitting it is a 400.
+   *
+   * It is the namespace anchor ONLY on an auth-disabled server. When an `apiKey` is present the
+   * server is authoritative: a `user_id` in a request body is silently overwritten with the key's
+   * user, and one in a query string is rejected with 403. So pass the id the key was minted for.
+   */
   userId: string;
 
   /** Optional API key. Sent as `Authorization: Bearer <key>`. Omit when the server runs with auth disabled. */

@@ -34,7 +34,7 @@ from cortadel.models import (
 )
 from cortadel.sync_client import SyncCortadelClient
 
-__version__ = "1.0.0"
+__version__ = "1.1.1"
 
 __all__ = [
     "CortadelClient",

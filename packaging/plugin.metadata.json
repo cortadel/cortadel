@@ -21,7 +21,7 @@
     "user_id": {
       "type": "string",
       "title": "User ID",
-      "description": "The user id your API key was minted for. Used by the hooks in their REST payloads only — it is NOT part of the MCP URL, which carries no user segment (the server resolves identity from the Bearer key). Must match the key's user, or the server responds 403.",
+      "description": "The user id your API key was minted for. Used by the hooks in their REST payloads only — it is NOT part of the MCP URL, which carries no user segment (the server resolves identity from the Bearer key). Set it to the key's user: on REST the server overrides a mismatch anyway (403 on a query-string id, a silent rescope to the key's user in a request body), so a wrong value here fails quietly rather than loudly.",
       "required": true
     },
     "api_key": {

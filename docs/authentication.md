@@ -43,10 +43,27 @@ GET /api/v1/memories?user_id=alice&api_key=<token>
 
 ## User scoping
 
-A key is bound to a **userId**. Memories are namespaced per user, and the server rejects requests
-whose `user_id` doesn't match the key's user. Always construct the client with the same `userId`
-the key was minted for. The MCP endpoint carries no user segment at all — it resolves identity
-from the Bearer key alone.
+A key is bound to a **userId**, and memories are namespaced per user. When auth is enabled the
+server — not the client — is authoritative over identity, and it enforces that in two different
+ways depending on where the id appears:
+
+| Where `user_id` appears | Which operations | If it disagrees with the key |
+| --- | --- | --- |
+| **Query string** (`?user_id=`) | list, get | **403 Forbidden** — rejected outright. |
+| **Request body** (`{"user_id": …}`) | create, search, delete, conversation ingest | **Silently overwritten** with the key's user. The call succeeds, operating on *your* data — not the id you asked for. |
+
+Either way you cannot reach another user's memories. The asymmetry matters only for debugging: a
+body mismatch does not announce itself, so a client that passes the wrong `user_id` looks like it
+is working.
+
+`user_id` is still **required on the wire** — omit it and the server answers `400 The UserId field
+is required`, because model validation runs before the identity filter. Always construct the client
+with the same `userId` the key was minted for.
+
+When auth is **disabled** (the default — an empty `Auth:Secret`) none of this applies: there is no
+key, nothing is overwritten, and `user_id` is the only thing selecting a namespace.
+
+The MCP endpoint carries no user segment at all — it resolves identity from the Bearer key alone.
 
 ## Health is always open
 

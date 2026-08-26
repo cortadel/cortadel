@@ -54,8 +54,9 @@ const cortadel = new CortadelClient({
 });
 ```
 
-Reuse a single `CortadelClient` per base URL + user. Every call it makes is scoped to the `userId`
-you construct it with.
+Reuse a single `CortadelClient` per base URL + user. Every call it makes carries the `userId` you
+construct it with — when a key is present the server overwrites it with the key's user, so it is authoritative only on an auth-disabled server. A `user_id` that disagrees with the key is silently rescoped in a
+request body, and rejected with 403 in a query string.
 
 ## Methods
 

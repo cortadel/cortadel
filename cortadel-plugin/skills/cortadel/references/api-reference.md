@@ -20,8 +20,10 @@ Two security schemes, either accepted on every operation except health:
 (`?api_key=<key>` also works per `docs/authentication.md`, though it isn't modeled as a distinct
 OpenAPI security scheme.) When the server's auth secret is empty (the default), no credentials are
 required at all. `GET /api/health` carries no `security` requirement in the spec — it is always
-open. A key is bound to one `userId`; a request whose `user_id` doesn't match the key's user is
-rejected.
+open. A key is bound to one `userId`. A `user_id` that disagrees with the key is handled two different
+ways: in a **query string** it is rejected with 403; in a **request body** it is silently
+overwritten with the key's user, so the call succeeds against your own data. Either way you cannot
+reach another user's memories, but only the query-string form tells you that you got it wrong.
 
 ## Operations
 

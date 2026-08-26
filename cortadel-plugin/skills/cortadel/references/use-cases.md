@@ -163,8 +163,9 @@ integration source.
 
 ## 5. Multi-User / Multi-Tenant Scoping
 
-Every client is bound to one `userId` at construction time — memories are strictly namespaced per
-user, and when auth is enabled the server rejects any request whose user doesn't match the key.
+Every client is bound to one `userId` at construction time and memories are strictly namespaced per
+user. When auth is enabled the server is authoritative: a mismatched `user_id` is rejected with 403
+in a query string, and silently overwritten with the key's user in a request body.
 Don't share one client across users; construct one per user (or per request, if user identity
 varies per request) instead:
 

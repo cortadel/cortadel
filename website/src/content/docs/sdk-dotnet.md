@@ -11,8 +11,9 @@ dotnet add package Cortadel.Sdk
 
 ## Construct a client
 
-Reuse a single `CortadelClient` — it wraps one `HttpClient`. Every call is scoped to the `userId` you
-pass in.
+Reuse a single `CortadelClient` — it wraps one `HttpClient`. Every call carries the `userId` you
+pass in; when a key is present the server overwrites it with the key's user, so it is authoritative
+only on an auth-disabled server. See [Authentication](/authentication/#user-scoping).
 
 ```csharp
 using Cortadel.Sdk;
