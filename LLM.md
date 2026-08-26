@@ -64,8 +64,8 @@ One Streamable-HTTP endpoint, **no `/sse` segment**:
 <base_url>/mcp/{clientName}
 ```
 
-`{clientName}` becomes the memory's app name; `{userId}` is the memory namespace and must match
-the API key's user (403 otherwise). Example (self-hosted):
+`{clientName}` becomes the memory's app name, and is the only path segment — the endpoint carries
+no user id, because identity comes from the API key. Example (self-hosted):
 
 ```json
 {

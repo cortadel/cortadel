@@ -57,8 +57,8 @@ document ingestion.
 <base_url>/mcp/{clientName}
 ```
 
-No `/sse` segment. `{clientName}` becomes the memory's app name; `{userId}` must match the API
-key's user or the server returns 403. Auth via `Authorization: Bearer <token>`, the `API_KEY`
+No `/sse` segment, and no user id — `{clientName}` is the only path segment, and becomes the
+memory's app name. Identity comes from the key. Auth via `Authorization: Bearer <token>`, the `API_KEY`
 header, or `?api_key=<token>` — omit entirely when the server has auth disabled (self-hosted
 default only; the hosted service requires a key).
 

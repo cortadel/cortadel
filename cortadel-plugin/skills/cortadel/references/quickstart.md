@@ -247,8 +247,8 @@ The standard round trip is the same across every surface:
   immediately searchable.
 
 **403 on every request**
-- The `userId` in the client (or the MCP path segment) must match the user the API key was minted
-  for — a mismatch is rejected, not silently rescoped.
+- The `userId` you pass to a REST client must match the user the API key was minted for — a
+  mismatch is rejected, not silently rescoped. The MCP endpoint has no user id to mismatch.
 
 **Startup hard-fails on a dimension mismatch**
 - The vector index dimension is fixed at first run. Switching to an embedding model with a

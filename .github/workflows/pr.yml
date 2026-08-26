@@ -144,6 +144,26 @@ jobs:
           node-version: 20
       - run: node .github/scripts/check-docs-mirror.mjs
 
+  # 3b. The plugin shipped a dead MCP URL to every install because its only guard was
+  #     packaging/test/metadata.test.mjs asserting the exact URL string — a pin, not a guard: the
+  #     literal and the assertion were authored together and were wrong together, so it shipped
+  #     green. The docs gates that could have caught the prose walk a pinned file list that
+  #     excluded cortadel-plugin/ and packaging/, the two trees the bug actually lived in. This
+  #     job walks the whole repo and bans the SHAPE instead. See the script header.
+  mcp-url-canon:
+    name: MCP URL canon (no user id in the path)
+    concurrency:
+      group: pr-gate-mcp-canon-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      - run: node .github/scripts/check-mcp-url-canon.mjs
+
   # 4. Fast unit tests only — the plugin's own node:test suite, the packaging generator's node:test
   #    suite, and the TypeScript SDK's vitest unit tests. Deliberately NOT the conformance suites
   #    (any SDK's `conformance/` tree, or .NET's `*.Conformance` project): those need a running
