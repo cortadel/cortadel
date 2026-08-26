@@ -107,7 +107,7 @@ volumes:
 docker compose up
 # dashboard  http://localhost:3001
 # REST       http://localhost:3001/api/v1
-# MCP        http://localhost:3001/mcp/{client}/{userId}
+# MCP        http://localhost:3001/mcp/{client}
 ```
 
 ## Memgraph instead

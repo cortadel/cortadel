@@ -1,7 +1,7 @@
 {
   "name": "cortadel-memory",
   "displayName": "Cortadel Memory",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "pluginDir": "cortadel-plugin",
   "description": "Ambient Cortadel memory: push-recall on every prompt, session bootstrap, auto-capture on stop.",
   "author": { "name": "Cortadel", "url": "https://cortadel.ai" },
@@ -21,7 +21,7 @@
     "user_id": {
       "type": "string",
       "title": "User ID",
-      "description": "The user id your API key was minted for. Must be URL-safe (it is a path segment in the MCP URL) and must match the key's user, or the server responds 403.",
+      "description": "The user id your API key was minted for. Used by the hooks in their REST payloads only — it is NOT part of the MCP URL, which carries no user segment (the server resolves identity from the Bearer key). Must match the key's user, or the server responds 403.",
       "required": true
     },
     "api_key": {
@@ -34,13 +34,13 @@
     "client_name": {
       "type": "string",
       "title": "Client name",
-      "description": "Label for this client. Becomes the {clientName} path segment of the MCP endpoint, and the app_name the UserPromptSubmit hook sends on search requests, which the server uses for access logging only. It is not recorded on memories the hooks capture — the capture endpoint has no app_name field.",
-      "default": "claude-code",
+      "description": "Label for this client. Becomes the sole {clientName} path segment of the MCP endpoint (<base_url>/mcp/{clientName}), and the app_name the UserPromptSubmit hook sends on search requests, which the server uses for access logging only. It is not recorded on memories the hooks capture — the capture endpoint has no app_name field.",
+      "default": "claude",
       "required": false
     }
   },
   "mcp": {
     "serverName": "cortadel",
-    "urlTemplate": "${user_config.base_url}/mcp/${user_config.client_name}/${user_config.user_id}"
+    "urlTemplate": "${user_config.base_url}/mcp/${user_config.client_name}"
   }
 }

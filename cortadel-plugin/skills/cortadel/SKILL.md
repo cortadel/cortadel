@@ -54,7 +54,7 @@ document ingestion.
 ### 1. MCP — zero code, point an agent at a URL
 
 ```
-<base_url>/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}
 ```
 
 No `/sse` segment. `{clientName}` becomes the memory's app name; `{userId}` must match the API
@@ -71,7 +71,7 @@ either way:
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "http://localhost:3001/mcp/claude/alice",
+      "url": "http://localhost:3001/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }

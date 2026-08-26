@@ -8,7 +8,7 @@ Cursor, your own agent) can read and write memory with **no glue code**.
 A single Streamable-HTTP endpoint — there is **no `/sse` segment**:
 
 ```
-<base_url>/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}
 ```
 
 - `{clientName}` — a label for the calling app; it becomes the memory's **app name**.
@@ -25,13 +25,13 @@ identical either way:
 Example (self-hosted):
 
 ```
-http://localhost:3001/mcp/claude/alice
+http://localhost:3001/mcp/claude
 ```
 
 Example (hosted):
 
 ```
-https://app.cortadel.ai/mcp/claude/alice
+https://app.cortadel.ai/mcp/claude
 ```
 
 ## Authentication
@@ -69,7 +69,7 @@ Self-hosted:
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "http://localhost:3001/mcp/claude/alice",
+      "url": "http://localhost:3001/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
@@ -83,7 +83,7 @@ Hosted — same shape, just point `url` at `https://app.cortadel.ai` instead:
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "https://app.cortadel.ai/mcp/claude/alice",
+      "url": "https://app.cortadel.ai/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }

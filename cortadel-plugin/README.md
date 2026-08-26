@@ -67,7 +67,7 @@ manual run). Missing **any** of the first three leaves all hooks silent no-ops:
 | `base_url` | `CLAUDE_PLUGIN_OPTION_BASE_URL` | `CORTADEL_URL` | yes | Base URL of the Cortadel server to use. Defaults to the hosted service, `https://app.cortadel.ai`; replace with your own origin (e.g. `http://localhost:3001`) to self-host instead. No trailing slash. |
 | `user_id` | `CLAUDE_PLUGIN_OPTION_USER_ID` | `CORTADEL_USER_ID` | yes | The user id the key was minted for — must match, or the server returns 403. Also the MCP `{userId}` path segment. |
 | `api_key` | `CLAUDE_PLUGIN_OPTION_API_KEY` | `CORTADEL_API_KEY` | yes | API key for your user. **Hosted**: the `https://app.cortadel.ai` dashboard issues keys. **Self-hosted**: mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
-| `client_name` | `CLAUDE_PLUGIN_OPTION_CLIENT_NAME` | `CORTADEL_CLIENT_NAME` | no (default `claude-code`) | The MCP `{clientName}` path segment, and the `app_name` `UserPromptSubmit` sends on *search* requests — which the spec defines as "application name for access logging". It does **not** filter results, and it is **not** stamped on captured memories: `AddConversationRequest` has no `app_name` field. |
+| `client_name` | `CLAUDE_PLUGIN_OPTION_CLIENT_NAME` | `CORTADEL_CLIENT_NAME` | no (default `claude`) | The sole MCP `{clientName}` path segment, and the `app_name` `UserPromptSubmit` sends on *search* requests — which the spec defines as "application name for access logging". It does **not** filter results, and it is **not** stamped on captured memories: `AddConversationRequest` has no `app_name` field. |
 
 `scripts/lib.mjs`'s `cfg()`/`readOption()` implements this precedence.
 

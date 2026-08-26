@@ -11,7 +11,7 @@ and generated for two hosts:
 | Host | What you get |
 | --- | --- |
 | **Claude Code** | Full: three hooks (push-recall, session bootstrap, auto-capture) + an inline MCP server (`search_memory`, `add_memories`, …) + the `cortadel` skill. |
-| **Codex** | Skills only. Codex's plugin format has no way to template a configurable base URL with a per-user path segment, so it cannot express `<base_url>/mcp/{clientName}/{userId}` (hosted or self-hosted) — the MCP server and hooks are Claude-Code-only. Wire Codex to the MCP endpoint manually per [MCP integration](/mcp/) if you want it there too. |
+| **Codex** | Skills only. Codex's plugin format has no user-config templating (no `${user_config.*}` substitution), so it cannot express a configurable base URL or carry your API key — the MCP server and hooks are Claude-Code-only. Wire Codex to the MCP endpoint manually per [MCP integration](/mcp/), using `codex` as the `{clientName}` segment: `<base_url>/mcp/codex`. |
 
 The plugin is **zero-dependency Node** (18+ built-in `fetch`, ESM, no build step) and
 **enabled by default** once installed — see [Data flow & privacy](#data-flow--privacy) before you
@@ -60,7 +60,7 @@ Claude Code `userConfig` schema and this table:
 | `base_url` | yes | no | `https://app.cortadel.ai` | Base URL of the Cortadel server to use. No trailing slash. |
 | `user_id` | yes | no | — | The user id your API key was minted for. It is a **path segment** in the MCP URL, so it must be URL-safe, and it must match the key's user or the server responds 403. |
 | `api_key` | yes | yes | — | API key for your user. **Hosted** (`https://app.cortadel.ai`): the dashboard there issues keys. **Self-hosted**: mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
-| `client_name` | no | no | `claude-code` | Label for this client. Becomes the `{clientName}` path segment of the MCP endpoint (`<base_url>/mcp/{client_name}/{user_id}`) and the `app_name` the `UserPromptSubmit` hook sends on its *search* requests, which the server uses for access logging only. It is **not** recorded on memories the hooks capture — see [MCP tool naming](#mcp-tool-naming). |
+| `client_name` | no | no | `claude` | Label for this client. Becomes the sole `{clientName}` path segment of the MCP endpoint (`<base_url>/mcp/{clientName}`, so the default resolves to `<base_url>/mcp/claude`) and the `app_name` the `UserPromptSubmit` hook sends on its *search* requests, which the server uses for access logging only. It is **not** recorded on memories the hooks capture — see [MCP tool naming](#mcp-tool-naming). |
 
 ### Hosted vs self-hosted
 
@@ -135,7 +135,7 @@ tool-use output) and exposes all eight Cortadel MCP tools — `add_memories`, `a
 `list_merge_suggestions`. Its URL is templated from your `userConfig`:
 
 ```
-${user_config.base_url}/mcp/${user_config.client_name}/${user_config.user_id}
+${user_config.base_url}/mcp/${user_config.client_name}
 ```
 
 `client_name` is what the *server* sees as the calling app's name — the `{clientName}` path

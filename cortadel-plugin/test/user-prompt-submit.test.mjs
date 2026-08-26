@@ -204,7 +204,7 @@ test('normal prompt → exact request body (no rerank key) + nested context outp
     assert.deepEqual(req.body, {
       query: prompt,
       user_id: 'test-user',
-      app_name: 'claude-code',
+      app_name: 'claude',
       top_k: 3,
       mode: 'hybrid',
     });

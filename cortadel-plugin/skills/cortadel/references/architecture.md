@@ -110,7 +110,7 @@ provider (see `references/api-reference.md`).
 
 ## MCP Surface
 
-The MCP endpoint (`http://<host>:3001/mcp/{clientName}/{userId}`, no `/sse` segment) exposes eight
+The MCP endpoint (`http://<host>:3001/mcp/{clientName}`, no `/sse` segment) exposes eight
 tools and no MCP resources or prompts (`docs/mcp.md`):
 
 | Tool | What it does |

@@ -207,7 +207,7 @@ always unauthenticated by design, for orchestrator health probes, and never retu
 Point any MCP-capable client at:
 
 ```
-<base_url>/mcp/{clientName}/{userId}
+<base_url>/mcp/{clientName}
 ```
 
 `<base_url>` is either the hosted service at `https://app.cortadel.ai` (get a key from its
@@ -219,7 +219,7 @@ either way:
   "mcpServers": {
     "cortadel": {
       "type": "http",
-      "url": "http://localhost:3001/mcp/claude/alice",
+      "url": "http://localhost:3001/mcp/claude",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }
