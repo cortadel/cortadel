@@ -28,7 +28,7 @@ This skill enables Claude to:
 1. **Recognize when Cortadel fits** a task — persistent agent memory, MCP wiring, or direct REST
    integration — and reach for the right layer instead of reinventing a memory store.
 2. **Write correct integration code** in .NET, TypeScript, or Python against the real published
-   SDKs (all `1.1.1`), including the TypeScript options-object constructor and the Python
+   SDKs (all `1.2.0`), including the TypeScript options-object constructor and the Python
    async/sync client split.
 3. **Wire the MCP endpoint** into Claude Code, Claude Desktop, Cursor, or any MCP-capable client
    with the exact URL shape, auth headers, and tool list.
@@ -39,7 +39,7 @@ This skill enables Claude to:
 
 ## Available SDKs
 
-All three are published and versioned at `1.1.1`:
+All three are published and versioned at `1.2.0`:
 
 - **.NET**: `dotnet add package Cortadel.Sdk` ([NuGet](https://www.nuget.org/packages/Cortadel.Sdk))
 - **TypeScript**: `npm install @cortadel/sdk` ([npm](https://www.npmjs.com/package/@cortadel/sdk))

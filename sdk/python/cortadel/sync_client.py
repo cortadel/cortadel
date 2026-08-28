@@ -60,21 +60,30 @@ class SyncCortadelClient:
     as :class:`~cortadel.client.CortadelClient`. Create one and reuse it; close it (or use it as a
     context manager) when done — see the module docstring for the background-event-loop design
     that makes this a real synchronous client rather than ``asyncio.run`` per call.
+
+    ``user_id`` is optional here for exactly the same reason and with exactly the same behavior as
+    on the async client: omit it and no ``user_id`` is sent at all (the server resolves identity
+    from the API key, which needs a server built from commit ``30b70ea4`` or later); pass it and
+    it is sent unchanged, which an auth-disabled server still requires.
     """
 
     def __init__(
         self,
         base_url: str,
-        user_id: str,
+        user_id: Optional[str] = None,
         *,
         api_key: Optional[str] = None,
         app_name: str = DEFAULT_APP_NAME,
         http_client: Optional[httpx.AsyncClient] = None,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
-        """Same parameters as :class:`~cortadel.client.CortadelClient`. Raises whatever the async
-        constructor raises (e.g. ``ValueError`` for a blank/malformed ``base_url`` or ``user_id``)
-        synchronously, from this call, before returning."""
+        """Same parameters, defaults and validation as
+        :class:`~cortadel.client.CortadelClient.__init__` — including an optional ``user_id``
+        (omitted entirely from every request when not given, rejected when explicitly given but
+        blank, and still required in practice on an auth-disabled server). Raises whatever the async
+        constructor raises (e.g. ``ValueError`` for a blank/malformed ``base_url``, or for a
+        ``user_id`` that was passed but is blank) synchronously, from this call, before
+        returning."""
         self._closed = False
         self._loop = asyncio.new_event_loop()
         started = threading.Event()

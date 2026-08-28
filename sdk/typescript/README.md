@@ -17,8 +17,8 @@ import { CortadelClient } from "@cortadel/sdk";
 
 const cortadel = new CortadelClient({
   baseUrl: "http://localhost:3001",
-  userId: "alice",
-  // apiKey: "<token>",   // omit when the server runs with auth disabled
+  apiKey: "<token>",     // omit when the server runs with auth disabled
+  // userId: "alice",    // optional — see "Identity" below
 });
 
 // Store
@@ -49,14 +49,50 @@ the client never mutates a `fetch` you bring in either way.
 ```ts
 const cortadel = new CortadelClient({
   baseUrl: "https://my-box:3001",
-  userId: "alice",
   apiKey: process.env.CORTADEL_API_KEY,
 });
 ```
 
-Reuse a single `CortadelClient` per base URL + user. Every call it makes carries the `userId` you
-construct it with — when a key is present the server overwrites it with the key's user, so it is authoritative only on an auth-disabled server. A `user_id` that disagrees with the key is silently rescoped in a
-request body, and rejected with 403 in a query string.
+## Identity (`userId`)
+
+`userId` is **optional**.
+
+| | What goes on the wire | When to use it |
+|---|---|---|
+| **Omitted** | No `user_id` at all — no body field, no query parameter. | Auth **enabled**. The API key already names the user; the server resolves identity from it. |
+| **Provided** | `user_id` on every request, exactly as in earlier releases. | Auth **disabled** — required in practice, since with no key there is nothing else selecting a namespace. Also fine with auth enabled. |
+
+Passing `userId` explicitly blank (`""` or whitespace) throws. *Omitting* it does not — that is the
+supported way to say "let the server decide."
+
+```ts
+// Auth enabled: the key is the identity.
+const cortadel = new CortadelClient({
+  baseUrl: "https://my-box:3001",
+  apiKey: process.env.CORTADEL_API_KEY,
+});
+
+// Auth disabled: userId is the only namespace anchor, so pass it.
+const local = new CortadelClient({ baseUrl: "http://localhost:3001", userId: "alice" });
+```
+
+### Server requirement
+
+**Omitting `userId` needs a server that includes commit `30b70ea4`** — the one that fills a missing
+`user_id` rather than rejecting it. Against an older server, omitting it comes back as a `400` with
+`{"errors":{"UserId":["The UserId field is required."]}}`.
+
+Check what you're pointed at with `GET /api/health`: the `version` field embeds the server's commit
+SHA, e.g. `"1.0.0+44be8adfc376d19cf6999a379cc8519331def7e6"`. (Cortadel's `VERSION` file is not
+bumped per change, so the leading `1.0.0` says nothing about whether a given commit is in — the SHA
+is the part that answers the question.) Passing `userId` explicitly works against every server
+version.
+
+`userId` is **not deprecated**. When a key *is* present the server is authoritative: a `user_id` in
+a request body is silently rescoped to the key's user, and one in a query string is rejected with a
+`403`. So if you pass it alongside a key, pass the id that key was minted for.
+
+Reuse a single `CortadelClient` per base URL (per user, when you scope by `userId`).
 
 ## Methods
 

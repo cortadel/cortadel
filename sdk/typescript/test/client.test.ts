@@ -63,9 +63,150 @@ describe("constructor validation", () => {
     expect(() => new CortadelClient({ baseUrl: "http://box:3001", userId: USER_ID })).not.toThrow();
   });
 
-  it("rejects a blank userId", () => {
+  it("rejects an explicitly blank userId", () => {
     expect(() => new CortadelClient({ baseUrl: BASE_URL, userId: "" })).toThrow(/userId/i);
     expect(() => new CortadelClient({ baseUrl: BASE_URL, userId: "   " })).toThrow(/userId/i);
+    expect(() => new CortadelClient({ baseUrl: BASE_URL, userId: "\t\n" })).toThrow(/userId/i);
+  });
+
+  it("treats a null userId as omission, matching Python's None and .NET's null", () => {
+    // Deliberate, and the reasoning is worth keeping. Throwing here would be defensible on its own
+    // — a plain-JS caller reaching this via `userId: process.env.X ?? null` gets their identity
+    // resolved from the key instead of the value they meant to pass, and on an AUTH-DISABLED server
+    // that silently lands them in the community default namespace rather than their own.
+    //
+    // But the three SDKs must answer "what does absent mean" identically, and that behaviour is not
+    // achievable in the other two: Python's `user_id=None` and .NET's `UserId = null` ARE how
+    // omission is expressed — neither language can distinguish "passed null" from "passed nothing".
+    // Only TypeScript has undefined-vs-null to tell them apart. So null means omission everywhere,
+    // and the hazard above is documented in the constructor doc rather than enforced in one SDK.
+    expect(() => new CortadelClient({ baseUrl: BASE_URL, userId: null as unknown as string, apiKey: "k" })).not.toThrow();
+  });
+
+  it("accepts an omitted userId — the server resolves the user from the API key", () => {
+    expect(() => new CortadelClient({ baseUrl: BASE_URL, apiKey: "k" })).not.toThrow();
+    expect(() => new CortadelClient({ baseUrl: BASE_URL, userId: undefined, apiKey: "k" })).not.toThrow();
+  });
+});
+
+/**
+ * The point of an omitted `userId` is that nothing goes on the wire — not an empty `user_id`, not
+ * a `null` one. Each assertion below is "the key/parameter is ABSENT", never "it is falsy": an
+ * empty `user_id=` in a query string is exactly the failure mode the generated list template
+ * produces on its own (its URI template hardcodes `?user_id={user_id}` as literal text, and
+ * RFC 6570 expands an undefined variable to the empty string), so a laxer assertion would pass
+ * while broken.
+ */
+describe("optional userId — omitted", () => {
+  const anon = (fetch: typeof fetch) => new CortadelClient({ baseUrl: BASE_URL, apiKey: "key", fetch });
+
+  it("add(): no user_id key in the body", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ id: "m1", content: "hello", state: "active" })]);
+    await anon(fetch).add("hello");
+
+    const body = decodeBody(calls[0].init);
+    expect(Object.keys(body)).not.toContain("user_id");
+    expect(body).not.toHaveProperty("userId");
+    expect(body).toHaveProperty("text", "hello");
+  });
+
+  it("addConversation(): no user_id key in the body", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ results: [] })]);
+    await anon(fetch).addConversation([{ role: "user", content: "hi" }]);
+
+    expect(Object.keys(decodeBody(calls[0].init))).not.toContain("user_id");
+  });
+
+  it("search(): no user_id key in the body", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ query: "q", results: [], total: 0 })]);
+    await anon(fetch).search("q");
+
+    expect(Object.keys(decodeBody(calls[0].init))).not.toContain("user_id");
+  });
+
+  it("delete(): no user_id key in the body", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ message: "deleted 1" })]);
+    await anon(fetch).delete(["m1"]);
+
+    expect(Object.keys(decodeBody(calls[0].init))).not.toContain("user_id");
+  });
+
+  it("list(): no user_id query parameter at all — not even an empty one", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ items: [], total: 0, page: 1, size: 20, pages: 0 })]);
+    await anon(fetch).list();
+
+    expect(calls[0].url).not.toContain("user_id");
+    // The parameters the call *does* set must survive the removal.
+    const params = new URL(calls[0].url).searchParams;
+    expect(params.get("page")).toBe("1");
+    expect(params.get("size")).toBe("20");
+  });
+
+  it("list(): user_id is removed without disturbing the other query parameters' encoding", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ items: [], total: 0, page: 1, size: 20, pages: 0 })]);
+    await anon(fetch).list({ searchQuery: "dark mode", categories: "a,b", includeSuperseded: true });
+
+    const url = calls[0].url;
+    expect(url).not.toContain("user_id");
+    // Byte-level: whatever percent-encoding Kiota emitted is still there (a URL/URLSearchParams
+    // round-trip would have rewritten "%20" to "+").
+    expect(url).toContain("search_query=dark%20mode");
+    expect(url).toContain("include_superseded=true");
+    expect(new URL(url).searchParams.get("categories")).toBe("a,b");
+  });
+
+  it("get(): no user_id query parameter", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ id: "m1", text: "hello", created_at: 1735689600, is_global: false })]);
+    await anon(fetch).get("m1");
+
+    expect(calls[0].url).not.toContain("user_id");
+    expect(calls[0].url).toContain("/api/v1/memories/m1");
+  });
+});
+
+describe("optional userId — provided", () => {
+  const named = (fetch: typeof fetch) => new CortadelClient({ baseUrl: BASE_URL, userId: USER_ID, fetch });
+
+  it("add(): still sends user_id in the body", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ id: "m1", content: "hello", state: "active" })]);
+    await named(fetch).add("hello");
+
+    expect(decodeBody(calls[0].init)).toHaveProperty("user_id", USER_ID);
+  });
+
+  it("search(): still sends user_id in the body", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ query: "q", results: [], total: 0 })]);
+    await named(fetch).search("q");
+
+    expect(decodeBody(calls[0].init)).toHaveProperty("user_id", USER_ID);
+  });
+
+  it("delete(): still sends user_id in the body", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ message: "deleted 1" })]);
+    await named(fetch).delete(["m1"]);
+
+    expect(decodeBody(calls[0].init)).toHaveProperty("user_id", USER_ID);
+  });
+
+  it("list(): still sends the user_id query parameter", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ items: [], total: 0, page: 1, size: 20, pages: 0 })]);
+    await named(fetch).list();
+
+    expect(new URL(calls[0].url).searchParams.get("user_id")).toBe(USER_ID);
+  });
+
+  it("get(): still sends the user_id query parameter", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ id: "m1", text: "hello", created_at: 1735689600, is_global: false })]);
+    await named(fetch).get("m1");
+
+    expect(new URL(calls[0].url).searchParams.get("user_id")).toBe(USER_ID);
+  });
+
+  it("addConversation(): still sends user_id in the body", async () => {
+    const { fetch, calls } = stubFetch([jsonResponse({ results: [] })]);
+    await named(fetch).addConversation([{ role: "user", content: "hi" }]);
+
+    expect(decodeBody(calls[0].init)).toHaveProperty("user_id", USER_ID);
   });
 });
 

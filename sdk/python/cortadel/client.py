@@ -15,7 +15,7 @@ import warnings
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlsplit, urlunsplit
 
 import httpx
 from kiota_abstractions.api_error import APIError
@@ -154,6 +154,37 @@ def _to_metadata_bag(metadata: Optional[dict]) -> Optional[CreateMemoryRequest_m
     return CreateMemoryRequest_metadata(additional_data=dict(metadata))
 
 
+def _drop_blank_user_id_query(url: str) -> str:
+    """Removes an empty ``user_id=`` query parameter from an already-built URL.
+
+    This is the one place an omitted ``user_id`` does **not** fall off the wire by itself. Every
+    other call site is safe for free: Kiota's JSON writer skips a ``None`` body field entirely
+    (``writer.write_str_value("user_id", None)`` emits nothing), and ``get()``'s by-id builder
+    declares its parameter with the RFC 6570 form-style *explode* operator (``{?user_id*}``),
+    which expands to nothing when the variable is undefined.
+
+    ``list()`` is generated differently, because the contract still marks the parameter
+    ``required``: its operation template hard-codes it as a literal followed by a simple
+    expansion — ``/api/v1/memories?user_id={user_id}{&app_id*,...}``. The literal ``?user_id=`` is
+    not part of the expression, so an undefined variable leaves it behind and the request goes out
+    as ``/api/v1/memories?user_id=&page=1&size=20``. That is a present-but-blank ``user_id``, not
+    an absent one — exactly what this SDK promises never to send — so it is stripped here, after
+    the URL is built and before it is sent (see :meth:`CortadelClient.list`).
+
+    Parsed and re-encoded rather than string-surgered on ``?user_id=&``: the template is generated
+    output, so the parameter's position within it is not a stable thing to depend on.
+    ``quote_via=quote`` keeps spaces percent-encoded as ``%20``, the way the URI-template
+    expansion wrote them, instead of ``urlencode``'s default ``+``.
+    """
+    parts = urlsplit(url)
+    pairs = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if not (key == "user_id" and value == "")
+    ]
+    return urlunsplit(parts._replace(query=urlencode(pairs, quote_via=quote)))
+
+
 def _flatten_field_error(value: object) -> str:
     if isinstance(value, list):
         return "; ".join("" if v is None else str(v) for v in value)
@@ -183,15 +214,23 @@ def _translate(e: APIError) -> CortadelError:
 
 class CortadelClient:
     """A thin, typed async client for the Cortadel REST API. Create one and reuse it (it wraps a
-    single ``httpx.AsyncClient``). Every call carries the ``user_id`` given at construction, but on an
-    authenticated server the key decides the namespace, not that value: a ``user_id`` in a body is
-    silently overwritten with the key's user, and one in a query string is rejected with 403.
+    single ``httpx.AsyncClient``).
+
+    ``user_id`` is optional. Omit it and the SDK sends no ``user_id`` at all — no body field, no
+    query parameter — and the server resolves identity from the API key. Pass one and it goes out
+    on every call exactly as before: on an authenticated server the key still decides the
+    namespace (a ``user_id`` in a body is silently overwritten with the key's user, and one in a
+    query string is rejected with 403), but on an **auth-disabled** server it is the only thing
+    selecting a namespace and is therefore still required there.
+
+    Omitting it needs a server built from commit ``30b70ea4`` or later — see :meth:`__init__` for
+    how to tell which one you are talking to.
     """
 
     def __init__(
         self,
         base_url: str,
-        user_id: str,
+        user_id: Optional[str] = None,
         *,
         api_key: Optional[str] = None,
         app_name: str = DEFAULT_APP_NAME,
@@ -201,8 +240,21 @@ class CortadelClient:
         """
         Args:
             base_url: Base URL of the Cortadel server, e.g. ``"http://localhost:3001"``.
-            user_id: User identifier that owns the memories (the namespace anchor). Required by
-                the REST API.
+            user_id: Optional user identifier that owns the memories (the namespace anchor).
+                **Omit it against an authenticated server**: the API key already identifies the
+                user, and the server discards whatever this value says. When omitted, the SDK
+                sends no ``user_id`` at all — not as a body field, not as a query parameter.
+                **Still required against an auth-disabled server**, where there is no key and this
+                value is the only thing selecting a namespace. Passing it explicitly is fully
+                supported and unchanged; passing it *blank or whitespace* raises ``ValueError``,
+                because a blank namespace anchor is a bug either way.
+
+                Omitting it requires a server that includes commit ``30b70ea4`` — the change that
+                made the API fill in a missing ``user_id`` from the key. Check which one you have
+                with ``GET /api/health``: its ``version`` field embeds the build's commit SHA,
+                e.g. ``"1.0.0+44be8adfc376d19cf6999a379cc8519331def7e6"``. An older server answers
+                a request that omits ``user_id`` with ``400`` and
+                ``"The UserId field is required."``.
             api_key: Optional API key. Sent as ``Authorization: Bearer <key>``. Omit when the
                 server runs with auth disabled.
             app_name: App name recorded for access logging on searches. Defaults to
@@ -220,8 +272,15 @@ class CortadelClient:
         parsed = urlparse(base_url)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise ValueError(f'base_url must be an absolute http(s) URL, got: "{base_url}"')
-        if not user_id or not user_id.strip():
-            raise ValueError("user_id is required.")
+        # Omission is legal (see the `user_id` docstring above); an explicitly blank value is
+        # not — that is a caller bug, not a request to let the server decide, and quietly treating
+        # it as "omitted" would hand an auth-disabled server the default namespace instead of the
+        # one the caller meant.
+        if user_id is not None and not user_id.strip():
+            raise ValueError(
+                "user_id must not be blank. Omit it entirely to let the server resolve the user "
+                "from the API key."
+            )
 
         self._user_id = user_id
         self._app_name = app_name.strip() or DEFAULT_APP_NAME
@@ -305,7 +364,35 @@ class CortadelClient:
             memory_type=(options.memory_type or None) if options else None,
         )
         config = RequestConfiguration(query_parameters=params)
-        res = await self._execute(lambda: self._generated.api.v1.memories.get(request_configuration=config))
+        memories = self._generated.api.v1.memories
+        if self._user_id is None:
+            # The only endpoint whose generated URI template leaves a blank `user_id=` behind when
+            # the value is undefined — see `_drop_blank_user_id_query` for why, and for why the
+            # other five call sites need nothing. `to_get_request_information` still builds the
+            # URL through the generated template (so every *other* query parameter is serialized
+            # by generated code, not by hand); `with_url` then re-issues the cleaned URL as a raw
+            # URL, which `RequestInformation.url` returns verbatim, through the same builder —
+            # keeping this operation's generated response type and error mapping.
+            request_info = memories.to_get_request_information(config)
+            # `baseurl` is normally injected into the path parameters by the request adapter at
+            # send time (`HttpxRequestAdapter.set_base_url_for_request_information`), not by the
+            # builder — so reading `.url` off a request we built ourselves would otherwise expand
+            # `{+baseurl}` to nothing and yield a relative `/api/v1/memories?...`, which httpx
+            # rejects outright ("unknown url type"). Supplying it here under the adapter's own key
+            # expands the template to the identical absolute URL it would have sent.
+            #
+            # Replaced, not mutated in place: every generated request builder from the root client
+            # down shares one `path_parameters` dict by reference, and `RequestInformation` holds
+            # that same reference rather than a copy — so `request_info.path_parameters[...] = ...`
+            # would write into the client-wide dict, not into this one request.
+            request_info.path_parameters = {
+                **request_info.path_parameters,
+                "baseurl": self._adapter.base_url,
+            }
+            url = _drop_blank_user_id_query(request_info.url)
+            res = await self._execute(lambda: memories.with_url(url).get())
+        else:
+            res = await self._execute(lambda: memories.get(request_configuration=config))
         return mapping.map_memory_list(res)
 
     async def get(self, memory_id: str) -> Optional[MemoryDetail]:

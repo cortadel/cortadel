@@ -18,6 +18,9 @@ import asyncio
 from cortadel import ChatMessage, CortadelClient, SearchOptions
 
 async def main() -> None:
+    # "alice" is the user_id. It is optional against a server with auth enabled — the API key
+    # already says who you are — but required here, because a local auth-disabled server has
+    # nothing else to scope memories by. See "User scoping (user_id)" below.
     async with CortadelClient("http://localhost:3001", "alice") as cortadel:
         # apiKey: pass api_key="<token>" — omit when the server runs with auth disabled
 
@@ -73,9 +76,45 @@ from cortadel import CortadelClient
 cortadel = CortadelClient("https://my-box:3001", "alice", api_key=os.environ.get("CORTADEL_API_KEY"))
 ```
 
-Reuse a single client per base URL + user. Every call it makes carries the `user_id` you construct
-it with — when a key is present the server overwrites it with the key's user, so it is authoritative only on an auth-disabled server. A `user_id` that disagrees with the key is silently rescoped in a request body,
-and rejected with 403 in a query string.
+Reuse a single client per base URL + user.
+
+## User scoping (`user_id`)
+
+`user_id` is the second constructor argument on both clients, and it is **optional**:
+
+```python
+# Auth enabled — the key identifies the user; the SDK sends no user_id at all.
+cortadel = CortadelClient("https://my-box:3001", api_key=os.environ["CORTADEL_API_KEY"])
+
+# Auth disabled — no key exists, so user_id is the only thing selecting a namespace.
+cortadel = CortadelClient("http://localhost:3001", "alice")
+```
+
+| You pass | What goes on the wire |
+|---|---|
+| nothing | **No `user_id` at all** — not as a body field, not as a query parameter. The server resolves the user from the API key. |
+| `"alice"` | `user_id` is sent on every call, exactly as before. |
+| `""` / `"   "` | `ValueError`, raised from the constructor. Omission is the supported way to let the server decide; a blank string is a bug. |
+
+Passing a `user_id` is **not deprecated**. On an authenticated server it is redundant — the key
+decides the namespace, so a `user_id` in a request body is silently rewritten to the key's user
+and one in a query string is rejected with `403`. On an **auth-disabled** server there is no key,
+and `user_id` is the only thing that scopes anything: it is still required there.
+
+### Server requirement
+
+Omitting `user_id` requires a server that includes commit **`30b70ea4`** — the change that made
+the API fill in a missing `user_id` from the caller's key. Check which build you're talking to:
+
+```bash
+curl -s http://localhost:3001/api/health | jq -r .version
+# 1.0.0+44be8adfc376d19cf6999a379cc8519331def7e6
+#       ^ build metadata after the "+" is the commit SHA of the running build
+```
+
+Against an older server, a request that omits `user_id` comes back as
+`400 {"errors":{"UserId":["The UserId field is required."]}}` — surfaced as a `CortadelError` with
+`status == 400`. Pass `user_id` explicitly to talk to those builds.
 
 ## Methods
 

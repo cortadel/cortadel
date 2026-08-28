@@ -18,13 +18,22 @@ export interface CortadelOptions {
   baseUrl: string;
 
   /**
-   * User identifier sent on every request. Required by the REST API — omitting it is a 400.
+   * User identifier. **Optional.** When omitted, no `user_id` is put on the wire at all (no body
+   * field, no query parameter) and the server resolves the user from the API key.
    *
-   * It is the namespace anchor ONLY on an auth-disabled server. When an `apiKey` is present the
-   * server is authoritative: a `user_id` in a request body is silently overwritten with the key's
-   * user, and one in a query string is rejected with 403. So pass the id the key was minted for.
+   * Omitting it requires a server that includes commit `30b70ea4` (the one that fills a missing
+   * `user_id` instead of rejecting it). Check with `GET /api/health`: the `version` field embeds
+   * the server's commit SHA. Against an older server, omitting `userId` comes back as a 400,
+   * "The UserId field is required".
+   *
+   * Still **required in practice on an auth-disabled server**, where it is the only thing
+   * selecting a namespace. With an `apiKey` the server is authoritative: a `user_id` in a request
+   * body is silently overwritten with the key's user, and one in a query string is rejected with
+   * 403 — so if you do pass it, pass the id the key was minted for.
+   *
+   * Passing it explicitly blank (`""` or whitespace) throws; omitting it does not.
    */
-  userId: string;
+  userId?: string;
 
   /** Optional API key. Sent as `Authorization: Bearer <key>`. Omit when the server runs with auth disabled. */
   apiKey?: string;
