@@ -183,7 +183,9 @@ def _translate(e: APIError) -> CortadelError:
 
 class CortadelClient:
     """A thin, typed async client for the Cortadel REST API. Create one and reuse it (it wraps a
-    single ``httpx.AsyncClient``). All calls are scoped to the ``user_id`` given at construction.
+    single ``httpx.AsyncClient``). Every call carries the ``user_id`` given at construction, but on an
+    authenticated server the key decides the namespace, not that value: a ``user_id`` in a body is
+    silently overwritten with the key's user, and one in a query string is rejected with 403.
     """
 
     def __init__(

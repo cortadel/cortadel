@@ -15,7 +15,11 @@ public sealed class CortadelClientOptions
     /// <summary>Base URL of the Cortadel server, e.g. <c>http://localhost:3001</c>.</summary>
     public required string BaseUrl { get; init; }
 
-    /// <summary>User identifier that owns the memories (the namespace anchor). Required by the REST API.</summary>
+    /// <summary>
+    /// User identifier sent on every request. Required by the REST API — omitting it is a 400.
+    /// It is the namespace anchor ONLY on an auth-disabled server; when an ApiKey is present the
+    /// server overwrites a body value with the key's user and rejects a query-string one with 403.
+    /// </summary>
     public required string UserId { get; init; }
 
     /// <summary>Optional API key. Sent as <c>Authorization: Bearer &lt;key&gt;</c>. Omit when the server runs with auth disabled.</summary>
@@ -54,7 +58,9 @@ public sealed class CortadelException : Exception
 
 /// <summary>
 /// A thin, typed client for the Cortadel REST API. Create one and reuse it (it wraps a single
-/// <see cref="HttpClient"/>). All calls are scoped to <see cref="CortadelClientOptions.UserId"/>.
+/// <see cref="HttpClient"/>). Every call carries <see cref="CortadelClientOptions.UserId"/>, but on
+/// an authenticated server the key decides the namespace: a user_id in a body is silently
+/// overwritten with the key's user, and one in a query string is rejected with 403.
 /// </summary>
 /// <remarks>
 /// Internally this is a facade over a Kiota-generated transport

@@ -1,6 +1,6 @@
 {
   "name": "@cortadel/sdk",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Official TypeScript SDK for Cortadel — self-hosted long-term temporal graph memory for AI agents.",
   "license": "Apache-2.0",
   "type": "module",

@@ -58,7 +58,7 @@ Claude Code `userConfig` schema and this table:
 | Option | Required | Sensitive | Default | Meaning |
 | --- | --- | --- | --- | --- |
 | `base_url` | yes | no | `https://app.cortadel.ai` | Base URL the **hooks** use for their REST calls. No trailing slash. The inline MCP server does **not** follow this — its URL is pinned literal; see [Hosted vs self-hosted](#hosted-vs-self-hosted). |
-| `user_id` | yes | no | — | The user id your API key was minted for. Used by the **hooks** in their REST payloads — it is **not** part of the MCP URL, which carries no user segment. It must match the key's user or the server responds 403. |
+| `user_id` | yes | no | — | The user id your API key was minted for. Used by the **hooks** in their REST payloads — it is **not** part of the MCP URL, which carries no user segment. Set it to the key's user: the server overrides a mismatch either way — 403 on a query-string id, a silent rescope in a request body — so a wrong value fails quietly. See [Authentication](/authentication/#user-scoping). |
 | `api_key` | yes | yes | — | API key for your user. **Hosted** (`https://app.cortadel.ai`): the dashboard there issues keys. **Self-hosted**: mint one on the server: `dotnet Cortadel.Api.dll mint-key <user>` (in Docker: `docker exec <container> dotnet Cortadel.Api.dll mint-key <user>`). |
 | `client_name` | no | no | `claude` | The `app_name` the `UserPromptSubmit` hook sends on its *search* requests, which the server uses for access logging only. It does **not** filter results and is **not** recorded on memories the hooks capture — see [MCP tool naming](#mcp-tool-naming). The MCP endpoint's own `{clientName}` segment is fixed at `claude` in the pinned URL. |
 

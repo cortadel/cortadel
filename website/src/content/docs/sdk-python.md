@@ -13,8 +13,9 @@ pip install cortadel
 
 ## Construct a client
 
-Reuse a single client — it wraps one `httpx.AsyncClient`. Every call is scoped to the `user_id` you
-pass in.
+Reuse a single client — it wraps one `httpx.AsyncClient`. Every call carries the `user_id` you pass
+in; when a key is present the server overwrites it with the key's user, so it is authoritative only
+on an auth-disabled server. See [Authentication](/authentication/#user-scoping).
 
 ```python
 from cortadel import CortadelClient

@@ -73,8 +73,9 @@ from cortadel import CortadelClient
 cortadel = CortadelClient("https://my-box:3001", "alice", api_key=os.environ.get("CORTADEL_API_KEY"))
 ```
 
-Reuse a single client per base URL + user. Every call it makes is scoped to the `user_id` you
-construct it with.
+Reuse a single client per base URL + user. Every call it makes carries the `user_id` you construct
+it with — when a key is present the server overwrites it with the key's user, so it is authoritative only on an auth-disabled server. A `user_id` that disagrees with the key is silently rescoped in a request body,
+and rejected with 403 in a query string.
 
 ## Methods
 

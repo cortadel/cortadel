@@ -23,7 +23,7 @@ Two ways to get a running server to point the SDKs/plugin at: the hosted service
 | Path | What |
 |---|---|
 | `sdk/dotnet/` | `Cortadel.Sdk` (NuGet, `1.0.0`) — hand-written facade (`CortadelClient.cs`, `Models.cs`) over a Kiota-generated transport in `Generated/`. Tests in the sibling `Cortadel.Sdk.Tests` / `Cortadel.Sdk.Conformance` projects. |
-| `sdk/typescript/` | `@cortadel/sdk` (npm, `1.1.0`) — facade in `src/client.ts` + `src/models.ts` over `src/generated/`. Unit tests in `test/`, conformance in `conformance/`. |
+| `sdk/typescript/` | `@cortadel/sdk` (npm, `1.1.1`) — facade in `src/client.ts` + `src/models.ts` over `src/generated/`. Unit tests in `test/`, conformance in `conformance/`. |
 | `sdk/python/` | `cortadel` (PyPI, `1.0.0`) — facade in `cortadel/client.py` (async) and `cortadel/sync_client.py` (blocking) over `cortadel/_generated/`. Unit tests in `tests/`, conformance in `conformance/`. |
 | `spec/openapi.json` | The REST contract every SDK generates from. **Synced from a private repo — do not edit.** |
 | `packaging/` | `plugin.metadata.json` (hand-written source of truth for the plugin's identity + config) and `generate.mjs` (the only writer of the plugin/marketplace manifests). See "Never hand-edit these". |

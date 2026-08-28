@@ -49,7 +49,9 @@ catch (CortadelException ex) { Console.WriteLine($"{ex.StatusCode} {ex.Code}: {e
 ## Notes
 
 - Reuse a single `CortadelClient` (it wraps one `HttpClient`). Optionally pass your own `HttpClient`.
-- Every call is scoped to the `userId` you construct the client with.
+- Every call carries the `userId` you construct the client with — when a key is present the server overwrites it with the key's user, so it is authoritative only on an auth-disabled server. A `user_id` that
+  disagrees with the key is silently rescoped in a request body, and rejected with 403 in a query
+  string.
 - The `Cortadel.Sdk.Generated` namespace is Kiota-generated transport plumbing, not part of this
   package's supported API. It's generated `internal` (`--type-access-modifier Internal`), so it
   isn't visible outside this assembly at all — it's unversioned: a future contract regeneration can

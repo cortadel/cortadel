@@ -11,7 +11,9 @@ npm install @cortadel/sdk
 
 ## Construct a client
 
-Reuse a single `CortadelClient`. Every call is scoped to the `userId` you pass in.
+Reuse a single `CortadelClient`. Every call carries the `userId` you pass in; when a key is present
+the server overwrites it with the key's user, so it is authoritative only on an auth-disabled
+server. See [Authentication](authentication.md#user-scoping).
 
 ```ts
 import { CortadelClient } from "@cortadel/sdk";

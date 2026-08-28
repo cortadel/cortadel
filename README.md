@@ -237,7 +237,7 @@ for (const h of hits.results) console.log(h.rrfScore, h.content);
 ```bash
 curl -X POST http://localhost:3001/api/v1/memories \
   -H "content-type: application/json" \
-  -d '{"userId":"alice","text":"Alice prefers dark mode."}'
+  -d '{"user_id":"alice","text":"Alice prefers dark mode."}'
 ```
 
 Full walkthrough: [Getting started](docs/getting-started.md) · [Python SDK reference](docs/sdk-python.md) · [TypeScript SDK reference](docs/sdk-typescript.md) · runnable [example](examples/dotnet-quickstart/) (.NET).
