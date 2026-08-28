@@ -122,6 +122,34 @@ function buildValidationMessage(err: { detail?: string | null; title?: string | 
   return `${base} (${parts.join(", ")})`;
 }
 
+/**
+ * Trap: the generated *list* builder's URI template hardcodes `?user_id={user_id}` as literal text
+ * (`{+baseurl}/api/v1/memories?user_id={user_id}{&app_id*,...}`) instead of folding `user_id` into
+ * the form-style expansion. RFC 6570 expands an undefined variable to the empty string, so an
+ * omitted `userId` would leave a bare `user_id=` on the wire — present, not absent. Every other
+ * site omits it correctly on its own and needs no help here: the item route's template is
+ * `{?user_id*}` (undefined vars drop out of a form-style expansion), and Kiota's JSON writer
+ * returns early on `undefined`, so `user_id` never reaches a request body either.
+ *
+ * Dropping an *empty* `user_id` parameter is safe unconditionally: the constructor rejects an
+ * explicitly blank `userId`, so an empty value on the wire can only ever be this template
+ * artifact. Done by string surgery rather than `new URL(...)` + `URLSearchParams` so every other
+ * byte of the query string Kiota built survives untouched (re-serializing search params would
+ * re-encode spaces as `+` and commas as `%2C`).
+ */
+function dropEmptyUserIdParam(rawUrl: string): string {
+  const q = rawUrl.indexOf("?");
+  if (q < 0) return rawUrl;
+  const hash = rawUrl.indexOf("#", q);
+  const query = hash < 0 ? rawUrl.slice(q + 1) : rawUrl.slice(q + 1, hash);
+  const tail = hash < 0 ? "" : rawUrl.slice(hash);
+  const parts = query.split("&");
+  const kept = parts.filter((p) => p !== "user_id" && p !== "user_id=");
+  if (kept.length === parts.length) return rawUrl;
+  if (kept.length === 0) return rawUrl.slice(0, q) + tail;
+  return `${rawUrl.slice(0, q + 1)}${kept.join("&")}${tail}`;
+}
+
 /** Custom auth provider — deliberately not `ApiKeyAuthenticationProvider`: that built-in calls
  * `validateProtocol()` and throws for any non-https host that isn't literally "localhost", which
  * would break every self-hosted `http://box:3001` deployment. This one just sets the header. */
@@ -134,8 +162,18 @@ function createAuthProvider(apiKey: string | undefined): AuthenticationProvider 
 }
 
 /**
- * A thin, typed client for the Cortadel REST API. Create one and reuse it. All calls are scoped
- * to the `userId` given at construction.
+ * A thin, typed client for the Cortadel REST API. Create one and reuse it.
+ *
+ * `userId` is optional. Pass one and every call is scoped to it, exactly as before. Omit it and
+ * the client sends no `user_id` at all — no body field, no query parameter — leaving the server to
+ * resolve the user from the API key.
+ *
+ * Omitting `userId` requires a server that includes commit `30b70ea4`, the one that fills a
+ * missing `user_id` instead of rejecting it. Check with `GET /api/health`: the `version` field
+ * embeds the server's commit SHA (e.g. `"1.0.0+44be8adfc376d19cf6999a379cc8519331def7e6"`).
+ * Against an older server, omitting `userId` comes back as a 400, "The UserId field is required".
+ * On an **auth-disabled** server `userId` is still required in practice — with no key to resolve
+ * an identity from, it is the only thing selecting a namespace.
  *
  * Internally this is a facade over a Kiota-generated transport (`./generated`); the generated
  * types never appear on this class's public surface (enforced by `src/index.ts`'s exports and its
@@ -143,7 +181,10 @@ function createAuthProvider(apiKey: string | undefined): AuthenticationProvider 
  */
 export class CortadelClient {
   private readonly baseUrl: string;
-  private readonly userId: string;
+  /** `undefined` means "send no `user_id`" — every request site below threads this straight
+   * through, and both Kiota's body writer and its form-style query expansion omit `undefined`
+   * (the one template that does not is handled by `dropEmptyUserIdParam`). */
+  private readonly userId: string | undefined;
   private readonly appName: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
@@ -162,8 +203,17 @@ export class CortadelClient {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error(`CortadelOptions.baseUrl must use http or https, got: "${options.baseUrl}"`);
     }
-    if (!options.userId || !options.userId.trim()) {
-      throw new Error("CortadelOptions.userId is required.");
+    // Omission is legal — it means "let the server resolve the user from the API key". Only an
+    // *explicitly* provided value that isn't a usable id is an error: a blank/whitespace string
+    // (or a `null` from an untyped JS caller) is never what anyone meant, and silently turning it
+    // into "no user_id" would swap the caller's identity without saying so.
+    // `null` is treated as omission, exactly like Python's None and .NET's null — the three
+    // SDKs must answer "what does absent mean" identically. Only an explicitly BLANK string
+    // throws, because that is a typo rather than a decision to let the server decide.
+    if (options.userId !== undefined && options.userId !== null && (typeof options.userId !== "string" || !options.userId.trim())) {
+      throw new Error(
+        "CortadelOptions.userId, when provided, must be a non-blank string. Omit it entirely to let the server resolve the user from the API key.",
+      );
     }
 
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
@@ -333,7 +383,9 @@ export class CortadelClient {
     const status: { value?: number } = {};
     const combinedSignal = this.composeSignal(signal);
     const customFetch = async (url: string, init: RequestInit): Promise<Response> => {
-      const res = await this.fetchImpl(url, combinedSignal ? { ...init, signal: combinedSignal } : init);
+      // Last stop before the wire, and the only place that sees the fully expanded URL — see
+      // `dropEmptyUserIdParam` for the one generated template that cannot omit `user_id` itself.
+      const res = await this.fetchImpl(dropEmptyUserIdParam(url), combinedSignal ? { ...init, signal: combinedSignal } : init);
       status.value = res.status;
       return res;
     };

@@ -40,7 +40,7 @@ var withHttp = new CortadelClient(options, httpClient);
 | Property | Default | Notes |
 |---|---|---|
 | `BaseUrl` *(required)* | — | e.g. `http://localhost:3001` |
-| `UserId` *(required)* | — | memory namespace / access scope |
+| `UserId` *(optional)* | — | optional; omit it and the server resolves identity from the API key. Still required on an auth-disabled server, where it selects the namespace. |
 | `ApiKey` | `null` | bearer token; omit when auth is off |
 | `AppName` | `cortadel-dotnet` | app label on searches |
 | `Timeout` | 100 s | generous for reranked search. **No-op if you pass your own `HttpClient`** (see below) — the facade never mutates a caller-supplied client, so set the timeout on that `HttpClient` yourself instead. |

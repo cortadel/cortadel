@@ -12,7 +12,8 @@ dotnet add package Cortadel.Sdk
 ```csharp
 using Cortadel.Sdk;
 
-var cortadel = new CortadelClient("http://localhost:3001", userId: "alice", apiKey: null);
+// The API key identifies the user - the server resolves it from the key.
+var cortadel = new CortadelClient("http://localhost:3001", apiKey: "ck_...");
 
 // Store
 await cortadel.AddAsync("Alice prefers dark mode and ships on Fridays.");
@@ -46,12 +47,57 @@ try { await cortadel.AddAsync(""); }
 catch (CortadelException ex) { Console.WriteLine($"{ex.StatusCode} {ex.Code}: {ex.Message}"); }
 ```
 
+## `userId` is optional
+
+`userId` is optional in both constructors. **Omit it and the client sends no `user_id` at all** —
+no body field, no query parameter — and the server resolves the user from your API key:
+
+```csharp
+// Identity comes from the key.
+using var cortadel = new CortadelClient("http://localhost:3001", apiKey: "ck_...");
+
+// Same thing with the options object.
+using var viaOptions = new CortadelClient(new CortadelClientOptions
+{
+    BaseUrl = "http://localhost:3001",
+    ApiKey  = "ck_...",
+});
+```
+
+**Server requirement.** Omitting `userId` needs a server that includes commit **`30b70ea4`** (the
+one that made the API fill a missing `user_id` from the key). Check what you're pointing at with
+`GET /api/health` — its `version` field embeds the running commit SHA:
+
+```bash
+curl -s http://localhost:3001/api/health | jq -r .version
+# 1.0.0+44be8adfc376d19cf6999a379cc8519331def7e6
+```
+
+```csharp
+Console.WriteLine((await cortadel.HealthAsync()).Status);   // "ok"
+```
+
+Against an older server, omitting `userId` comes back as HTTP 400 —
+`CortadelException` with `Code == "validation_error"` and `The UserId field is required` in the
+message. Pass `userId` and it works against every server version.
+
+**Still pass `userId` on an auth-disabled server.** With an empty `Auth:Secret` there is no key to
+resolve an identity from, and `userId` is the only thing selecting a namespace — it is required in
+practice there, and it is not deprecated:
+
+```csharp
+using var local = new CortadelClient("http://localhost:3001", userId: "alice");
+```
+
+Supplying `userId` as a blank or whitespace string throws `ArgumentException`. Omitting it does not.
+
 ## Notes
 
 - Reuse a single `CortadelClient` (it wraps one `HttpClient`). Optionally pass your own `HttpClient`.
-- Every call carries the `userId` you construct the client with — when a key is present the server overwrites it with the key's user, so it is authoritative only on an auth-disabled server. A `user_id` that
-  disagrees with the key is silently rescoped in a request body, and rejected with 403 in a query
-  string.
+- Every call carries the `userId` you construct the client with, when you give one — and on an
+  authenticated server the key still decides the namespace: a `user_id` that disagrees with the key
+  is silently rescoped in a request body, and rejected with 403 in a query string. So `userId` is
+  authoritative only on an auth-disabled server.
 - The `Cortadel.Sdk.Generated` namespace is Kiota-generated transport plumbing, not part of this
   package's supported API. It's generated `internal` (`--type-access-modifier Internal`), so it
   isn't visible outside this assembly at all — it's unversioned: a future contract regeneration can

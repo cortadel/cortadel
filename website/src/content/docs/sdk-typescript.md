@@ -38,7 +38,7 @@ const cortadel = new CortadelClient({
 | Property | Default | Notes |
 |---|---|---|
 | `baseUrl` *(required)* | — | e.g. `http://localhost:3001` |
-| `userId` *(required)* | — | memory namespace / access scope |
+| `userId` *(optional)* | — | optional; omit it and the server resolves identity from the API key. Still required on an auth-disabled server, where it selects the namespace. |
 | `apiKey` | `undefined` | bearer token; omit when auth is off |
 | `appName` | `cortadel-typescript` | app label on searches |
 | `fetch` | global `fetch` | never mutated — the client wraps this reference in its own request handling instead of attaching headers or state to it, so the same `fetch` (or one already bound to your own defaults) can safely be shared across multiple `CortadelClient`s or other callers |

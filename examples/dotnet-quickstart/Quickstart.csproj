@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <!-- Local project reference for running from a repo clone.
-         In your own app, replace this with: <PackageReference Include="Cortadel.Sdk" Version="1.1.1" /> -->
+         In your own app, replace this with: <PackageReference Include="Cortadel.Sdk" Version="1.2.0" /> -->
     <ProjectReference Include="..\..\sdk\dotnet\Cortadel.Sdk\Cortadel.Sdk.csproj" />
   </ItemGroup>
 

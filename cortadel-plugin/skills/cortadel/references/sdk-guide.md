@@ -2,7 +2,7 @@
 
 Complete reference for the three published SDKs — .NET, TypeScript, and Python — all thin, typed
 clients over the same seven REST operations (`references/api-reference.md`). All three are
-published at `1.1.1`.
+published at `1.2.0`.
 
 ## Installation
 
@@ -55,7 +55,7 @@ var withHttp = new CortadelClient(options, httpClient);
 | Property | Default | Notes |
 |---|---|---|
 | `BaseUrl` *(required)* | — | e.g. `http://localhost:3001` |
-| `UserId` *(required)* | — | memory namespace / access scope |
+| `UserId` *(optional)* | — | optional; omit it and the server resolves identity from the API key. Still required on an auth-disabled server. |
 | `ApiKey` | `null` | bearer token; omit when auth is off |
 | `AppName` | `cortadel-dotnet` | app label recorded on searches |
 | `Timeout` | 100s | **only applies to the `HttpClient` the constructor creates for you** — a no-op if you pass your own `HttpClient`, since the facade never mutates `BaseAddress`, `Timeout`, or `DefaultRequestHeaders` on a client it doesn't own |
@@ -80,7 +80,7 @@ const cortadel = new CortadelClient({
 | Property | Default | Notes |
 |---|---|---|
 | `baseUrl` *(required)* | — | |
-| `userId` *(required)* | — | |
+| `userId` *(optional)* | — | optional; omit it and the server resolves identity from the API key. Still required on an auth-disabled server. |
 | `apiKey` | `undefined` | bearer token; omit when auth is off |
 | `appName` | `cortadel-typescript` | app label recorded on searches |
 | `fetch` | global `fetch` | never mutated — the client wraps the reference in its own request handling, so the same `fetch` (or one already bound to your own defaults) is safe to share across multiple `CortadelClient`s |
@@ -121,7 +121,7 @@ with SyncCortadelClient("http://localhost:3001", "alice") as cortadel:
     cortadel.add("Alice prefers dark mode.")
 ```
 
-Constructor parameters (identical for both clients): `base_url` *(required)*, `user_id`
+Constructor parameters (identical for both clients): `base_url` *(required)*, `user_id` *(optional since 1.2.0)*
 *(required)*, `api_key` (default `None`), `app_name` (default `cortadel-python`), `http_client`
 (bring your own `httpx.AsyncClient`; **never mutated** — the bearer token is attached per-request
 rather than on shared headers), `timeout` (default `100.0`s, a no-op if you pass your own
@@ -276,7 +276,7 @@ search by tag on this surface today.
 only `top_k`/`TopK`/`topK`, `mode`, `session_id`/`SessionId`/`sessionId`,
 `rerank`, and `memory_type`/`MemoryType`/`memoryType`. The wire contract also has `expand_query`,
 `include_faded`, `include_session_arm`, and `token_budget` (`references/api-reference.md`) — none
-of them are reachable through `search()`/`SearchAsync()` in `1.1.1` of any SDK. Call
+of them are reachable through `search()`/`SearchAsync()` in `1.2.0` of any SDK. Call
 `POST /api/v1/memories/search` directly if you need one of those four.
 
 ### `list` — Browse, Paginated
@@ -470,7 +470,7 @@ propagates untouched instead of becoming a `CortadelError`.
 
 ## Caveats — Read Before Relying on Any of These
 
-These are real gaps in the current `1.1.1` surface, not hypothetical edge cases. Cite them rather
+These are real gaps in the current `1.2.0` surface, not hypothetical edge cases. Cite them rather
 than assuming forward compatibility:
 
 - **Python — `MemoryDetail.metadata` / `MemoryListItem.metadata` are always `None`.** The wire's

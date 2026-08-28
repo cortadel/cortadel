@@ -56,7 +56,7 @@ Constructor parameters (identical for both clients):
 | Parameter | Default | Notes |
 |---|---|---|
 | `base_url` *(required)* | — | e.g. `http://localhost:3001` |
-| `user_id` *(required)* | — | memory namespace / access scope |
+| `user_id` *(optional)* | — | optional; omit it and the server resolves identity from the API key. Still required on an auth-disabled server, where it selects the namespace. |
 | `api_key` | `None` | bearer token; omit when auth is off |
 | `app_name` | `cortadel-python` | app label on searches |
 | `http_client` | owned `httpx.AsyncClient` | bring your own; **never mutated** — the bearer token is attached per-request instead of on shared headers, so a caller-supplied client stays safe to reuse elsewhere |

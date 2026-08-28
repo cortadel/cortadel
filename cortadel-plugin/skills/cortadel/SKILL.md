@@ -89,7 +89,7 @@ auto-captures at the end of a turn.
 
 Seven public operations (`spec/openapi.json`): health check, create/list/get/delete a memory,
 search, and distill-a-conversation. All three SDKs are thin, typed wrappers over the same seven
-calls, published at `1.1.1`:
+calls, published at `1.2.0`:
 
 | Language | Install | Client |
 |---|---|---|
@@ -174,7 +174,7 @@ trust and marketing copy:
 - **SDK `SearchOptions`/`ListOptions` are a strict subset of the wire request.** All three SDKs'
   `search()` only expose `top_k`, `mode`, `session_id`, `rerank`, `memory_type` — the wire-level
   `expand_query`, `include_faded`, `include_session_arm`, and `token_budget` exist in
-  `SearchMemoriesRequest` but aren't reachable through any `1.1.1` SDK. Same story for `list()`'s
+  `SearchMemoriesRequest` but aren't reachable through any `1.2.0` SDK. Same story for `list()`'s
   `as_of` temporal filter. Call the REST API directly for any of these five fields.
 - **`HealthResult.Checks` (.NET) silently drops undeclared check keys.** The OpenAPI contract marks
   the checks map and each check `additionalProperties: false`, so the Kiota-generated type the .NET

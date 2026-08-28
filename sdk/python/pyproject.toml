@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cortadel"
-version = "1.1.1"
+version = "1.2.0"
 description = "Official Python SDK for Cortadel — self-hosted long-term temporal graph memory for AI agents."
 readme = "README.md"
 license = "Apache-2.0"

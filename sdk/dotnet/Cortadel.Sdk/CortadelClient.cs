@@ -6,6 +6,10 @@ using Microsoft.Kiota.Abstractions.Serialization;
 using Microsoft.Kiota.Http.HttpClientLibrary;
 using Microsoft.Kiota.Serialization.Json;
 using GM = Cortadel.Sdk.Generated.Models;
+// Alias only - the generated types stay internal and never surface on the public API (guarded by
+// CortadelClientTests.GeneratedTransportTypes_AreNeverReachableFromThePublicApi).
+using ListRequestConfiguration = Microsoft.Kiota.Abstractions.RequestConfiguration<
+    Cortadel.Sdk.Generated.Api.V1.Memories.MemoriesRequestBuilder.MemoriesRequestBuilderGetQueryParameters>;
 
 namespace Cortadel.Sdk;
 
@@ -16,11 +20,27 @@ public sealed class CortadelClientOptions
     public required string BaseUrl { get; init; }
 
     /// <summary>
-    /// User identifier sent on every request. Required by the REST API — omitting it is a 400.
-    /// It is the namespace anchor ONLY on an auth-disabled server; when an ApiKey is present the
-    /// server overwrites a body value with the key's user and rejects a query-string one with 403.
+    /// Optional user identifier.
+    /// <para>
+    /// <b>Omit it</b> (leave <c>null</c>) and the client sends no <c>user_id</c> at all — no body
+    /// field, no query parameter — and the server resolves identity from
+    /// <see cref="ApiKey"/>. That requires a server that includes commit <c>30b70ea4</c>: check
+    /// <c>GET /api/health</c> directly (curl it — <see cref="CortadelClient.HealthAsync"/> maps
+    /// only status/checked_at/checks and does NOT surface <c>version</c>), whose <c>version</c>
+    /// field embeds the running commit SHA. Against an older server, omitting it returns HTTP 400
+    /// <c>"The UserId field is required"</c>.
+    /// </para>
+    /// <para>
+    /// <b>Still required in practice on an auth-disabled server</b> (empty <c>Auth:Secret</c>),
+    /// where there is no key to resolve and this value is the only thing selecting a namespace.
+    /// </para>
+    /// <para>
+    /// When provided alongside an <see cref="ApiKey"/> the key still wins: the server overwrites a
+    /// body value with the key's user and rejects a query-string one with 403.
+    /// </para>
+    /// <para>Providing it explicitly as a blank or whitespace string throws; omitting it does not.</para>
     /// </summary>
-    public required string UserId { get; init; }
+    public string? UserId { get; init; }
 
     /// <summary>Optional API key. Sent as <c>Authorization: Bearer &lt;key&gt;</c>. Omit when the server runs with auth disabled.</summary>
     public string? ApiKey { get; init; }
@@ -58,9 +78,12 @@ public sealed class CortadelException : Exception
 
 /// <summary>
 /// A thin, typed client for the Cortadel REST API. Create one and reuse it (it wraps a single
-/// <see cref="HttpClient"/>). Every call carries <see cref="CortadelClientOptions.UserId"/>, but on
-/// an authenticated server the key decides the namespace: a user_id in a body is silently
-/// overwritten with the key's user, and one in a query string is rejected with 403.
+/// <see cref="HttpClient"/>). Every call carries <see cref="CortadelClientOptions.UserId"/> when
+/// one is configured; omit it and no user_id is sent at all and the server resolves the user from
+/// the API key (requires a server including commit <c>30b70ea4</c> - see
+/// <see cref="CortadelClientOptions.UserId"/>). On an authenticated server the key decides the
+/// namespace anyway: a user_id in a body is silently overwritten with the key's user, and one in a
+/// query string is rejected with 403.
 /// </summary>
 /// <remarks>
 /// Internally this is a facade over a Kiota-generated transport
@@ -83,8 +106,12 @@ public sealed class CortadelClient : IDisposable
             throw new ArgumentException("BaseUrl is required.", nameof(options));
         if (!Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _))
             throw new ArgumentException("BaseUrl must be an absolute URL.", nameof(options));
-        if (string.IsNullOrWhiteSpace(options.UserId))
-            throw new ArgumentException("UserId is required.", nameof(options));
+        // A null UserId is legal and means "let the server resolve the user from the API key" -
+        // nothing is put on the wire (see the request sites below). Only an explicitly supplied
+        // blank/whitespace value is an error: that is a caller bug (an unset variable or an empty
+        // config entry), never a deliberate "omit it".
+        if (options.UserId is not null && string.IsNullOrWhiteSpace(options.UserId))
+            throw new ArgumentException("UserId, when provided, must not be blank.", nameof(options));
 
         // Never mutate a caller-supplied HttpClient: BaseAddress/Timeout setters throw once the
         // client has sent a request, and DefaultRequestHeaders would leak the bearer token onto
@@ -108,8 +135,13 @@ public sealed class CortadelClient : IDisposable
         _generated = new CortadelApiClient(_adapter);
     }
 
-    /// <summary>Convenience constructor: <c>new CortadelClient("http://localhost:3001", "alice")</c>.</summary>
-    public CortadelClient(string baseUrl, string userId, string? apiKey = null)
+    /// <summary>
+    /// Convenience constructor: <c>new CortadelClient("http://localhost:3001", "alice")</c>, or
+    /// <c>new CortadelClient("http://localhost:3001", apiKey: "key")</c> to let the server resolve
+    /// the user from the key (see <see cref="CortadelClientOptions.UserId"/> for the server
+    /// requirement).
+    /// </summary>
+    public CortadelClient(string baseUrl, string? userId = null, string? apiKey = null)
         : this(new CortadelClientOptions { BaseUrl = baseUrl, UserId = userId, ApiKey = apiKey }) { }
 
     /// <summary>Store a memory. By default the server extracts entities/categories in the background; set <see cref="AddOptions.Infer"/> to <c>false</c> to store verbatim.</summary>
@@ -117,6 +149,10 @@ public sealed class CortadelClient : IDisposable
     {
         var body = new GM.CreateMemoryRequest
         {
+            // A null UserId stays null on the generated model, and Kiota's JSON writer omits null
+            // string properties entirely - so no "user_id" key reaches the wire and the server
+            // resolves the user from the API key. Pinned by
+            // UserIdOptionalTests.AddAsync_PutsNoUserIdOnTheWire_WhenOmitted.
             UserId = _opts.UserId,
             Text = text,
             App = options?.App,
@@ -166,9 +202,9 @@ public sealed class CortadelClient : IDisposable
     /// <summary>List memories for the user, newest-first, with pagination and optional filters.</summary>
     public async Task<MemoryList> ListAsync(ListOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var res = await ExecuteAsync(() => _generated.Api.V1.Memories.GetAsync(config =>
+        void Configure(ListRequestConfiguration config)
         {
-            config.QueryParameters.UserId = _opts.UserId;
+            if (_opts.UserId is not null) config.QueryParameters.UserId = _opts.UserId;
             config.QueryParameters.Page = options?.Page ?? 1;
             config.QueryParameters.Size = options?.Size ?? 20;
             if (!string.IsNullOrWhiteSpace(options?.AppId)) config.QueryParameters.AppId = options!.AppId;
@@ -178,7 +214,31 @@ public sealed class CortadelClient : IDisposable
             // not a bool - ListOptions.IncludeSuperseded is a bool and must be stringified.
             if (options?.IncludeSuperseded == true) config.QueryParameters.IncludeSuperseded = "true";
             if (!string.IsNullOrWhiteSpace(options?.MemoryType)) config.QueryParameters.MemoryType = options!.MemoryType;
-        }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+
+        var builder = _generated.Api.V1.Memories;
+
+        // Trap: unlike every other user_id site, leaving this one unset is NOT enough to keep it
+        // off the wire. This operation's generated URL template pins user_id as a *literal*
+        // ("{+baseurl}/api/v1/memories?user_id={user_id}{&app_id*,...}", because the contract still
+        // marks it required), so an unset value expands to a bare "user_id=" - a blank user the
+        // server rejects, not an absent one it can fill from the API key. The single-memory GET's
+        // template uses the optional form "{?user_id*}" and needs none of this.
+        // Fix: let the generated builder expand and escape the whole query string as usual, drop
+        // the empty user_id from the result, then re-issue against that absolute URL - so response
+        // parsing and error mapping still come from the generated operation.
+        if (_opts.UserId is null)
+        {
+            var requestInfo = builder.ToGetRequestInformation(Configure);
+            // The adapter normally injects "baseurl" at send time; expanding the template here
+            // happens before that, so supply it (same value the adapter would).
+            requestInfo.PathParameters["baseurl"] = _adapter.BaseUrl!;
+            var url = RemoveBlankUserIdParameter(requestInfo.URI.ToString());
+            var raw = await ExecuteAsync(() => builder.WithUrl(url).GetAsync(cancellationToken: cancellationToken)).ConfigureAwait(false);
+            return MapList(raw);
+        }
+
+        var res = await ExecuteAsync(() => builder.GetAsync(Configure, cancellationToken: cancellationToken)).ConfigureAwait(false);
         return MapList(res);
     }
 
@@ -189,7 +249,13 @@ public sealed class CortadelClient : IDisposable
         try
         {
             res = await _generated.Api.V1.Memories[memoryId]
-                .GetAsync(config => config.QueryParameters.UserId = _opts.UserId, cancellationToken: cancellationToken)
+                .GetAsync(config =>
+                {
+                    // This operation's template uses the optional form "{?user_id*}", so simply
+                    // leaving the parameter unset keeps user_id out of the URL - none of the
+                    // rebuilding ListAsync has to do (see the trap there).
+                    if (_opts.UserId is not null) config.QueryParameters.UserId = _opts.UserId;
+                }, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
         }
         // Trap: the wire-body ErrorResponse.Status is nullable and not guaranteed present; the
@@ -276,6 +342,24 @@ public sealed class CortadelClient : IDisposable
     {
         _adapter.Dispose();
         if (_ownsHttp) _http.Dispose();
+    }
+
+    /// <summary>
+    /// Strips a valueless <c>user_id=</c> from a query string, leaving every other parameter (and
+    /// any <c>user_id</c> that actually has a value) untouched. See the trap in
+    /// <see cref="ListAsync"/> for why an absent user_id can still reach the URL as an empty one.
+    /// </summary>
+    private static string RemoveBlankUserIdParameter(string url)
+    {
+        var queryStart = url.IndexOf('?');
+        if (queryStart < 0) return url;
+
+        var path = url.Substring(0, queryStart);
+        var kept = url.Substring(queryStart + 1)
+            .Split('&')
+            .Where(static part => part is not ("user_id" or "user_id="))
+            .ToArray();
+        return kept.Length == 0 ? path : $"{path}?{string.Join("&", kept)}";
     }
 
     // ── Generated call execution + error translation ───────────────────────────────────────

@@ -9,7 +9,7 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <PackageId>Cortadel.Sdk</PackageId>
-    <Version>1.1.1</Version>
+    <Version>1.2.0</Version>
     <Authors>Cortadel</Authors>
     <Company>Cortadel</Company>
     <Title>Cortadel .NET SDK</Title>
