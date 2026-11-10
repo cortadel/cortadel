@@ -503,7 +503,7 @@ jobs:
       # secret named PYPI_TOKEN is expected to already exist — this job does not create it (out of
       # scope; the repo owner provisions and rotates it).
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}
