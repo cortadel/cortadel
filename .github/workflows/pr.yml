@@ -232,3 +232,32 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bash .github/scripts/check-diff-supply-chain.sh "$BASE_SHA" "$HEAD_SHA"
+
+  # 7. Dependabot PRs merge themselves once this gate is green. This job only *enables* GitHub's
+  #    native auto-merge (repo setting "Allow auto-merge" is on); GitHub then squash-merges when
+  #    every check the `main` ruleset marks as required — the six gate jobs above — has passed.
+  #    Path-filtered workflows (integrations/, sdk/, docs/ ...) are not required checks, so they do
+  #    not hold the merge back.
+  #
+  #    Runs only for PRs Dependabot opened AND on events Dependabot itself triggered: a push to a
+  #    Dependabot branch by anyone else changes github.actor, so that commit is never auto-merged.
+  #    Dependabot-triggered runs get a read-only token by default; the job-level `permissions:`
+  #    below is the documented way to grant what `gh pr merge --auto` needs. No checkout, no PR code
+  #    executed — one API call.
+  dependabot-auto-merge:
+    name: Enable auto-merge (Dependabot)
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
+    concurrency:
+      group: pr-gate-dependabot-auto-merge-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: gh pr merge --auto --squash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
