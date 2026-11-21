@@ -222,7 +222,7 @@ the README tells you to copy cannot drift into something the loader rejects.
 
 ## Requirements
 
-- **Node.js ≥ 22.22.3** — OpenClaw's own floor (`>=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0`).
+- **Node.js ≥ 26.1** — the package's own `engines` floor; OpenClaw's current Node 26 line requires ≥ 26.1.0.
 - **OpenClaw ≥ 2026.7.1** — declared as a peer dependency, matching OpenClaw's plugin convention.
   Verified against `openclaw@2026.7.1-2`.
 - **A running Cortadel server** — hosted at `https://app.cortadel.ai`, or self-hosted via

@@ -280,7 +280,7 @@ What the three hooks actually do, beyond "search then store":
 
 - **`ai` ≥ 7.0.0** and **`zod`** `^3.25.76 || ^4.1.8` — peer dependencies, matching the range `ai`
   itself declares.
-- **Node ≥ 22**, the floor `ai@7` sets. The package is ESM-only.
+- **Node ≥ 26.** The package is ESM-only; `ai@7` itself allows ≥ 22.
 - **A running Cortadel server** — the hosted service at `https://app.cortadel.ai`, or self-host with
   `docker compose up` → `http://localhost:3001`. See [Self-hosting](../self-hosting.md) and
   [Authentication](../authentication.md).

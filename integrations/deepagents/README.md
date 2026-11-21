@@ -211,7 +211,7 @@ pnpm build         # tsc -> dist/
 
 ## Requirements
 
-- Node.js ≥ 20
+- Node.js ≥ 26
 - `deepagents` ≥ 1.12, `langchain` ≥ 1.5, `@langchain/core` ≥ 1.2
 - A running Cortadel server — self-hosted (`docker compose up` → `http://localhost:3001`) or hosted
   at `https://app.cortadel.ai`

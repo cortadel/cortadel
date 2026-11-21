@@ -128,8 +128,8 @@ Notes that will save you time:
   (`Microsoft.Agents.AI` 1.17.0, `Cortadel.Sdk` 1.0.0) instead.
 - **Interpreter and runtime floors differ, legitimately** — each package's floor is the one its host
   framework (and its own lockfile) can actually resolve, so they are expected to vary and are *not*
-  something to unify. Node floors: `>=20` for `claude-agent-sdk`, `deepagents`, `langgraph`,
-  `openai-agents` and the n8n nodes, `>=22` upward for `mastra`, `openclaw` and `vercel-ai-sdk`.
+  something to unify. Node floors: `>=26` for all eight TypeScript packages, with `openclaw` at
+  `>=26.1.0` to match the Node 26 line its host supports.
   Python floors: `>=3.10` for `cortadel-google-adk` and `cortadel-pydantic-ai`, `>=3.11,<3.14` for
   `cortadel-crewai` — one rung above crewai's own floor, because a transitive dependency publishes
   no 3.10 wheel and no sdist to build from. The .NET package targets `net10.0` (so it runs on .NET 10

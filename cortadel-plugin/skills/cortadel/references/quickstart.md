@@ -42,7 +42,7 @@ dotnet add package Cortadel.Sdk
 ```bash
 npm install @cortadel/sdk
 ```
-📦 [npm](https://www.npmjs.com/package/@cortadel/sdk) — ESM-only, targets Node ≥ 20.
+📦 [npm](https://www.npmjs.com/package/@cortadel/sdk) — ESM-only, targets Node ≥ 26.
 
 ### Python
 ```bash

@@ -211,7 +211,7 @@ the API fails `pnpm typecheck`.
 
 ## Requirements
 
-- Node.js ≥ 20
+- Node.js ≥ 26
 - `@anthropic-ai/claude-agent-sdk` ≥ 0.3.0 < 0.4.0 (developed and verified against **0.3.231**) and
   `zod` ^4 — both peer dependencies. The agent SDK itself needs the Claude Code CLI and Anthropic
   credentials to run an agent; the tests here need neither.

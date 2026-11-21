@@ -112,8 +112,8 @@ cd integrations/microsoft-agent-framework && dotnet test                       #
 ```
 
 Every integration suite is offline — no server, no network, no keys, no `CORTADEL_*` env. Runtime
-floors differ per package and are not to be unified: Node ≥ 20 for five TS packages and ≥ 22 for
-`mastra`/`openclaw`/`vercel-ai-sdk`, Python ≥ 3.10 for `google-adk`/`pydantic-ai` and ≥ 3.11 < 3.14
+floors differ per package and are not to be unified: Node ≥ 26 for all eight TS packages (openclaw
+≥ 26.1), Python ≥ 3.10 for `google-adk`/`pydantic-ai` and ≥ 3.11 < 3.14
 for `crewai`, `net10.0` for the .NET one. Let `pnpm`/`uv`/`dotnet` fetch what the manifest asks for
 rather than lowering a floor. What a new integration must contain is in `integrations/README.md`;
 the user-facing page it lands on is `docs/integrations.md` (which has a website mirror — see above).

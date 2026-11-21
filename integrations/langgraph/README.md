@@ -289,7 +289,7 @@ pnpm build         # tsc -> dist/
 
 ## Requirements
 
-- **Node.js ≥ 20**
+- **Node.js ≥ 26**
 - **`@langchain/langgraph` ≥ 1.4.9** (peer), with `@langchain/langgraph-checkpoint` ≥ 1.1.3 for
   `BaseStore`, `@langchain/core` ≥ 1.1.48 for `tool()` and the message classes, and `zod`
   (`^3.25.32 || ^4.2.0`, the range LangGraph itself declares) for the tool schemas

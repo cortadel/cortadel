@@ -55,7 +55,7 @@ dotnet test sdk/dotnet/Cortadel.Sdk.Tests -c Release --nologo
 
 ### TypeScript SDK (`sdk/typescript/`)
 
-Requires `pnpm` (v10+) and Node ≥ 20 (the package's own `engines.node` floor).
+Requires `pnpm` (v10+) and Node ≥ 26 (the package's own `engines.node` floor).
 
 ```bash
 cd sdk/typescript
@@ -117,11 +117,9 @@ build `integrations/microsoft-agent-framework/Cortadel.AgentFramework.slnx`, nev
 
 Every integration suite is offline — no Cortadel server, no network, no API keys, no `CORTADEL_*`
 env vars. Runtime floors differ per package, legitimately: each one is whatever its host framework
-and lockfile can actually resolve (`@cortadel/claude-agent-sdk`, `@cortadel/deepagents`,
-`@cortadel/langgraph`, `@cortadel/openai-agents` and the n8n nodes run on Node ≥ 20 while
-`@cortadel/mastra`, `@cortadel/openclaw` and `@cortadel/vercel-ai-provider` want ≥ 22;
-`cortadel-crewai` declares Python ≥ 3.11 and < 3.14 while the other two declare ≥ 3.10; the .NET
-package targets `net10.0`). Let `pnpm`, `uv` and `dotnet` fetch what the manifest declares rather
+and lockfile can actually resolve (all eight TypeScript packages now require Node ≥ 26, with
+`@cortadel/openclaw` at ≥ 26.1; `cortadel-crewai` declares Python ≥ 3.11 and < 3.14 while the other
+two declare ≥ 3.10; the .NET package targets `net10.0`). Let `pnpm`, `uv` and `dotnet` fetch what the manifest declares rather
 than lowering a floor to match your machine.
 
 **Public option names are canonical across all twelve.** In every row the three spellings are

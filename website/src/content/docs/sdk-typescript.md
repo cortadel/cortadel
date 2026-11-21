@@ -3,7 +3,7 @@ title: TypeScript SDK reference
 description: Every method, option, and model in the @cortadel/sdk TypeScript client.
 ---
 
-`@cortadel/sdk` is a thin, typed client over the Cortadel REST API. ESM-only, targets **Node ≥ 20**.
+`@cortadel/sdk` is a thin, typed client over the Cortadel REST API. ESM-only, targets **Node ≥ 26**.
 
 ```bash
 npm install @cortadel/sdk

@@ -126,7 +126,7 @@ A full-options constructor also exists: `new CortadelClient(new CortadelClientOp
 ### TypeScript — `@cortadel/sdk` (options object — never positional)
 
 ```bash
-npm install @cortadel/sdk   # ESM-only, Node >= 20
+npm install @cortadel/sdk   # ESM-only, Node >= 26
 ```
 
 ```ts
