@@ -378,7 +378,7 @@ converters read `response_metadata` and `additional_kwargs` without a guard.
 - **n8n with the AI nodes available** — the `ai_memory` port only exists on the AI Agent node. The
   package peers `n8n-workflow` at `*` and is verified against **2.16.0**; it uses
   `NodeConnectionTypes.AiMemory` and `usableAsTool`, both long-standing in current n8n.
-- **Node.js ≥ 20.**
+- **Node.js ≥ 26** (n8n itself requires ≥ 24).
 - **A running Cortadel server** — the hosted service at `https://app.cortadel.ai`, or your own
   (`docker compose up` → `http://localhost:3001`, see [Self-hosting](/self-hosting/)).
 

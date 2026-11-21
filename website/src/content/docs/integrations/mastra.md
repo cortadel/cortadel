@@ -289,7 +289,7 @@ conversation history.
 
 ## Requirements
 
-- **Node.js ≥ 22.13** — the package's own `engines` floor, matching `@mastra/core`'s.
+- **Node.js ≥ 26** — the package's own `engines` floor; `@mastra/core` itself allows ≥ 22.13.
 - **`@mastra/core` ≥ 1.0 < 2**, declared as a peer dependency and verified against `1.58.0`.
 - **`zod` ^3.25 || ^4** — the same range `@mastra/core` peers on. Also a peer dependency.
 - **`@cortadel/sdk` ^1.0.0** — a normal dependency, installed for you.

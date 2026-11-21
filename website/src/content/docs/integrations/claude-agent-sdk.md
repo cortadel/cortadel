@@ -240,7 +240,7 @@ prevent.
 
 ## Requirements
 
-- Node.js ≥ 20 — the agent SDK itself allows ≥ 18, this package does not.
+- Node.js ≥ 26 — the agent SDK itself allows ≥ 18, this package does not.
 - `@anthropic-ai/claude-agent-sdk` ≥ 0.3.0 < 0.4.0 and `zod` ^4, both **peer** dependencies. The
   agent SDK in turn needs the Claude Code CLI and Anthropic credentials to run an agent.
 - `@cortadel/sdk` ^1.0.0 — a direct dependency, installed for you.

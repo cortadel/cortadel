@@ -289,7 +289,7 @@ top-level `await import()`.
 - **n8n** with the AI nodes available (the `ai_memory` port only exists on the AI Agent node).
   Verified against `n8n-workflow` **2.16.0** — the node uses `NodeConnectionTypes.AiMemory` and
   `usableAsTool`, both long-standing in current n8n.
-- **Node.js ≥ 20**.
+- **Node.js ≥ 26** (n8n itself requires ≥ 24).
 - **A running Cortadel server** — hosted at `https://app.cortadel.ai`, or self-hosted with
   `docker compose up` (→ `http://localhost:3001`). See
   [`docs/self-hosting.md`](https://github.com/cortadel/cortadel/blob/main/docs/self-hosting.md).

@@ -6,7 +6,7 @@ name: Integrations
 # .github/workflows/python.yml, .github/workflows/typescript.yml and .github/workflows/dotnet.yml;
 # the provisioning below is reused from those three files verbatim rather than re-derived
 # (setup-uv's two-step --no-build install split, pnpm/action-setup before actions/setup-node so the
-# pnpm store cache resolves, dotnet.yml's 10.0.x-SDK + DOTNET_ROLL_FORWARD pairing, the per-job
+# pnpm store cache resolves, dotnet.yml's 10.0.x-SDK pin, the per-job
 # literal concurrency groups).
 #
 # The split is the packages' own, not a CI preference: where a framework ships a first-party
@@ -224,13 +224,12 @@ jobs:
       matrix:
         include:
           # node-version is each package's own `engines.node` floor, for the same reason the
-          # Python matrix pins requires-python floors and typescript.yml pins '20.x' — CI runs the
-          # oldest supported runtime, not the newest. Three of the eight (mastra, openclaw,
-          # vercel-ai-sdk) declare a >= 22 floor; `22.x` resolves to the newest 22 release, which
-          # satisfies mastra's >=22.13.0 and openclaw's >=22.22.3 without hard-coding a patch
-          # version that would silently stop resolving. The other five declare `>=20`. None of
-          # these packages ships an .npmrc, so pnpm's engine check is a warning rather than a
-          # failure either way.
+          # Python matrix pins requires-python floors and typescript.yml pins '26.x' — CI runs the
+          # oldest supported runtime, not the newest. All eight declare a Node 26 floor (`26.x`);
+          # openclaw is `>=26.1.0` to match the Node 26 line its host supports, and `26.x` resolves
+          # to the newest 26 release without hard-coding a patch version that would silently stop
+          # resolving. None of these packages ships an .npmrc, so pnpm's engine check is a warning
+          # rather than a failure either way.
           #
           # There is no per-leg `typecheck` column: all eight declare the identical script,
           # `tsc --noEmit && tsc -p tsconfig.test.json` — one pass over src via tsconfig.json and a
@@ -245,21 +244,21 @@ jobs:
           # against their committed pnpm-lock.yaml before being added: install, typecheck, test,
           # build — 99, 97, 132 and 100 tests respectively, all green.
           - slug: claude-agent-sdk
-            node-version: '20.x'
+            node-version: '26.x'
           - slug: deepagents
-            node-version: '20.x'
+            node-version: '26.x'
           - slug: langgraph
-            node-version: '20.x'
+            node-version: '26.x'
           - slug: mastra
-            node-version: '22.x'
+            node-version: '26.x'
           - slug: n8n-nodes-cortadel
-            node-version: '20.x'
+            node-version: '26.x'
           - slug: openai-agents
-            node-version: '20.x'
+            node-version: '26.x'
           - slug: openclaw
-            node-version: '22.x'
+            node-version: '26.x'
           - slug: vercel-ai-sdk
-            node-version: '22.x'
+            node-version: '26.x'
     concurrency:
       group: integrations-typescript-${{ matrix.slug }}-${{ github.ref }}
       cancel-in-progress: true
@@ -535,14 +534,11 @@ jobs:
           # floor-drift check below asserts that separation on every run — if the package is ever
           # added to Cortadel.slnx, this workflow fails and says why.
           - slug: microsoft-agent-framework
-            # 10.0.x, not the package's own net8.0 target framework — the same pin, for the same
-            # reason, that dotnet.yml's header documents at length: the .slnx solution format needs
-            # a >=9.0.200-class SDK/MSBuild to parse at all (an isolated .NET 8.0.423 SDK fails
-            # `dotnet restore` on a .slnx outright with "MSB4068: The element <Solution> is
-            # unrecognized"). The projects still target net8.0; only the CLI/MSBuild doing the
-            # building needs to be newer, so exactly one SDK is installed here rather than an
-            # 8.0.x/10.0.x pair. Verified locally against this package's own solution on SDK
-            # 10.0.400: restore, build -c Release, test (81/81) and pack all succeed.
+            # 10.0.x matches the package's own net10.0 target framework. The .slnx solution format
+            # additionally needs a >=9.0.200-class SDK/MSBuild to parse at all (an isolated .NET
+            # 8.0.423 SDK fails `dotnet restore` on a .slnx outright with "MSB4068: The element
+            # <Solution> is unrecognized"). Verified locally against this package's own solution on
+            # SDK 10.0.400: restore, build -c Release, test (81/81) and pack all succeed.
             dotnet-version: '10.0.x'
             solution: Cortadel.AgentFramework.slnx
             # The single packable project. The solution also holds the test project
@@ -554,21 +550,6 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The second-order consequence of pinning the SDK newer than the target framework, lifted from
-    # dotnet.yml's header along with its reproduction: a runner with only the 10.0.x SDK installed
-    # has no net8.0 *shared runtime* either, and `dotnet test` executes the compiled test binary
-    # (not just restores/compiles it), so it needs that runtime — not just the reference assemblies
-    # restore uses. Without this, the test step fails with "You must install or update .NET...
-    # Framework: Microsoft.NETCore.App, version 8.0.0. The following frameworks were found:
-    # 10.0.x." DOTNET_ROLL_FORWARD=LatestMajor runs the net8.0 test binary on the net10 runtime and
-    # is the technique this repo already uses on every dotnet.yml job that runs `dotnet test`;
-    # reused here for consistency rather than installing a second SDK side by side. This could not
-    # be reproduced on the local machine (it has the net8.0 runtime installed, which masks it), so
-    # it rests on dotnet.yml's documented isolated reproduction rather than a fresh one — the
-    # floor-drift check below asserts the pairing stays in place, since dropping it is silent until
-    # CI runs.
-    env:
-      DOTNET_ROLL_FORWARD: LatestMajor
     defaults:
       run:
         working-directory: integrations/${{ matrix.slug }}
@@ -805,8 +786,8 @@ jobs:
           wf = yaml.safe_load(open(".github/workflows/integrations.yml", encoding="utf-8"))
           problems = []
 
-          # Node: majors only. The matrix pins '22.x' (newest 22) rather than a patch, precisely so
-          # a floor like '>=22.22.3' keeps resolving as new patches land; comparing patches here
+          # Node: majors only. The matrix pins '26.x' (newest 26) rather than a patch, precisely so
+          # a floor like '>=26.1.0' keeps resolving as new patches land; comparing patches here
           # would demand a pin that goes stale on its own.
           for leg in wf["jobs"]["typescript"]["strategy"]["matrix"]["include"]:
               slug = leg["slug"]
@@ -854,14 +835,13 @@ jobs:
                   )
 
           # .NET, and the invariant here is deliberately the *inverse* of the two above. The
-          # Python/Node legs pin the oldest runtime the package supports; the .NET leg pins an SDK
-          # NEWER than the package's target framework on purpose, because the .slnx solution format
-          # needs a >=9.0.200-class MSBuild to parse at all while the projects still target net8.0.
-          # So instead of "leg == floor" this asserts the three things that pairing depends on, each
-          # of which fails silently or confusingly if it drifts:
+          # Python/Node legs pin the oldest runtime the package supports; the .NET leg pins the
+          # package's own target framework (which must also be >=9.0.200-class for .slnx). So
+          # instead of "leg == floor" this asserts the things that pairing depends on, each of
+          # which fails silently or confusingly if it drifts:
           #   * the SDK can build the target framework (SDK major >= TFM major), and is new enough
           #     for .slnx at all;
-          #   * whenever the SDK is newer than the TFM, DOTNET_ROLL_FORWARD is set on the job —
+          #   * if the SDK is ever raised above the TFM, DOTNET_ROLL_FORWARD is set on the job —
           #     without it `dotnet test` compiles fine and then fails at launch with a missing
           #     Microsoft.NETCore.App, which reads like a broken test rather than a missing runtime;
           #   * the package stays out of the repo-root Cortadel.slnx, which is dotnet.yml's build
@@ -1295,10 +1275,9 @@ jobs:
           version: 10
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # 24.x, and deliberately NOT the package's own engines.node floor — the one place in this
-          # file that does not run at the floor. Every matrix leg above does, which is what proves
-          # the package works there; this job is not testing the package, it is talking to the
-          # registry. So this pin answers the REGISTRY's requirements, not the package's.
+          # 26.x, matching every matrix leg above. This job is not testing the package, it is
+          # talking to the registry, so this pin answers the REGISTRY's requirements first; that
+          # they now coincide with the package floor is a bonus, not the reason.
           #
           # The version that matters here is the npm CLI's, because `pnpm publish` on pnpm 10 does
           # not talk to the registry itself. It packs a tarball and shells out to npm:
@@ -1313,28 +1292,19 @@ jobs:
           # already the tool implementing --provenance during the token phase too.
           #
           # npm's floor therefore binds: trusted publishing requires npm >= 11.5.1 AND Node >=
-          # 22.14.0 (docs.npmjs.com/trusted-publishers). '22.x' cannot satisfy it. Measured across
-          # the whole of nodejs.org/dist/index.json on 2026-08-14, so the next person need not:
-          #     Node 20.x -> npm  9.6.4 … 10.8.2    (newest v20.20.2 -> npm 10.8.2)
-          #     Node 22.x -> npm 10.5.1 … 10.9.8    (newest v22.23.2 -> npm 10.9.8)
-          #     Node 24.x -> npm 11.3.0 … 11.17.0   (newest v24.19.0 -> npm 11.17.0)
-          # Exactly ZERO of the 35 Node 22 releases ship an npm 11 of any kind, and no future 22
-          # patch will — npm 11 arrived with the 24 line. setup-node resolves '<major>.x' to the
-          # newest release of that major, so '22.x' lands on npm 10.9.8, below the floor, while
-          # '24.x' lands on npm 11.17.0, comfortably above it.
+          # 22.14.0 (docs.npmjs.com/trusted-publishers). Node 26 ships npm 11.x — measured locally
+          # on Node 26.13.1: npm 11.20.0 — so '26.x' clears it with room to spare. setup-node
+          # resolves '<major>.x' to the newest release of that major, which keeps this correct
+          # without pinning a patch that would go stale.
           #
-          # Why 24.x specifically, over the alternatives:
-          #   * a pinned Node 24 minor: goes stale, and is a live trap rather than a safe choice —
-          #     the first eight Node 24 releases ship npm 11.3.0…11.4.2, BELOW the floor (v24.5.0 ->
-          #     npm 11.5.1 is the first that clears it). '24.x' always resolving to the newest is
-          #     precisely what keeps this correct without maintenance.
-          #   * '22.x' plus `npm install -g npm@^11.5.1`: would work, but adds an unpinned network
-          #     install immediately before an irreversible publish, on the one job in this file that
-          #     holds a write credential. Not worth it to preserve a number.
-          #   * '25.x': also clears the floor (npm 11.6.2…11.12.1) but is not LTS. 24 is the current
-          #     LTS (Krypton); 22 (Jod) is in maintenance and 20 reached EOL 2026-04-30.
-          # 24 also clears the Node >= 22.14.0 half of npm's floor and pnpm 10's engines.node
-          # of >=18.12.
+          # Why 26.x specifically: it is the current Active LTS (Lithium, until 2029-04-30) and
+          # already this file's package floor. Node 24 (Krypton) is in maintenance until 2028-04-30,
+          # Node 22 (Jod) until 2027-04-30, and Node 20 reached EOL 2026-04-30. A pinned Node 26
+          # minor would be a trap rather than a safe choice, because early Node 26 releases may
+          # predate npm 11.5.1; letting setup-node resolve '26.x' to the newest patch is what keeps
+          # the npm floor satisfied. '22.x' plus `npm install -g npm@^11.5.1` would also work, but
+          # adds an unpinned network install immediately before an irreversible publish, on the one
+          # job in this file that holds a write credential.
           #
           # NOTE the earlier revision of this comment that claimed the opposite — that this job
           # "publishes with pnpm and never invokes npm at all, so npm's version is irrelevant" — and
@@ -1350,7 +1320,7 @@ jobs:
           # And a correct pin is still only a necessary condition, never a proof: §1.5's "bump one
           # package to 0.1.1 and tag it" rehearsal stays mandatory, because only a publish that
           # actually used the OIDC path demonstrates that the OIDC path works.
-          node-version: '24.x'
+          node-version: '26.x'
           # registry-url makes setup-node write an .npmrc that reads the auth token from
           # $NODE_AUTH_TOKEN, which the publish step sets. It also points the CLI at
           # registry.npmjs.org, which is why npm's own trusted-publishing recipe keeps this input

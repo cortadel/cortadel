@@ -266,7 +266,7 @@ they never propagate — an unobserved `Task` exception is not a failure mode wo
 
 ## Requirements
 
-- **.NET 8.0 or later** — the package targets `net8.0`.
+- **.NET 10.0 or later** — the package targets `net10.0`.
 - **`Microsoft.Agents.AI` ≥ 1.17.0**, plus a `Microsoft.Extensions.AI` chat client to actually
   reach a model (`Microsoft.Agents.AI.OpenAI` in the quickstart above). `Cortadel.Sdk` and
   `Microsoft.Extensions.AI.Abstractions` come in transitively.

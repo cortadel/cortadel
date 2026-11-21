@@ -3,7 +3,7 @@ title: .NET SDK reference
 description: Every method, option, and model in the Cortadel.Sdk .NET client.
 ---
 
-`Cortadel.Sdk` is a thin, typed client over the Cortadel REST API. It targets **.NET 8+**.
+`Cortadel.Sdk` is a thin, typed client over the Cortadel REST API. It targets **.NET 10+**.
 
 ```bash
 dotnet add package Cortadel.Sdk

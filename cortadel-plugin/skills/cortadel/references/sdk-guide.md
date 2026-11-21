@@ -10,13 +10,13 @@ published at `1.2.0`.
 ```bash
 dotnet add package Cortadel.Sdk
 ```
-📦 [NuGet](https://www.nuget.org/packages/Cortadel.Sdk) · targets **.NET 8+**.
+📦 [NuGet](https://www.nuget.org/packages/Cortadel.Sdk) · targets **.NET 10+**.
 
 ### TypeScript / JavaScript
 ```bash
 npm install @cortadel/sdk
 ```
-📦 [npm](https://www.npmjs.com/package/@cortadel/sdk) · **ESM-only**, targets **Node ≥ 20**.
+📦 [npm](https://www.npmjs.com/package/@cortadel/sdk) · **ESM-only**, targets **Node ≥ 26**.
 
 ### Python
 ```bash

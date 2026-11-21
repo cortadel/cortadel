@@ -16,7 +16,7 @@ npm install @cortadel/vercel-ai-provider
 # or: pnpm add @cortadel/vercel-ai-provider / yarn add @cortadel/vercel-ai-provider
 ```
 
-ESM-only, Node ≥ 22. `ai` and `zod` are peer dependencies — you almost certainly have both already.
+ESM-only, Node ≥ 26. `ai` and `zod` are peer dependencies — you almost certainly have both already.
 
 ## Quickstart
 
@@ -234,7 +234,7 @@ after `wrapLanguageModel` ran.
 
 ## Requirements
 
-- **Node ≥ 22** (the floor `ai@7` sets).
+- **Node ≥ 26** (the package's own `engines` floor; `ai@7` allows ≥ 22).
 - **`ai` ≥ 7.0.0** and **`zod`** `^3.25.76 || ^4.1.8` — peer dependencies, matching the range `ai`
   itself declares.
 - **A running Cortadel server**: the hosted service at `https://app.cortadel.ai`, or self-host with

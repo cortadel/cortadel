@@ -251,7 +251,7 @@ neither of which is a durable fact about the user.
 
 ## Requirements
 
-- **Node.js ≥ 20**
+- **Node.js ≥ 26**
 - **`deepagents` ≥ 1.12, `langchain` ≥ 1.5, `@langchain/core` ≥ 1.2** — peer dependencies, developed
   against 1.12.3 / 1.5.8 / 1.2.7
 - **A running Cortadel server** — the hosted service at `https://app.cortadel.ai`, or your own

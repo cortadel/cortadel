@@ -269,8 +269,8 @@ npm name, since it is recorded as a plain label on searches and writes.
 
 ## Requirements
 
-- **Node.js ≥ 22.22.3** — matching OpenClaw's own floor
-  (`>=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0`).
+- **Node.js ≥ 26.1** — the package's own `engines` floor; OpenClaw's current
+  Node 26 line requires ≥ 26.1.0.
 - **OpenClaw ≥ 2026.7.1** — declared as a peer dependency. Verified against `openclaw@2026.7.1-2`.
 - **A running Cortadel server** — hosted at `https://app.cortadel.ai`, or self-hosted with
   `docker compose up` (→ `http://localhost:3001`). See [Self-hosting](../self-hosting.md) and

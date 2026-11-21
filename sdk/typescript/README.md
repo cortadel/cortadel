@@ -8,7 +8,7 @@ npm install @cortadel/sdk
 # or: pnpm add @cortadel/sdk / yarn add @cortadel/sdk
 ```
 
-ESM-only, Node ≥ 20.
+ESM-only, Node ≥ 26.
 
 ## Quickstart
 

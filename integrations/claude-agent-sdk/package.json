@@ -7,7 +7,7 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "types": "./dist/index.d.ts",
   "files": ["dist"],
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=26" },
   "homepage": "https://cortadel.ai",
   "bugs": { "url": "https://github.com/cortadel/cortadel/issues" },
   "repository": {

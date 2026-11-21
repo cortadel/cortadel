@@ -1,6 +1,6 @@
 # .NET SDK reference
 
-`Cortadel.Sdk` is a thin, typed client over the Cortadel REST API. It targets **.NET 8+**.
+`Cortadel.Sdk` is a thin, typed client over the Cortadel REST API. It targets **.NET 10+**.
 
 ```bash
 dotnet add package Cortadel.Sdk

@@ -15,7 +15,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=26"
   },
   "homepage": "https://cortadel.ai",
   "bugs": {

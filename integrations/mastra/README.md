@@ -282,7 +282,7 @@ genuinely reaches `addConversation`.
 
 ## Requirements
 
-- **Node.js ≥ 22.13** (the floor `@mastra/core` sets).
+- **Node.js ≥ 26** (the package's own `engines` floor; `@mastra/core` allows ≥ 22.13).
 - **`@mastra/core` ≥ 1.0 < 2** — verified against `1.58.0`. Declared as a peer
   dependency, as Mastra integrations do.
 - **`zod` ^3.25 || ^4** — the same range `@mastra/core` peers on.

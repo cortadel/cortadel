@@ -12,27 +12,12 @@ name: .NET SDK
 # .superpowers/sdd/2026-08-11-dotnet-sdk-leg/task-4-report.md's "Provisioning requirements" section
 # for exactly what each tier needs — the jobs below are written from that section, not a guess.
 #
-# dotnet-version is pinned to 10.0.x, not the SDK's own net8.0 target framework: the .slnx solution
-# format needs a >=9.0.200-class SDK/MSBuild to parse at all (verified locally before writing this
-# file — an isolated .NET 8.0.423 SDK fails `dotnet restore Cortadel.slnx` outright with
-# "MSB4068: The element <Solution> is unrecognized"; 9.0.303 and 10.0.302 both restore cleanly).
-# The projects still target net8.0; only the CLI/MSBuild doing the building needs to be newer.
-# 10.0.x matches the private server-dotnet repo's own CI, which pins the same version for the same
-# .slnx format.
-#
-# That pin has a second-order consequence: a runner with only the 10.0.x SDK installed has no
-# net8.0 *shared runtime* either, and `dotnet test` executes the compiled test binary (not just
-# restores/compiles it), so it needs that runtime, not just the reference assemblies restore uses.
-# Reproduced under genuine isolation (a from-scratch .NET 10.0.302 SDK on an isolated PATH/
-# DOTNET_ROOT, no ambient net8): `dotnet test sdk/dotnet/Cortadel.Sdk.Tests` fails there with
-# "You must install or update .NET... Framework: Microsoft.NETCore.App, version 8.0.0. The
-# following frameworks were found: 10.0.10." DOTNET_ROLL_FORWARD=LatestMajor (job-level env below,
-# on every job that runs `dotnet test`) fixes it — verified under the same isolation: 39/39 unit
-# tests pass, and the conformance project builds+skips cleanly. This is the same technique and the
-# same failure mode as memforge's own commit 88f912f (BitMono's net8.0 CLI on a net10-only SDK
-# image); reused here for consistency rather than installing a second SDK side by side.
-# generation-drift does not need it - verified separately that `dotnet tool run kiota` runs fine
-# under the same net10-only isolation with no roll-forward set.
+# dotnet-version is pinned to 10.0.x, matching the projects' own net10.0 target framework. The
+# .slnx solution format additionally needs a >=9.0.200-class SDK/MSBuild to parse at all (verified
+# locally before writing this file — an isolated .NET 8.0.423 SDK fails `dotnet restore
+# Cortadel.slnx` outright with "MSB4068: The element <Solution> is unrecognized"; 9.0.303 and
+# 10.0.302 both restore cleanly). 10.0.x matches the private server-dotnet repo's own CI, which
+# pins the same version for the same .slnx format.
 #
 # ──────────────────────────────────────────────────────────────────────────────────────────────────
 # WHY A SECOND, NON-SDK PACKAGE RELEASES FROM THIS FILE
@@ -161,10 +146,6 @@ jobs:
       group: dotnet-build-${{ github.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
-    # net8.0 test binary on a runner whose only installed runtime is net10.0 - see the file header
-    # comment for the reproduction/verification of why this is required, not optional.
-    env:
-      DOTNET_ROLL_FORWARD: LatestMajor
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -236,9 +217,6 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # net8.0 test binary on a net10.0-only runner - see the file header comment.
-    env:
-      DOTNET_ROLL_FORWARD: LatestMajor
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -380,9 +358,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # net8.0 test binary on a net10.0-only runner - see the file header comment.
-    env:
-      DOTNET_ROLL_FORWARD: LatestMajor
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -507,11 +482,10 @@ jobs:
   #
   # What is deliberately NOT carried over: integrations.yml's publish-nuget depended on that file's
   # `dotnet` matrix leg for build+test, and `needs:` cannot cross workflow files. So
-  # publish-nuget-integration runs that leg's restore/build/test/pack chain itself. Two knock-on
-  # differences from the job it replaces, both intentional and both stated because they read like
-  # mistakes otherwise: this job DOES set DOTNET_ROLL_FORWARD (it executes a net8.0 test binary,
-  # which the old publish job never did), and it packs with `--no-build` (so the pushed artifact is
-  # built from exactly the bits the tests just ran against, rather than from a second build).
+  # publish-nuget-integration runs that leg's restore/build/test/pack chain itself. One knock-on
+  # difference from the job it replaces, intentional and stated because it reads like a mistake
+  # otherwise: it packs with `--no-build` (so the pushed artifact is built from exactly the bits the
+  # tests just ran against, rather than from a second build).
   #
   # `cancel-in-progress: false` on both, matching every other publish job in this repository:
   # nuget.org is append-only, a version is burned on first push, and a retried run must queue behind
@@ -798,14 +772,6 @@ jobs:
     permissions:
       id-token: write   # required for the NuGet/login OIDC exchange
       contents: read
-    # Set here and NOT on publish-nuget above, and the difference is load-bearing rather than
-    # inconsistency: this job executes a net8.0 *test binary* on a runner whose only shared runtime
-    # is net10 (the file header's reproduction), which is precisely what DOTNET_ROLL_FORWARD is for.
-    # publish-nuget above only packs and pushes, so it needs none. integrations.yml's dotnet matrix
-    # leg sets the same variable for the same reason, and that file's matrix-coverage job asserts
-    # the SDK-newer-than-TFM pairing keeps it in place.
-    env:
-      DOTNET_ROLL_FORWARD: LatestMajor
     # No `environment:` block. There IS a registry side to keep in agreement here: the nuget.org
     # trusted-publishing policy's Environment field is empty, and this job must stay empty to match
     # or the OIDC exchange 401s with an error whose text mentions nothing about environments. Adding
