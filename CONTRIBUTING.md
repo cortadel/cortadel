@@ -44,8 +44,8 @@ don't patch the output.
 
 ### .NET SDK (`sdk/dotnet/`)
 
-Requires the .NET 10 SDK (the `.slnx` solution format needs it, even though the SDK itself
-targets `net8.0`).
+Requires the .NET 10 SDK: `Cortadel.Sdk` targets `net10.0`, and the `.slnx` solution format needs
+a >=9.0.200-class SDK.
 
 ```bash
 dotnet restore Cortadel.slnx
@@ -121,7 +121,7 @@ and lockfile can actually resolve (`@cortadel/claude-agent-sdk`, `@cortadel/deep
 `@cortadel/langgraph`, `@cortadel/openai-agents` and the n8n nodes run on Node ≥ 20 while
 `@cortadel/mastra`, `@cortadel/openclaw` and `@cortadel/vercel-ai-provider` want ≥ 22;
 `cortadel-crewai` declares Python ≥ 3.11 and < 3.14 while the other two declare ≥ 3.10; the .NET
-package targets `net8.0`). Let `pnpm`, `uv` and `dotnet` fetch what the manifest declares rather
+package targets `net10.0`). Let `pnpm`, `uv` and `dotnet` fetch what the manifest declares rather
 than lowering a floor to match your machine.
 
 **Public option names are canonical across all twelve.** In every row the three spellings are

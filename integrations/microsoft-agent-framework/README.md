@@ -161,7 +161,7 @@ honest.
 
 ## Requirements
 
-- **.NET 8.0 or later** (`net8.0` target).
+- **.NET 10.0 or later** (`net10.0` target).
 - **Microsoft.Agents.AI ≥ 1.17.0** — and `Microsoft.Agents.AI.OpenAI` (or any other
   `Microsoft.Extensions.AI` chat client) to actually talk to a model.
 - **A running Cortadel server**: hosted at `https://app.cortadel.ai`, or self-hosted with

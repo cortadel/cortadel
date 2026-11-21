@@ -49,7 +49,7 @@ That is the whole answer to "why is CrewAI Python but LangGraph TypeScript?" —
 | **[CrewAI](../docs/integrations/crewai.md)** | `cortadel-crewai` | Python | A drop-in `crewai.Memory`, native crew tools, and a task-completed listener | [`crewai/`](./crewai) |
 | **[Google ADK](../docs/integrations/google-adk.md)** | `cortadel-google-adk` | Python | A `BaseMemoryService` (so ADK's own `load_memory` / `preload_memory` work), an auto-persist plugin, and tools | [`google-adk/`](./google-adk) |
 | **[Pydantic AI](../docs/integrations/pydantic-ai.md)** | `cortadel-pydantic-ai` | Python | An `AbstractCapability` that recalls, persists, and contributes a memory toolset | [`pydantic-ai/`](./pydantic-ai) |
-| **[Microsoft Agent Framework](../docs/integrations/microsoft-agent-framework.md)** | `Cortadel.AgentFramework` | .NET (`net8.0`) | An `AIContextProvider` (`ProvideAIContextAsync` / `StoreAIContextAsync`) plus native `AIFunction` tools | [`microsoft-agent-framework/`](./microsoft-agent-framework) |
+| **[Microsoft Agent Framework](../docs/integrations/microsoft-agent-framework.md)** | `Cortadel.AgentFramework` | .NET (`net10.0`) | An `AIContextProvider` (`ProvideAIContextAsync` / `StoreAIContextAsync`) plus native `AIFunction` tools | [`microsoft-agent-framework/`](./microsoft-agent-framework) |
 
 All twelve are **published at `0.1.0`** (npm ×8, PyPI ×3, NuGet ×1), so the install command in each
 package's README works as written. Every npm package carries a Sigstore provenance attestation.
@@ -132,7 +132,7 @@ Notes that will save you time:
   `openai-agents` and the n8n nodes, `>=22` upward for `mastra`, `openclaw` and `vercel-ai-sdk`.
   Python floors: `>=3.10` for `cortadel-google-adk` and `cortadel-pydantic-ai`, `>=3.11,<3.14` for
   `cortadel-crewai` — one rung above crewai's own floor, because a transitive dependency publishes
-  no 3.10 wheel and no sdist to build from. The .NET package targets `net8.0` (so it runs on .NET 8
+  no 3.10 wheel and no sdist to build from. The .NET package targets `net10.0` (so it runs on .NET 10
   and later). `pnpm`, `uv` and `dotnet` fetch whatever the manifest asks for — do that rather than
   lowering a floor to suit the box you're on.
 - **pnpm has no workspace root here.** A bare `pnpm install` inside a package works; pass

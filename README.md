@@ -17,7 +17,7 @@
 
 <p>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5B5BD6?style=flat-square" alt="License Apache-2.0" /></a>
-  <img src="https://img.shields.io/badge/.NET-8%2B-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 8+" />
+  <img src="https://img.shields.io/badge/.NET-10%2B-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 10+" />
   <a href="https://www.nuget.org/packages/Cortadel.Sdk"><img src="https://img.shields.io/nuget/v/Cortadel.Sdk?style=flat-square&logo=nuget&logoColor=white&label=NuGet&color=004880" alt="Cortadel.Sdk on NuGet" /></a>
   <a href="https://pypi.org/project/cortadel/"><img src="https://img.shields.io/pypi/v/cortadel?style=flat-square&logo=pypi&logoColor=white&label=PyPI&color=3775A9" alt="cortadel on PyPI" /></a>
   <a href="https://www.npmjs.com/package/@cortadel/sdk"><img src="https://img.shields.io/npm/v/%40cortadel%2Fsdk?style=flat-square&logo=npm&logoColor=white&label=npm&color=CB3837" alt="@cortadel/sdk on npm" /></a>

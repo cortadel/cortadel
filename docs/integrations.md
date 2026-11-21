@@ -77,7 +77,7 @@ what the host framework itself publishes:
   third-party port of Google ADK, not Google's own.) Python is the only language their maintainers
   ship, so it is the only language an integration can be built in without depending on someone
   else's reimplementation.
-- **.NET (1)** — `Cortadel.AgentFramework`, targeting `net8.0`. The Microsoft Agent Framework is a
+- **.NET (1)** — `Cortadel.AgentFramework`, targeting `net10.0`. The Microsoft Agent Framework is a
   .NET-first framework, so its integration is a NuGet package built on `Microsoft.Agents.AI` and the
   [.NET SDK](sdk-dotnet.md).
 
