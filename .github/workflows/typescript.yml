@@ -13,9 +13,9 @@ name: TypeScript SDK
 # 503 (not 200) whenever the database or embedding check fails, so a bare `curl -f` wait-loop cannot
 # work — see conformance-base's health-gate step below.
 #
-# node-version is pinned to 20.x, the floor declared in sdk/typescript/package.json's
+# node-version is pinned to 26.x, the floor declared in sdk/typescript/package.json's
 # `engines.node` — CI deliberately runs the oldest supported runtime, not whatever happens to be
-# newest, so a Node-22-only API slipping into the facade or its tests fails here instead of at a
+# newest, so a Node-27-only API slipping into the facade or its tests fails here instead of at a
 # consumer's older LTS.
 
 on:
@@ -80,7 +80,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20.x'
+          node-version: '26.x'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
       # --ignore-scripts: blocks lifecycle scripts (preinstall/install/postinstall) from any
@@ -173,7 +173,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20.x'
+          node-version: '26.x'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
       # --ignore-scripts: see the build job's own comment on why this is safe here.
@@ -314,7 +314,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20.x'
+          node-version: '26.x'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
       # --ignore-scripts: see the build job's own comment on why this is safe here.
@@ -403,13 +403,12 @@ jobs:
       # with a short-lived OIDC token minted from the `id-token: write` permission below, so there
       # is no stored credential in this job at all.
       #
-      # node-version is 24.x here and 20.x in every other job on purpose. Trusted publishing needs
-      # npm CLI >= 11.5.1, which ships with Node 24 — Node 22 still carries npm 10.x. The other jobs
-      # keep 20.x because that is the floor package.json declares and what the SDK is tested against;
-      # this job only packs and uploads an already-built tree.
+      # node-version is 26.x here for the same reason as every other job, plus one more: trusted
+      # publishing needs npm CLI >= 11.5.1, and Node 26 ships npm 11.x (11.20.0 as of 26.13.1).
+      # This job only packs and uploads an already-built tree.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.x'
+          node-version: '26.x'
           registry-url: 'https://registry.npmjs.org'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml

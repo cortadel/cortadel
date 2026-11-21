@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 26
 
       - name: Regenerate plugin/marketplace manifests
         run: node packaging/generate.mjs
@@ -141,7 +141,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 26
       - run: node .github/scripts/check-docs-mirror.mjs
 
   # 3b. The plugin shipped a dead MCP URL to every install because its only guard was
@@ -161,7 +161,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 26
       - run: node .github/scripts/check-mcp-url-canon.mjs
 
   # 4. Fast unit tests only — the plugin's own node:test suite, the packaging generator's node:test
@@ -183,7 +183,7 @@ jobs:
           version: 10
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20.x'
+          node-version: '26.x'
           cache: pnpm
           cache-dependency-path: sdk/typescript/pnpm-lock.yaml
 

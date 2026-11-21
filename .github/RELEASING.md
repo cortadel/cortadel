@@ -256,7 +256,7 @@ for `npm trust`, and requires an account-level 2FA challenge.
       Keep `registry-url` on `actions/setup-node`; npm's own recipe keeps it and simply omits the
       token.
 
-      **Keep `node-version: '24.x'` — it is load-bearing, and it is the line most likely to be
+      **Keep `node-version: '26.x'` — it is load-bearing, and it is the line most likely to be
       "simplified" back into a broken state.** An earlier draft of this file asserted the opposite:
       that the job "publishes with **pnpm** and never invokes npm at all, so npm's version is
       irrelevant to it". That is backwards. On pnpm 10, `pnpm publish` packs a tarball and then
@@ -268,11 +268,10 @@ for `npm trust`, and requires an account-level 2FA challenge.
       `npm publish`, whose own OIDC flow handled the case."*
 
       So npm's documented floor binds: **npm ≥ 11.5.1 and Node ≥ 22.14.0**
-      ([docs.npmjs.com/trusted-publishers](https://docs.npmjs.com/trusted-publishers)). Measured
-      across the whole of `nodejs.org/dist/index.json` on 2026-08-14, **no Node 22 release ships
-      npm 11** — the entire 22 line is npm 10.5.1 … 10.9.8, newest `v22.23.2 → npm 10.9.8` — so the
-      `'22.x'` this file used to mandate could never have met the floor it was later claimed to be
-      unrelated to. `'24.x'` resolves to `v24.19.0 → npm 11.17.0`, and Node 24 is the current LTS.
+      ([docs.npmjs.com/trusted-publishers](https://docs.npmjs.com/trusted-publishers)). Node 26
+      ships npm 11.x — measured locally on Node 26.13.1: npm 11.20.0 — and Node 26 is the current
+      Active LTS, so `'26.x'` clears the floor without a separate npm install. The 22 line shipped
+      only npm 10.x, which is why the old `'22.x'` pin could never have satisfied it.
 
       This was never a risk to phases 1–3: those are token-authenticated, and a token publish with
       `--provenance` works fine on npm 10.9.x. It bites **here**, at phase 4, as a bare 404 — which

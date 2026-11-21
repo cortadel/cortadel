@@ -12,7 +12,7 @@ name: Cortadel plugin
 # suite's fixtures assume already exist.
 #
 # No install step: the plugin has zero dependencies by design (Node 18+ built-in fetch, ESM), so
-# `node --test` runs directly against the checked-out scripts. Node 20 matches the private repo's
+# `node --test` runs directly against the checked-out scripts. Node 26 matches the private repo's
 # own job (and the plugin's package-free floor); this is deliberately its own workflow file, not a
 # job folded into another one — see the concurrency note below.
 #
@@ -45,7 +45,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 26
 
       # Zero dependencies by design — no install step, just the built-in runner.
       - name: Test
