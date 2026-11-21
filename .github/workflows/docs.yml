@@ -87,4 +87,4 @@ jobs:
             echo "or connect the repo via the Cloudflare Pages dashboard."
             exit 0
           fi
-          pnpm dlx wrangler pages deploy dist --project-name=cortadel-docs --branch=main
+          pnpm dlx wrangler@4.166.0 pages deploy dist --project-name=cortadel-docs --branch=main
